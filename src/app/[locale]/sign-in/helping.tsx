@@ -66,9 +66,9 @@ export function HelpingKey({name, typed, onHandOver, onBack}: {
     return (
       <div className="flex flex-col gap-6 text-snow-white" data-helping="hand">
         <div className="flex flex-col items-center gap-4 pt-2 text-center">
-          <h2 className="text-section">
+          <h1 className="text-section">
             {t("handTitle")}<span className="sr-only"> {name}</span>
-          </h2>
+          </h1>
           <StitchedText text={name} cell={10} knit className="max-w-full [&>svg]:h-auto [&>svg]:max-w-full" />
         </div>
         <Card>
@@ -92,7 +92,7 @@ export function HelpingKey({name, typed, onHandOver, onBack}: {
   return (
     <div className="flex flex-col gap-6 text-snow-white" data-helping="choose">
       <div className="flex flex-col gap-2">
-        <h2 className="text-title">{t("keyTitle", {name})}</h2>
+        <h1 className="text-title">{t("keyTitle", {name})}</h1>
         <p className="text-lead">{t("keyLead", {name})}</p>
       </div>
       {view === "noPhone" ? (

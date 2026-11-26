@@ -2,6 +2,7 @@ import type {ReactNode} from "react";
 import {getFormatter, getLocale, getTranslations} from "next-intl/server";
 import {Avatar} from "@/components/ui/avatar";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
+import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Card, Chevron, ListRow, Rows} from "@/components/ui/card";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
@@ -19,7 +20,7 @@ import {getUnreadCount, listNotifications} from "@/server/messages/inbox";
 import {shoeLabel} from "../welcome/shoe-label";
 import {reportSession, signOut, switchProfile} from "./actions";
 import {noticeText} from "./notice-text";
-import {ActForm, HomeScreenRow, LanguageRow, RowDisc} from "./rows";
+import {ActForm, LanguageRow, RowDisc} from "./rows";
 import {screenTitle} from "../sign-in/title";
 import {activityDateFormat} from "../sign-in/styles";
 import styles from "./rows.module.css";
@@ -167,7 +168,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           </ul>
         </Card>
         <Card flush className="px-[18px] py-0.5">
-          <Rows as="ul"><HomeScreenRow /></Rows>
+          <HomeScreenHelp className="ml-0 text-ink" />
         </Card>
       </KnitIn>
     </Screen>

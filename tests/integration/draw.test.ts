@@ -30,6 +30,7 @@ import MemberExchangePage from "../../src/app/[locale]/exchanges/[exchangeId]/pa
 import ManagePage from "../../src/app/[locale]/exchanges/[exchangeId]/manage/page";
 import PracticePage from "../../src/app/[locale]/exchanges/practice/page";
 import {drawPage} from "../../src/app/[locale]/exchanges/components";
+import {HelpingBanner} from "../../src/app/[locale]/helping/banner";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
 import {reveal as revealAction} from "../../src/app/[locale]/exchanges/actions";
@@ -89,6 +90,7 @@ vi.mock("next/cache", () => ({revalidatePath: vi.fn()}));
 vi.mock("@/server/auth", async (original) => ({
   ...await original<typeof import("../../src/server/auth")>(),
   requireViewer: async () => signedIn.viewer!,
+  getViewer: async () => signedIn.viewer,
 }));
 
 const databaseUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL;
@@ -871,7 +873,7 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/helping");
   signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
   expect(signedIn.viewer).toMatchObject({actingAs: f.ids[4]});
-  const html = await renderAccountPage();
+  const html = renderToStaticMarkup(await renderServerTree(await HelpingBanner()));
   expect(html).toContain(`helping ${names[4]}`);
   await expect(signOut(false)).rejects.toThrow("redirect:/en/sign-in");
   expect(signedIn.clearSession).toHaveBeenCalledOnce();

@@ -79,6 +79,26 @@ async function capture(page: Page, info: TestInfo, name: string) {
   await info.attach(name, {path, contentType: "image/png"});
 }
 
+test("sign-out does not start a competing sign-in refresh before the next login", async ({page}) => {
+  const familyId = await createFamily(page);
+  try {
+    await page.goto("/en/account");
+    const refreshes: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "GET" && new URL(request.url()).pathname === "/en/sign-in"
+        && request.headers().rsc === "1" && !request.headers()["next-router-prefetch"]) refreshes.push(request.url());
+    });
+    await signOut(page);
+    await page.waitForLoadState("networkidle");
+    // Sign-out already updates the shared layout; a second fetch can overtake the next navigation.
+    expect(refreshes).toEqual([]);
+    await login(page, familyId, "Organizer");
+    await signedInAs(page, "Organizer");
+  } finally {
+    await removeFamily(familyId);
+  }
+});
+
 test("co-organizer dispute locks down the family and old PIN stays invalid after key recovery", async ({page, browser, browserName}, info) => {
   test.setTimeout(90_000);
   const familyId = await createFamily(page);
@@ -212,7 +232,7 @@ test("assigned helper manages a person without a phone and cannot use organizer 
     await page.goto("/en/family/keys");
     await expect(page.getByRole("button", {name: "Prepare message"})).toHaveCount(0);
     await page.goto("/en/account");
-    await page.getByRole("button", {name: "Back to me"}).click();
+    await page.getByRole("button", {name: "Done", exact: true}).click();
     await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();
   } finally {
     await removeFamily(familyId);

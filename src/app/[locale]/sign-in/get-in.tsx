@@ -193,7 +193,6 @@ export function KeyWelcome({familyId, value, typed, entry, sender, otherLanguage
   otherLanguage?: {href: string; locale: "en" | "es"};
 }) {
   const t = useTranslations("getIn.hello");
-  const auth = useTranslations("auth");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
 
   if (phase === "pin") {

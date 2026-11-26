@@ -128,17 +128,16 @@ for (const exit of ["navigation", "Done", "home"] as const) {
         await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
       }
 
-      await otherDevice.goto("/en/account");
-      await otherDevice.locator("summary").filter({hasText: /^Sign out everywhere$/}).click();
-      await otherDevice.getByRole("button", {name: "Sign out everywhere"}).click();
+      await otherDevice.goto("/en/account/phones");
+      await otherDevice.getByRole("button", {name: "Sign out everywhere", exact: true}).click();
+      await otherDevice.getByRole("dialog").getByRole("button", {name: "Sign out everywhere", exact: true}).click();
       await expect(otherDevice).toHaveURL(/\/en\/sign-in$/);
 
       if (exit === "navigation") await helping.getByRole("link", {name: "Later", exact: true}).click();
       else if (exit === "Done") await helping.getByRole("button", {name: "Done", exact: true}).click();
-      else await helping.getByRole("link", {name: "Go back", exact: true}).click();
+      else await helping.getByRole("link", {name: "Back to Rosa's Home", exact: true}).click();
       await expect(helping).toHaveURL(exit === "home" ? /\/en$/ : /\/en\/sign-in$/);
-      if (exit === "home") await expect(helping.getByRole("link", {name: "Rosa", exact: true})).toBeVisible();
-      else await expect(helping.getByRole("heading", {name: "Sign in", exact: true})).toBeVisible();
+      await expect(helping.getByRole("button", {name: en.auth.signInFaceId, exact: true})).toBeVisible();
       await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
       await shot(helping, `revoked-helping-${exit}`);
     } finally {
@@ -165,7 +164,8 @@ test("refreshes shared helping context when a tab regains focus or visibility", 
     await helping.bringToFront();
     await helping.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
-    await helping.getByRole("link", {name: "Notifications (2 unread)", exact: true}).click();
+    await expect(helping.locator('a[href$="/account/notices"]')).toContainText("2 new");
+    await helping.goto("/en/notifications");
     await expect(helping.getByRole("heading", {name: "Notices", exact: true})).toBeVisible();
     await expect(helping.locator('[data-notice="unread"]')).toHaveCount(2);
 
@@ -249,7 +249,8 @@ test("the notice badge reaches zero after reading the newest 100 while an older 
       createdAt: new Date("2026-11-25T18:00:00Z")})));
     const rosa = await f.signedIn("Rosa");
     await rosa.goto("/en/account");
-    await rosa.getByRole("link", {name: "Notifications (100 unread)", exact: true}).click();
+    await expect(rosa.locator('a[href$="/account/notices"]')).toContainText("100 new");
+    await rosa.goto("/en/notifications");
     await expect(rosa.locator('[data-notice="unread"]')).toHaveCount(100);
     for (let remaining = 100; remaining > 0; remaining--) {
       await rosa.getByRole("button", {name: "Mark as read", exact: true}).first().click();
@@ -260,8 +261,8 @@ test("the notice badge reaches zero after reading the newest 100 while an older 
     await expect(rosa.locator('[data-notice="read"]')).toHaveCount(100);
     await shot(rosa, "newest-100-notices-all-read");
     await rosa.goto("/en/account");
-    await expect(rosa.getByRole("link", {name: "Notifications", exact: true})).toBeVisible();
-    await expect(rosa.getByRole("link", {name: /Notifications \(/})).toHaveCount(0);
+    await expect(rosa.locator('a[href$="/account/notices"]')).toBeVisible();
+    await expect(rosa.locator('a[href$="/account/notices"]')).not.toContainText(/\d+ new/);
     const stored = await database.db.select().from(outbox).where(eq(outbox.familyId, f.familyId));
     expect(stored).toHaveLength(101);
     expect(stored.filter(({readAt}) => readAt === null).map(({id}) => id)).toEqual([ids[100]]);
@@ -316,7 +317,7 @@ for (const locale of ["en", "es"] as const) {
       const t = (locale === "en" ? en : es).helping;
       const guest = await f.guest();
       await guest.goto(`/${locale}/key/${await f.martaKey()}`);
-      await guest.getByRole("button", {name: locale === "en" ? "I'm helping Marta" : "Estoy ayudando a Marta", exact: true}).click();
+      await guest.getByRole("button", {name: (locale === "en" ? en : es).getIn.hello.helping.replace("{name}", "Marta"), exact: true}).click();
       await guest.getByRole("button", {name: new RegExp(`^${t.noPhoneTitle.replace("{name}", "Marta")}`)}).click();
       await expect(guest.locator('[data-helping="choose"]').getByRole("status"))
         .toHaveText(t.noPhoneBody.replaceAll("{name}", "Marta"));
@@ -337,7 +338,7 @@ for (const locale of ["en", "es"] as const) {
       const guest = await f.guest({...phone, permissions: ["clipboard-read", "clipboard-write"]});
       await guest.goto(`/${locale}/key/${await f.martaKey()}`);
       const privateKeyUrl = guest.url();
-      await guest.getByRole("button", {name: locale === "en" ? "I'm helping Marta" : "Estoy ayudando a Marta", exact: true}).click();
+      await guest.getByRole("button", {name: (locale === "en" ? en : es).getIn.hello.helping.replace("{name}", "Marta"), exact: true}).click();
       await guest.getByRole("button", {name: new RegExp(`^${t.sendTitle.replace("{name}", "Marta")}`)}).click();
       await expect(guest.getByRole("status")).toHaveText(t.copied.replace("{name}", "Marta"));
       expect(await guest.evaluate(() => navigator.clipboard.readText())).toBe(privateKeyUrl);
@@ -460,13 +461,13 @@ test("helping someone, notices, the family chat and the end of the season match 
     for (const locale of ["en", "es"] as const) {
       const helper = await f.guest();
       await helper.goto(`/${locale}/key/${key}`);
-      await helper.getByRole("button", {name: locale === "en" ? "I'm helping Marta" : "Estoy ayudando a Marta"}).click();
+      await helper.getByRole("button", {name: (locale === "en" ? en : es).getIn.hello.helping.replace("{name}", "Marta")}).click();
       await expect(helper.getByRole("heading", {name: locale === "en" ? "Helping Marta?" : "¿Ayudas a Marta?"})).toBeVisible();
       await shot(helper, `${locale === "en" ? "f9" : "f13-es"}-9_1-helping-marta`);
       await helper.getByRole("button", {name: locale === "en" ? /^Marta is here with me/ : /^Marta está aquí conmigo/}).click();
       await shot(helper, `${locale === "en" ? "f9" : "f13-es"}-9_2-hand-phone`);
       await helper.getByRole("button", {name: locale === "en" ? "Marta has the phone" : "Marta ya tiene el teléfono"}).click();
-      await expect(helper.getByLabel(locale === "en" ? "4-digit PIN" : "PIN de 4 dígitos")).toBeVisible();
+      await expect(helper.getByRole("heading", {name: (locale === "en" ? en : es).getIn.pin.makeTitle})).toBeVisible();
     }
 
     // Tell the family (7.16).

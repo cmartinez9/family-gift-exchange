@@ -8,7 +8,10 @@ import {buttonClass, inputClass} from "./styles";
 
 export function RefreshSession() {
   const router = useRouter();
-  useEffect(() => {router.refresh();}, [router]);
+  useEffect(() => {
+    // Sign-out already revalidates the layout; refresh only if a cached mode banner survived rejection.
+    if (document.querySelector("[data-mode-banner]")) router.refresh();
+  }, [router]);
   return null;
 }
 

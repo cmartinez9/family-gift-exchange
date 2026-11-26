@@ -62,24 +62,6 @@ export function LanguageRow({current}: {current: "en" | "es"}) {
   );
 }
 
-/** Put it on your home screen: the steps, in a sheet. */
-export function HomeScreenRow() {
-  const you = useTranslations("getIn.you");
-  const t = useTranslations("notify.install");
-  const steps = (title: string, lines: string[]) => (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-card-title">{title}</h3>
-      <ol className="flex list-decimal flex-col gap-1.5 pl-6 text-body">{lines.map((line) => <li key={line}>{line}</li>)}</ol>
-    </section>
-  );
-  return (
-    <SheetRow icon="plussq" title={you("homeScreen")} sheetTitle={you("homeScreen")}>
-      {steps(t("iphone"), [t("iphoneOpen"), t("iphoneShare"), t("iphoneAdd"), t("iphoneLaunch")])}
-      {steps(t("android"), [t("androidOpen"), t("androidMenu"), t("androidAdd"), t("androidLaunch")])}
-    </SheetRow>
-  );
-}
-
 /** Sign out everywhere (11.3, 11.4): the outline button and its confirm sheet. */
 export function SignOutEverywhere({name}: {name: string}) {
   const t = useTranslations("getIn.phones");
