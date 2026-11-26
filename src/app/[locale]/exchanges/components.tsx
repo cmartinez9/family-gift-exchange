@@ -41,7 +41,7 @@ export async function DrawRecovery({error, manageId}: {error: DrawError; manageI
 }
 
 /** Your person before there is one to open: names not drawn, not taking part, or closed. */
-export async function PersonStatusScreen({status}: {status: "waiting" | "notParticipating" | "closed"}) {
+export async function PersonStatusScreen({status, details}: {status: "waiting" | "notParticipating" | "closed"; details?: ExchangeDetails}) {
   const t = await getTranslations("draw");
   return (
     <Screen back="/">
@@ -50,6 +50,7 @@ export async function PersonStatusScreen({status}: {status: "waiting" | "notPart
       <div className="flex flex-col items-center gap-6 px-edge pt-8">
         <KnitMotif name="gift" cell={8} colors={{"#": "rgba(255,248,239,.5)", o: "rgba(237,180,62,.8)"}} />
         <Card className="w-full"><p className="text-card-title">{t(status)}</p></Card>
+        {details && <div className="w-full pb-6"><ExchangeFacts details={details} /></div>}
       </div>
     </Screen>
   );

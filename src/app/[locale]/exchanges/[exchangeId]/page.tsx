@@ -18,7 +18,7 @@ export default async function MemberExchangePage({params, searchParams}: {
   const state = await drawPage(memberDrawStatus(viewer, exchangeId));
   if (state instanceof DrawError) return <DrawRecovery error={state} manageId={organizer ? exchangeId : undefined} />;
   if (state.status === "closed") return <SeasonWrap name={state.exchange.name} />;
-  if (state.status !== "ready") return <PersonStatusScreen status={state.status} />;
+  if (state.status !== "ready") return <PersonStatusScreen status={state.status} details={state.exchange} />;
   const context = {id: state.exchange.id, subject: viewer.actingAs, version: state.exchange.version};
   const questions = await drawPage(listOwnQuestions(viewer, exchangeId));
   if (questions instanceof DrawError) return <DrawRecovery error={questions} manageId={organizer ? exchangeId : undefined} />;

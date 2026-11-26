@@ -27,7 +27,7 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
     const result = await drawPage(practiceMemberView(owner, as));
     if (result instanceof DrawError) return <DrawRecovery error={result} />;
     const {status, questions} = result;
-    if (status.status !== "ready") return <PersonStatusScreen status={status.status} />;
+    if (status.status !== "ready") return <PersonStatusScreen status={status.status} details={status.exchange} />;
     const context: MemberContext = {id: status.exchange.id, version: status.exchange.version, subject: as, practice: true};
     const self = `${PRACTICE}?as=${encodeURIComponent(as)}`;
     const current = questions && questions.version === context.version ? questions : null;

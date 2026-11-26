@@ -193,7 +193,9 @@ export default async function ManagePage({params, searchParams}: {
   // setup, step 1: the exchange
   if (!version && status !== "closed") {
     return (
-      <FormScreen action={saveDetailsAndContinue.bind(null, id)} label={t("setup.nextPeople")} back="/exchanges" top={<>
+      <FormScreen action={saveDetailsAndContinue.bind(null, id)} label={t("setup.nextPeople")} back="/exchanges" below={
+        <CloseSeason exchangeId={id} name={state.exchange.name} />
+      } top={<>
         <BackRow href="/exchanges" parent={t("title")} backLabel={ui("back")} />
         <SetupSteps step={1} />
         <PageTitle title={t("setup.exchangeTitle")} lead={t("setup.exchangeLead")} />
@@ -202,6 +204,6 @@ export default async function ManagePage({params, searchParams}: {
       </FormScreen>
     );
   }
-  if (!version) return <PersonStatusScreen status="closed" />;
+  if (!version) return <PersonStatusScreen status="closed" details={state.exchange} />;
   return <Hub state={state} viewer={viewer} check={check === "1"} />;
 }

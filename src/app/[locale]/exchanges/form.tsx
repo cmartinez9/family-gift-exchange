@@ -51,7 +51,7 @@ export function DrawForm({action, label, children, variant = "card", icon, feedb
  * A screen that is one form: the fields scroll, and the main action sits at the bottom on the ground
  * (linked to the form), the way every setup step ends in "Next".
  */
-export function FormScreen({action, label, icon = "arrow", top, children, back, after, feedback = "toast"}: {
+export function FormScreen({action, label, icon = "arrow", top, children, back, after, below, feedback = "toast"}: {
   action: (state: FormState, data: FormData) => Promise<FormState>;
   label: string;
   icon?: IconName;
@@ -61,6 +61,8 @@ export function FormScreen({action, label, icon = "arrow", top, children, back, 
   back?: string;
   /** Under the main action: a line, or a quieter way out. */
   after?: ReactNode;
+  /** Under the form, outside it: rarer tools with forms of their own. */
+  below?: ReactNode;
   feedback?: "toast" | "inline";
 }) {
   const [state, submit, pending] = useActionState(action, {});
@@ -84,6 +86,7 @@ export function FormScreen({action, label, icon = "arrow", top, children, back, 
         {state.error && <ErrorBlock title={state.error} />}
         {feedback === "inline" && state.feedback && <p role="status" className="text-body font-semibold">{state.feedback}</p>}
       </form>
+      {below && <div className="flex flex-col gap-3 px-edge pb-6">{below}</div>}
     </Screen>
   );
 }
