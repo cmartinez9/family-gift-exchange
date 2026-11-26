@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
-import {devices, expect, test, type Page} from "@playwright/test";
+import {devices, expect, test, type Page, type Request} from "@playwright/test";
 import {eq} from "drizzle-orm";
 import sharp from "sharp";
 import en from "../../messages/en.json" with {type: "json"};
@@ -74,9 +74,20 @@ for (const language of ["en", "es"] as const) {
       const shoeSystem = page.getByLabel(lists.size.shoeSystem);
       await shoeSystem.selectOption("eu");
       await shoeSystem.blur();
+      await expect(page.getByRole("status")).toHaveText(lists.saved);
       const shoeSize = page.getByLabel(lists.size.shoes, {exact: true});
-      await shoeSize.fill("39");
+      const profileSaves: Request[] = [];
+      const recordSave = (request: Request) => {
+        if (request.method() === "POST") profileSaves.push(request);
+      };
+      page.on("request", recordSave);
+      await shoeSize.pressSequentially("39");
+      await expect(shoeSize).toHaveValue("39");
+      expect(profileSaves).toHaveLength(0);
       await shoeSize.blur();
+      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      expect(profileSaves).toHaveLength(1);
+      page.off("request", recordSave);
       const color = page.getByLabel(lists.aboutField.colors);
       await color.fill("Verde");
       await color.blur();
@@ -84,6 +95,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByRole("link", {name: lists.backToList}).click();
       await expect(page.getByRole("region", {name: lists.sizes}).getByText("39", {exact: true})).toBeVisible();
       await expect(page.getByRole("region", {name: lists.about}).getByText("Verde", {exact: true})).toBeVisible();
+      await page.screenshot({path: test.info().outputPath(`wishlist-and-sizes-${language}.png`), fullPage: true});
 
       await page.getByRole("link", {name: lists.editProfile}).click();
       await page.getByLabel(lists.noClothes).check();
@@ -143,6 +155,7 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     await expect(preview.getByRole("link", {name: en.lists.openProduct})).toHaveAttribute(
       "href", "https://shop.example.com/bright-lantern",
     );
+    await page.screenshot({path: test.info().outputPath("link-fallback.png"), fullPage: true});
 
     const image = await sharp({create: {width: 80, height: 80, channels: 3, background: "#b7ded2"}}).png().toBuffer();
     await page.getByLabel(en.lists.photo, {exact: true}).setInputFiles({name: "fixture.png", mimeType: "image/png", buffer: image});
@@ -155,16 +168,31 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     const photoResponse = await page.request.get(photoUrl);
     expect(photoResponse.ok()).toBe(true);
     expect(photoResponse.headers()["content-type"]).toBe("image/webp");
+    const anonymous = await browser.newContext({...device, ignoreHTTPSErrors: true});
+    try {
+      const denied = await anonymous.request.get(new URL(photoUrl, page.url()).href, {maxRedirects: 0});
+      expect(denied.status()).toBe(307);
+      expect(denied.headers()["content-type"]).not.toBe("image/webp");
+      await test.info().attach("photo-access", {
+        body: JSON.stringify({memberStatus: photoResponse.status(), memberType: photoResponse.headers()["content-type"],
+          anonymousStatus: denied.status(), anonymousRedirect: denied.headers().location}, null, 2),
+        contentType: "application/json",
+      });
+    } finally {
+      await anonymous.close();
+    }
 
     await memberPage.getByRole("link", {name: en.lists.familyLists}).click();
     await memberPage.getByRole("link", {name: "Frostleaf"}).click();
     const memberCard = memberPage.getByRole("article", {name: "Bright lantern"});
     await memberCard.getByRole("button", {name: en.lists.claim}).click();
     await expect(memberCard.getByText(en.lists.mine)).toBeVisible();
+    await memberPage.screenshot({path: test.info().outputPath("photo-and-claim-member.png"), fullPage: true});
     await page.reload();
     await expect(ownerCard.getByText(en.lists.mine)).toHaveCount(0);
     await expect(ownerCard.getByText(en.lists.someone)).toHaveCount(0);
     await expect(ownerCard.getByRole("button", {name: en.lists.claim})).toHaveCount(0);
+    await page.screenshot({path: test.info().outputPath("photo-owner-private.png"), fullPage: true});
 
     await memberPage.getByRole("link", {name: en.lists.getting}).click();
     await memberPage.getByLabel(en.lists.bought).check();
@@ -173,6 +201,7 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     await memberPage.reload();
     await expect(memberPage.getByLabel(en.lists.bought)).toBeChecked();
     await expect(memberPage.getByLabel(en.lists.wrapped)).toBeChecked();
+    await memberPage.screenshot({path: test.info().outputPath("purchase-checklist.png"), fullPage: true});
 
     await ownerCard.getByText(en.lists.deleteItem, {exact: true}).click();
     await ownerCard.getByRole("button", {name: en.lists.confirmDeleteButton}).click();

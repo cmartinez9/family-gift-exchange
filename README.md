@@ -12,6 +12,16 @@ After joining, return through the app address, the original message, or a home-s
 
 Review **Sign-in activity** for key use, new devices, and replacement keys. Use **That wasn't me** for activity you do not recognize; see [Account recovery](#account-recovery) for the effects of reporting access.
 
+## Wishlists and gifts
+
+Open **Your list** from your account, then **Add an item** to paste a product link, upload a photo, or write an idea down. There is no per-list item limit. Links work without `https://`, and you can paste the text shared by a store app. **Preview link** fills in available product details; review them, add a note or your own photo, and choose **Save item**. If the store blocks previews or has no usable image, the item can still be saved with the store link and a photo you supply. Use **Edit item**, **Refresh preview**, **Move up**, **Move down**, or **Remove item** to maintain your list.
+
+Choose **Edit sizes and About me** to add sizing, preferences, or allergies. These fields save when you leave each field; wait for **Saved** before navigating away. Select **No clothes, please** if you do not want clothing. The directory's **List ready** label requires at least one item. It also requires tops, bottoms (or waist and inseam), and shoe sizes with a shoe size system, unless **No clothes, please** is selected. When helping a relative, switch to their profile in **People you help**, then edit **Your list** for them.
+
+**Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory currently lists people alphabetically; assigned-recipient highlighting awaits the draw integration. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget.
+
+On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
+
 ## Run locally
 
 Use Node from `.nvmrc`, pnpm from `package.json`, and Docker Compose.
@@ -34,6 +44,8 @@ pnpm dev --experimental-https
 Set `AUTH_ORIGIN=https://localhost:3000` for this local HTTPS server. Open [the local app](https://localhost:3000) or [captured messages](https://localhost:3000/dev/messages). Seeding adds five fictional practice rosters. Create a new family with the organizer invitation code to practice the full sign-in flow.
 
 On Vercel, set `AUTH_ORIGIN` to the canonical HTTPS address members use. This sets the origin for personal links and the scope of passkeys. To check sharing on a real phone, use a practice family and send keys only to test recipients.
+
+Wishlist photos and preview images use a private Vercel Blob store when `BLOB_READ_WRITE_TOKEN` is set. Configure that token on Vercel; local filesystem storage is unavailable there. Without the token, local development uses temporary photo storage by default. Set `LIST_PHOTO_DIR` to a persistent local directory to retain images across temporary-directory cleanup; a local production server also requires this setting when no Blob token is provided. If photo storage is unavailable, photo uploads fail and link items can still be saved without preview images. Photo access goes through signed-in, family-scoped app routes.
 
 ## Test
 

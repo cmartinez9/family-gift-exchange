@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 1 | `src/server/auth/index.ts` | Sign-in, session identity, family membership, organizer and helper authorization |
 | 2 | `src/server/draw/index.ts` | Constraints, draw, sealed assignments, reveal, repair, and routing questions to the assigned recipient |
-| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link preview, claim visibility, and the question interface with Phase 2 |
+| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link previews, item photos, exchange budget, and claim visibility |
 | 4 | `src/server/messages/index.ts` | Message templates, queue, delivery adapters, and reminders |
 | Shared | `src/app`, `src/i18n`, `src/server/db` | Routing, locale setup, database connection, and shared tables |
 
@@ -18,7 +18,7 @@ Keep reads in Server Components and use feature-local `actions.ts` files with `"
 
 Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep pool-level access limited to tooling and the local message viewer. RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
-Restrict pairing data to the draw module. Store only sealed recipients in assignments and questions, with their draw version. Keep the normal app role off both tables. Phase 2 owns their privileged queries, the authorized single-person reveal and question projections, and the draw and repair summaries. Organizer screens use summaries. Use the claim identity only for internal authorization and the caller's own actions. Expose anonymous claim state to other members and omit that state from the item's owner. Send only payloads defined by the message module's [`Message` type](../src/server/messages/index.ts), keeping pairing and claim data out of message payloads.
+Restrict pairing data to the draw module. Store only sealed recipients in assignments and questions, with their draw version. Keep the normal app role off both tables. Phase 2 owns their privileged queries, the authorized single-person reveal and question projections, and the draw and repair summaries. Organizer screens use summaries. Use the claim identity only for internal authorization and the caller's own actions. Enforce the [documented claim visibility](../README.md#wishlists-and-gifts) in list projections before returning data to components. Send only payloads defined by the message module's [`Message` type](../src/server/messages/index.ts), keeping pairing and claim data out of message payloads.
 
 ## PostgreSQL and migrations
 
