@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback, useOptimistic, useState, useTransition} from "react";
+import {useOptimistic, useState, useTransition} from "react";
 import {useFormatter, useTranslations} from "next-intl";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
@@ -12,11 +12,11 @@ import {AppLink} from "@/components/ui/navigation";
 import {Link} from "@/i18n/navigation";
 import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
-import {DURATION} from "@/components/ui/motion/easing";
 import type {ItemKind} from "@/server/lists/validation";
-import {itemCommand, removeItem, setItemStar} from "../actions";
+import {itemCommand, setItemStar} from "../actions";
 import {ItemForm} from "../item-form";
 import {ItemThumb, missesPicture, type ListItemView} from "../item-view";
+import {removeWithUndo, usePendingRemovals} from "../pending-removals";
 
 const ADD_OPTIONS = [
   {kind: "note", icon: "pencil", title: "newNote", sub: "addNoteSub"},
@@ -41,7 +41,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [round, setRound] = useState(0);
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const hidden = usePendingRemovals(ownerId, items);
   const [optimisticItems, setStar] = useOptimistic(items, (current, change: {id: string; starred: boolean}) =>
     current.map((item) => item.id === change.id ? {...item, starred: change.starred} : item));
   const [, startTransition] = useTransition();
@@ -55,34 +55,11 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
     setEditing(itemId);
   };
 
-  const takeOff = useCallback((item: ListItemView) => {
+  const takeOff = (item: ListItemView) => {
     setEditing(null);
-    setHidden((current) => new Set(current).add(item.id));
     haptic("soft");
-    const commit = window.setTimeout(() => {
-      void removeItem(ownerId, item.id).then((result) => {
-        if (!result.error) return;
-        setHidden((current) => {
-          const next = new Set(current);
-          next.delete(item.id);
-          return next;
-        });
-        toast({message: t(`feedback.${result.error}`), icon: "alert"});
-      });
-    }, DURATION.toastStayUndo + 300);
-    toast({
-      message: t("tookOff", {title: item.title}),
-      icon: "undo",
-      undo: () => {
-        window.clearTimeout(commit);
-        setHidden((current) => {
-          const next = new Set(current);
-          next.delete(item.id);
-          return next;
-        });
-      },
-    });
-  }, [ownerId, t]);
+    removeWithUndo(ownerId, item.id, t("tookOff", {title: item.title}), (error) => t(`feedback.${error}`));
+  };
 
   const star = (item: ListItemView, on: boolean) => {
     haptic("tick");

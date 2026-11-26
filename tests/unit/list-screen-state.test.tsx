@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import {randomUUID} from "node:crypto";
 import {act, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
@@ -8,6 +9,7 @@ import {ClaimItem} from "../../src/app/[locale]/lists/[personId]/claim-item";
 import {OwnList} from "../../src/app/[locale]/lists/[personId]/own-list";
 import {removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
 import {ItemThumb, toItemView, type ListItemView} from "../../src/app/[locale]/lists/item-view";
+import {removeWithUndo} from "../../src/app/[locale]/lists/pending-removals";
 import {dismissToast, ToastHost} from "../../src/components/ui/toast";
 
 vi.mock("../../src/app/[locale]/lists/actions", () => ({
@@ -19,7 +21,7 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
-const ownerId = "owner";
+let ownerId: string;
 const item: ListItemView = {id: "item", kind: "note", title: "Tea tin", note: null, price: null, store: null, starred: false, url: null};
 let container: HTMLDivElement;
 let root: Root;
@@ -43,6 +45,7 @@ async function click(element: HTMLElement) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  ownerId = randomUUID();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   window.matchMedia = vi.fn().mockReturnValue({matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn()});
   Element.prototype.animate = vi.fn().mockReturnValue({cancel() {}, onfinish: null});
@@ -54,7 +57,11 @@ beforeEach(() => {
   root = createRoot(container);
   items = [{...item}];
   showingList = true;
-  vi.mocked(removeItem).mockResolvedValue({status: "saved"});
+  vi.mocked(removeItem).mockImplementation(async (_owner, id) => {
+    items = items.filter((entry) => entry.id !== id);
+    root.render(screen());
+    return {status: "saved"};
+  });
   vi.mocked(setItemStar).mockImplementation(async (_owner, id, starred) => {
     items = items.map((entry) => entry.id === id ? {...entry, starred} : entry);
     root.render(screen());
@@ -109,6 +116,87 @@ it("commits a removal once after leaving its Undo window unused", async () => {
   expect(removeItem).not.toHaveBeenCalled();
   await act(async () => vi.advanceTimersByTimeAsync(1100));
   expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, item.id);
+  showingList = true;
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+});
+
+it("keeps a saved removal hidden until refreshed list data acknowledges it", async () => {
+  vi.useFakeTimers();
+  vi.mocked(removeItem).mockResolvedValueOnce({status: "saved"});
+  await render();
+  await takeOff();
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(container.querySelector("article")).toBeNull();
+  showingList = false;
+  await render();
+  showingList = true;
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+  items = [];
+  await render();
+  items = [{...item}];
+  await render();
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+});
+
+it("keeps a pending item hidden after returning to the list and cancels its original removal", async () => {
+  vi.useFakeTimers();
+  await render();
+  await takeOff();
+  showingList = false;
+  await render();
+  await act(async () => vi.advanceTimersByTimeAsync(2000));
+  showingList = true;
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+  await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).not.toHaveBeenCalled();
+});
+
+it("shares cancellation when the same item removal is requested twice", async () => {
+  vi.useFakeTimers();
+  await render();
+  await takeOff();
+  await act(async () => removeWithUndo(ownerId, item.id, "Duplicate request", () => "Failed"));
+  await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).not.toHaveBeenCalled();
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+});
+
+it("keeps pending removals scoped to their owner", async () => {
+  vi.useFakeTimers();
+  await render();
+  await takeOff();
+  await render(<NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <OwnList ownerId="another-owner" items={items} sizes={null} closeLabel="Close" />
+    <ToastHost undoLabel="Undo" />
+  </NextIntlClientProvider>);
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+  await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).not.toHaveBeenCalled();
+});
+
+it.each(["returned", "rejected"] as const)("restores an item and reports a %s removal failure after remount", async (failure) => {
+  vi.useFakeTimers();
+  if (failure === "returned") vi.mocked(removeItem).mockResolvedValueOnce({error: "forbidden"});
+  else vi.mocked(removeItem).mockRejectedValueOnce(new Error("Offline"));
+  await render();
+  await takeOff();
+  showingList = false;
+  await render();
+  showingList = true;
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, item.id);
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+  const message = en.lists.feedback[failure === "returned" ? "forbidden" : "could-not-save"];
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(message);
 });
 
 it("uses the edited heart value after a prior optimistic toggle", async () => {

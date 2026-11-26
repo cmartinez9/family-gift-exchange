@@ -24,14 +24,14 @@ export async function getListExchangeCard(viewer: ListViewer) {
 }
 
 export async function setExchangeBudget(
-  viewer: ListViewer & {isOrganizer: boolean}, exchangeId: string, rawValue: string, events: ListEvents = listEvents,
+  viewer: ListViewer, exchangeId: string, rawValue: string, events: ListEvents = listEvents,
 ) {
   const budgetAmount = usdAmount(rawValue);
   if (budgetAmount === undefined) throw new ListError("invalid-budget");
   if (!isListId(exchangeId)) throw new ListError("not-found");
   await withFamily(viewer.familyId, async (tx) => {
-    await requireListActor(tx, viewer);
-    if (!viewer.isOrganizer || viewer.actingAs !== viewer.personId) throw new ListError("forbidden");
+    const current = await requireListActor(tx, viewer);
+    if (!current.isOrganizer || current.actingAs !== current.personId) throw new ListError("forbidden");
     const scope = and(eq(exchanges.familyId, viewer.familyId), eq(exchanges.id, exchangeId));
     const [exchange] = await tx.select({
       budgetAmount: exchanges.budgetAmount, status: exchanges.status,

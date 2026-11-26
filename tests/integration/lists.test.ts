@@ -4,10 +4,11 @@ import sharp from "sharp";
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
 import {signInDevice} from "../../src/server/auth/access";
+import {changeCoOrganizer} from "../../src/server/auth/families";
 import {actFor, disputeSession, endSessions} from "../../src/server/auth/security";
 import {createSession, digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {sessions} from "../../src/server/auth/schema";
-import {exchanges, families, items, people} from "../../src/server/db/schema";
+import {claims, exchanges, families, items, people} from "../../src/server/db/schema";
 import {
   addListItem, editListItem, getListExchangeCard, getListPhoto, getWishlist, listFamilyWishlists, moveListItem,
   refreshListItem, removeListItem, saveAboutField, saveListSize, saveNoClothes, setExchangeBudget, type ListEvents,
@@ -152,6 +153,46 @@ describe("wishlist access and claims", () => {
     expect((await getGettingList(other)).some((entry) => entry.itemId === item.id)).toBe(false);
     await undoClaim(winner, item.id);
     expect((await getGettingList(winner)).some((entry) => entry.itemId === item.id)).toBe(false);
+  });
+
+  it.each(["claim", "undo", "bought", "wrapped"] as const)("rejects %s waiting behind session revocation", async (command) => {
+    const item = await addWritten(owner, ownerId, "Revocation fixture");
+    const session = await withFamily(familyId, (tx) => createSession(tx, familyId, buyerId, randomUUID(), "test", new Date()));
+    const actor = {...buyer, sessionId: session.id};
+    if (command !== "claim") await claimItem(actor, item.id);
+    const reservations = () => withFamily(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)));
+    const before = await reservations();
+    const ready = Promise.withResolvers<number>();
+    const release = Promise.withResolvers<void>();
+    const revoking = withFamily(familyId, async (tx) => {
+      await endSessions(tx, actor, new Date(), false);
+      const result = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+      ready.resolve(result.rows[0].pid);
+      await release.promise;
+    });
+    void revoking.catch(ready.reject);
+    let mutation: Promise<void> | undefined;
+    try {
+      const revokerPid = await ready.promise;
+      mutation = command === "claim" ? claimItem(actor, item.id)
+        : command === "undo" ? undoClaim(actor, item.id)
+        : setClaimTick(actor, item.id, command, true);
+      void mutation.catch(() => undefined);
+      await vi.waitFor(async () => {
+        const result = await withFamily(familyId, (tx) => tx.execute<{waiting: boolean}>(sql`
+          select exists (
+            select 1 from pg_stat_activity where ${revokerPid}::integer = any(pg_blocking_pids(pid))
+          ) as waiting
+        `));
+        expect(result.rows[0].waiting).toBe(true);
+      }, {timeout: 2000, interval: 10});
+    } finally {
+      release.resolve();
+      await revoking;
+      if (mutation) await Promise.allSettled([mutation]);
+    }
+    await expect(mutation).rejects.toMatchObject({code: "forbidden"});
+    expect(await reservations()).toEqual(before);
   });
 
   it("enqueues edits and removals only for the claimer and keeps queue failures private", async () => {
@@ -401,6 +442,21 @@ describe("list editing", () => {
     await expect(setExchangeBudget(organizer, id, value, events)).rejects.toMatchObject({code: "closed"});
     const [stored] = await withFamily(familyId, (tx) => tx.select().from(exchanges).where(eq(exchanges.id, id)));
     expect(stored).toMatchObject({status: "closed", budgetAmount: "50.00"});
+    expect(events.budgetChanged).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale organizer role after demotion", async () => {
+    const id = randomUUID();
+    await withFamily(familyId, async (tx) => {
+      await tx.insert(exchanges).values({id, familyId, name: "Role fixture", budgetAmount: "10.00"});
+      await changeCoOrganizer(tx, organizer, buyerId);
+    });
+    const stale = {...buyer, isOrganizer: true};
+    await withFamily(familyId, (tx) => changeCoOrganizer(tx, organizer, null));
+    const events: ListEvents = {claimedItemChanged: vi.fn(), budgetChanged: vi.fn()};
+    await expect(setExchangeBudget(stale, id, "50", events)).rejects.toMatchObject({code: "forbidden"});
+    expect(await withFamily(familyId, (tx) => tx.select({budget: exchanges.budgetAmount}).from(exchanges).where(eq(exchanges.id, id))))
+      .toEqual([{budget: "10.00"}]);
     expect(events.budgetChanged).not.toHaveBeenCalled();
   });
 });
