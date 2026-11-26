@@ -115,7 +115,7 @@ export async function authenticationFinish(device: Device, response: Authenticat
     if (!await lockFamily(tx, familyId)) return null;
     const person = await activePerson(tx, familyId, personId);
     if (!person || person.helperId || !response.id) return null;
-    if (person.role === "organizer" && person.needsNewKey) return null;
+    if ((person.role === "organizer" || person.role === "co_organizer") && person.needsNewKey) return null;
     const [stored] = await tx.select().from(passkeys).where(and(
       eq(passkeys.familyId, familyId), eq(passkeys.personId, personId), eq(passkeys.id, response.id), isNull(passkeys.revokedAt),
     ));

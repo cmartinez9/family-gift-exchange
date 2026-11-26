@@ -113,6 +113,8 @@ it.each(["unredeemed key", "PIN descendant", "appointment"])("locks down the fam
   expect(members.find(({id}) => id === co.id)?.role).toBe(chain === "appointment" ? "member" : "co_organizer");
   const [recentPin] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, changed.id)));
   expect(recentPin.pinHash).toBeNull();
+  const [organizerPin] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, f.viewer.personId)));
+  expect(organizerPin.pinHash).toBeNull();
   await expect(f.login(changed.id, device(), f.at(10))).resolves.toEqual({error: "needsNewKey"});
   await expect(f.login(f.viewer.personId, device(), f.at(10))).resolves.toEqual({error: "needsNewKey"});
   const returned = (await f.login(safe.id, device(), f.at(10))).session!;
@@ -174,7 +176,7 @@ it("applies family lockdown when the reported account is a co-organizer", async 
   await expect(f.redeem(key.token!, device(), f.at(6))).resolves.toEqual({error: "unavailable"});
 });
 
-it("blocks a disputed co-organizer's old PIN on untrusted phones while preserving trusted-phone recovery", async () => {
+it("requires a fresh co-organizer key and keeps the old PIN invalid after recovery", async () => {
   const f = await fixture();
   const co = await f.add("Co-organizer");
   const safe = await f.add("Unaffected member");
@@ -191,18 +193,33 @@ it("blocks a disputed co-organizer's old PIN on untrusted phones while preservin
   )));
   await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(5)))).resolves.toBe("lockdown");
   const [credential] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, co.id)));
-  expect(credential).toMatchObject({pinHash: before.pinHash, changedAt: before.changedAt, newDevicesLocked: true});
+  expect(credential).toMatchObject({pinHash: null, changedAt: before.changedAt, newDevicesLocked: true});
   const [person] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, co.id)));
-  expect(person).toMatchObject({role: "co_organizer", needsNewKey: false});
+  expect(person).toMatchObject({role: "co_organizer", needsNewKey: true});
   for (const session of [f.owner, co.session!, intruder, safe.session!]) await expect(resolve(session.cookie)).resolves.toBeNull();
-  await expect(f.login(co.id, badPhone, f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
-  await expect(f.login(co.id, device(), f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
+  for (const phone of [badPhone, co.phone, device()]) await expect(f.login(co.id, phone, f.at(6))).resolves.toEqual({error: "needsNewKey"});
   await expect(f.issue(intruderViewer, f.viewer.personId, "reset", f.at(6))).resolves.toEqual({error: "forbidden"});
   await expect(f.redeem(takeover.token!, badPhone, f.at(6))).resolves.toEqual({error: "unavailable"});
   const unaffected = (await f.login(safe.id, device(), f.at(6))).session!;
   await expect(resolve(unaffected.cookie)).resolves.toMatchObject({personId: safe.id, isOrganizer: false});
-  const knownPhone = (await f.login(co.id, co.phone, f.at(6))).session!;
+  const recovery = await tx(f.familyId, (t) => issueOrganizerKey(t, f.familyId, pepper, f.at(7)));
+  const ownerPhone = device();
+  const owner = (await f.redeem(recovery.token!, ownerPhone, f.at(8), replacementPin)).session!;
+  const organizer = (await resolve(owner.cookie))!;
+  const coKey = await f.issue(organizer, co.id, "reset", f.at(9));
+  const recovered = (await f.redeem(coKey.token!, co.phone, f.at(10), replacementPin)).session!;
+  const coViewer = (await resolve(recovered.cookie))!;
+  expect(coViewer).toMatchObject({personId: co.id, isOrganizer: true});
+  const [restored] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, co.id)));
+  expect(restored.needsNewKey).toBe(false);
+  await expect(f.login(co.id, badPhone, f.at(11))).resolves.toEqual({error: "invalidPin"});
+  const knownPhone = (await f.login(co.id, co.phone, f.at(12), replacementPin)).session!;
   await expect(resolve(knownPhone.cookie)).resolves.toMatchObject({personId: co.id, isOrganizer: true});
+  await expect(f.login(co.id, badPhone, f.at(13))).resolves.toEqual({error: "invalidPin"});
+  await expect(f.login(f.viewer.personId, badPhone, f.at(13))).resolves.toEqual({error: "invalidPin"});
+  const ownerReturned = (await f.login(f.viewer.personId, ownerPhone, f.at(14), replacementPin)).session!;
+  await expect(resolve(ownerReturned.cookie)).resolves.toMatchObject({isOrganizer: true});
+  await expect(f.login(f.viewer.personId, badPhone, f.at(15))).resolves.toEqual({error: "invalidPin"});
 });
 
 it("uses the earliest disputed session as the cutoff across successive lockdowns", async () => {

@@ -125,7 +125,11 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const implicated = familySessions.filter(({id}) => causalSessionIds.has(id));
   if (organizer || implicated.some(({hadOrganizerAccess}) => hadOrganizerAccess)) {
     const earliest = implicated.reduce((at, session) => session.createdAt < at ? session.createdAt : at, target?.createdAt ?? event.at);
-    await lockDownFamily(tx, familyId, now, earliest, {sessionIds: [...sessionIds], credentialIds: [...credentialIds]});
+    const organizerIds = new Set(implicated.filter(({hadOrganizerAccess}) => hadOrganizerAccess).map(({personId}) => personId));
+    if (organizer) organizerIds.add(personId);
+    await lockDownFamily(tx, familyId, now, earliest, {
+      sessionIds: [...sessionIds], credentialIds: [...credentialIds], organizerIds: [...organizerIds],
+    });
     return "lockdown" as const;
   }
   if (!target) return true;
@@ -144,7 +148,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
 
 async function lockDownFamily(
   tx: FamilyTransaction, familyId: string, now: Date, implicatedAt: Date,
-  affected: {sessionIds: string[]; credentialIds: string[]},
+  affected: {sessionIds: string[]; credentialIds: string[]; organizerIds: string[]},
 ) {
   const [earliest] = await tx.select({at: sessions.createdAt}).from(sessionDisputes).innerJoin(sessions, and(
     eq(sessions.familyId, sessionDisputes.familyId), eq(sessions.id, sessionDisputes.disputedSessionId),
@@ -159,7 +163,7 @@ async function lockDownFamily(
     eq(passkeys.familyId, familyId), or(gte(passkeys.enrolledAt, since), inArray(passkeys.id, affected.credentialIds)),
   ));
   const cleared = await tx.update(pinCredentials).set({pinHash: null, newDevicesLocked: true}).where(and(
-    eq(pinCredentials.familyId, familyId), gte(pinCredentials.changedAt, since),
+    eq(pinCredentials.familyId, familyId), or(gte(pinCredentials.changedAt, since), inArray(pinCredentials.personId, affected.organizerIds)),
   )).returning({personId: pinCredentials.personId});
   await tx.update(sessions).set({trusted: false}).where(and(
     eq(sessions.familyId, familyId), or(inArray(sessions.id, affected.sessionIds), inArray(sessions.personId, cleared.map(({personId}) => personId))),

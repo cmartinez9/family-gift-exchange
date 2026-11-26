@@ -10,7 +10,7 @@ import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/a
 import {account, disputeEvent} from "../../src/server/auth/security";
 import {getViewer, type Viewer} from "../../src/server/auth";
 import {requestDevice, setSession} from "../../src/server/auth/request";
-import {issueKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
+import {issueKey, issueOrganizerKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
 import {authenticationFinish, authenticationStart, registrationFinish, registrationStart} from "../../src/server/auth/webauthn";
 import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
 
@@ -369,7 +369,7 @@ it("keeps older member Face ID usable after lockdown while organizer recovery re
   expect(activity.activity.filter(({kind}) => kind === "familyLockdown")).toHaveLength(1);
 });
 
-it("revokes older authenticating passkeys in a co-organizer lockdown while preserving unrelated older Face ID", async () => {
+it("requires a fresh key after a co-organizer lockdown even when unrelated older Face ID survives", async () => {
   const {familyId, viewer, session: owner} = await fixture(true);
   const before = new Date(Date.now() - 3_600_000);
   await withFamily(familyId, (tx) => saveMember(tx, viewer, null, {name: "Co-organizer", language: "en", helperId: null, householdId: null}));
@@ -402,8 +402,32 @@ it("revokes older authenticating passkeys in a co-organizer lockdown while prese
   }
   const [preserved] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, unrelated.id)));
   expect(preserved.revokedAt).toBeNull();
-  const returned = (await unrelated.authenticate(device()))!.session;
+  await expect(unrelated.authenticate(phone)).resolves.toBeNull();
+  for (const signInPhone of [phone, reportedPhone]) {
+    await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, pepper, signInPhone, new Date())))
+      .resolves.toEqual({error: "needsNewKey"});
+  }
+  const replacementPin = "6285";
+  const recovery = await withFamily(familyId, (tx) => issueOrganizerKey(tx, familyId, pepper, new Date()));
+  const restored = (await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value: recovery.token!, typed: false, pin: replacementPin, confirmation: replacementPin,
+    pepper, device: device(), currentViewer: null, now: new Date(),
+  }))).session!;
+  const organizer = (await resolve(restored.cookie))!;
+  const coKey = await withFamily(familyId, (tx) => issueKey(tx, organizer, personId, "reset", pepper, new Date()));
+  const joinedAgain = (await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value: coKey.token!, typed: false, pin: replacementPin, confirmation: replacementPin,
+    pepper, device: phone, currentViewer: null, now: new Date(),
+  }))).session!;
+  await expect(resolve(joinedAgain.cookie)).resolves.toMatchObject({personId, isOrganizer: true});
+  const newCredential = await enroll(familyId, personId, phone, (await resolve(joinedAgain.cookie))!);
+  await expect(newCredential.authenticate(phone)).resolves.toHaveProperty("session");
+  await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, pepper, reportedPhone, new Date())))
+    .resolves.toEqual({error: "invalidPin"});
+  const returned = (await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, replacementPin, pepper, phone, new Date()))).session!;
   await expect(resolve(returned.cookie)).resolves.toMatchObject({personId, isOrganizer: true});
+  await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, pepper, reportedPhone, new Date())))
+    .resolves.toEqual({error: "invalidPin"});
 });
 
 it("does not expand revocation through a passkey's earlier browser while revoking later PIN successors", async () => {
