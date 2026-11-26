@@ -52,7 +52,10 @@ vi.mock("next-intl/server", async () => {
 });
 vi.mock("@/i18n/navigation", async () => {
   const {createElement} = await import("react");
-  return {Link: ({href, children}: {href: string; children: import("react").ReactNode}) => createElement("a", {href}, children)};
+  return {
+    Link: ({href, children}: {href: string; children: import("react").ReactNode}) => createElement("a", {href}, children),
+    useRouter: () => ({push: vi.fn()}),
+  };
 });
 vi.mock("../../src/app/[locale]/sign-in/controls", async () => {
   const {createElement} = await import("react");
@@ -71,6 +74,7 @@ vi.mock("../../src/app/[locale]/exchanges/form", async () => {
 });
 vi.mock("@/server/auth/request", async (original) => ({
   ...await original<typeof import("../../src/server/auth/request")>(), clearSession: signedIn.clearSession,
+  currentDeviceKind: async () => "iphone",
 }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => { throw new Error(`redirect:${url}`); },
@@ -566,7 +570,7 @@ it("shows an organizer's replacement-key reveal and repairs it after the member 
   const {activity} = await tx((t) => account(t, member.viewer));
   const event = activity.find(({sessionId, kind}) => sessionId === impersonator.viewer.sessionId && kind === "resetUsed")!;
   signedIn.viewer = member.viewer;
-  await expect(reportEvent(event.id)).rejects.toThrow("redirect:/en/account?reported=1");
+  await expect(reportEvent(event.id)).rejects.toThrow(`redirect:/en/account/notices/${event.id}?reported=1`);
   await Promise.all([repairDisputedReveals(member.viewer), repairDisputedReveals(member.viewer)]);
   const status = await memberDrawStatus(member.viewer, f.exchangeId);
   expect(status).toMatchObject({status: "ready", seen: false, exchange: {version: 2}});
@@ -756,9 +760,11 @@ it.each(["key event", "opening"])("repairs a trusted-browser PIN session dispute
     sessionId: intruder.sessionId, deviceKind: "computer", disputed: false,
   })]);
   signedIn.viewer = owner.viewer;
+  const event = activity.find(({sessionId, kind}) => sessionId === first.viewer.sessionId && kind === "resetUsed")!;
   const report = method === "opening" ? reportSession(intruder.sessionId)
-    : reportEvent(activity.find(({sessionId, kind}) => sessionId === first.viewer.sessionId && kind === "resetUsed")!.id);
-  await expect(report).rejects.toThrow("redirect:/en/account?reported=1");
+    : reportEvent(event.id);
+  const destination = method === "opening" ? "/en/account" : `/en/account/notices/${event.id}`;
+  await expect(report).rejects.toThrow(`redirect:${destination}?reported=1`);
   const disputes = await tx((t) => listSessionDisputes(t, f.familyId, memberId));
   expect(disputes.map(({sessionId}) => sessionId)).toContain(intruder.sessionId);
   expect((await revealMyPerson(owner.viewer, f.exchangeId, 2)).person.id).not.toBe(stolen.person.id);
@@ -820,8 +826,8 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   for (const viewer of [f.organizer, owner, f.coOrganizer, f.viewers[3]]) {
     signedIn.viewer = viewer;
     const html = await renderAccountPage();
-    expect(html).toContain("Sign-in activity");
-    expect(html).toContain("Switch person or sign out");
+    expect(html).toContain('href="/account/notices"');
+    expect(html).toContain("Sign out");
     expect(html).toContain('href="/exchanges"');
   }
   const actual = new Map<string, string>();
@@ -844,7 +850,7 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
   expect(signedIn.viewer).toMatchObject({actingAs: f.ids[4]});
   const html = await renderAccountPage();
-  expect(html).toContain(`helping ${names[4]}.`);
+  expect(html).toContain(`helping ${names[4]}`);
   await expect(signOut(false)).rejects.toThrow("redirect:/en/sign-in");
   expect(signedIn.clearSession).toHaveBeenCalledOnce();
   expect(await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!))).toBeNull();
