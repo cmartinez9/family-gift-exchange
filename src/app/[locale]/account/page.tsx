@@ -23,6 +23,7 @@ import {noticeText} from "./notice-text";
 import {ActForm, HomeScreenRow, LanguageRow, RowDisc} from "./rows";
 import {screenTitle} from "../sign-in/title";
 import {activityDateFormat} from "../sign-in/styles";
+import styles from "./rows.module.css";
 
 function RowLink({href, icon, title, sub, trail}: {
   href: string; icon: Parameters<typeof RowDisc>[0]["icon"]; title: string; sub?: string; trail?: ReactNode;
@@ -30,7 +31,7 @@ function RowLink({href, icon, title, sub, trail}: {
   return (
     <li>
       <AppLink href={href} transition="push" className="fge-press block rounded-[20px]">
-        <ListRow as="span" lead={<RowDisc icon={icon} />} title={title} sub={sub} trail={trail ?? <Chevron />} />
+        <ListRow as="span" className={styles.row} lead={<RowDisc icon={icon} />} title={title} sub={sub} trail={trail ?? <Chevron />} />
       </AppLink>
     </li>
   );
@@ -97,7 +98,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           {summary.familyName && <p className="text-body font-semibold">{summary.familyName}</p>}
         </div>
       </div>
-      <KnitIn className="flex flex-col gap-3 px-edge pt-5 pb-2">
+      <KnitIn className={`${styles.settings} flex flex-col gap-3 px-edge pt-5 pb-2`}>
         {search.reported === "1" && <p role="status" className="text-body">{auth("feedback.reported")}</p>}
         {search.face === "1" && (
           <Card tone="next">
@@ -129,7 +130,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
             <LanguageRow current={locale} />
             {summary.faceId ? (
               <li>
-                <ListRow lead={<RowDisc icon="faceid" />} title={t("faceId")} sub={t("faceOn", {device})}
+                <ListRow className={styles.row} lead={<RowDisc icon="faceid" />} title={t("faceId")} sub={t("faceOn", {device})}
                   trail={<Tick done size={34} label={t("faceOn", {device})} />} />
               </li>
             ) : (
@@ -147,7 +148,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
                 <li key={id}>
                   <ActForm action={switchProfile.bind(null, id)}>
                     <button type="submit" className="fge-press block w-full cursor-pointer rounded-[20px] text-left">
-                      <ListRow as="span" lead={<Avatar name={helped} size={44} />} title={auth("helpAs", {name: helped})}
+                      <ListRow as="span" className={styles.row} lead={<Avatar name={helped} size={44} />} title={auth("helpAs", {name: helped})}
                         trail={<Chevron />} />
                     </button>
                   </ActForm>

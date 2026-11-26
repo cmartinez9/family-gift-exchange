@@ -92,17 +92,32 @@ async function signedIn(context: BrowserContext, cookie: string, origin: string)
   await context.addCookies([{name: "__Host-fge-session", value: cookie, url: origin, secure: true, httpOnly: true, sameSite: "Lax"}]);
 }
 
-/** Saves the screen as the design names it, after axe finds nothing. */
+/** Save evidence before checking accessibility and layout, so failures keep their rendered screen. */
 async function shot(page: Page, name: string) {
   await page.waitForLoadState("networkidle");
   // the screen's title streams in just after a soft navigation
   await expect(page).toHaveTitle(/\S/);
   await settled(page);
-  expect((await new AxeBuilder({page}).analyze()).violations, name).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${name} fits the phone`).toBe(true);
   const path = test.info().outputPath(`${name}.png`);
   await page.screenshot({path});
   await test.info().attach(name, {path, contentType: "image/png"});
+  expect((await new AxeBuilder({page}).analyze()).violations, name).toEqual([]);
+  const layout = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+    viewportWidth: window.visualViewport?.width,
+    overflowing: [...document.querySelectorAll("body *")].filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.right > window.innerWidth || rect.left < 0;
+    }).slice(0, 20).map((element) => ({
+      tag: element.tagName, text: element.textContent?.slice(0, 100),
+      left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right,
+    })),
+  }));
+  if (layout.scrollWidth > layout.innerWidth) {
+    await test.info().attach(`${name}-overflow`, {body: JSON.stringify(layout), contentType: "application/json"});
+  }
+  expect(layout.scrollWidth <= layout.innerWidth, `${name} fits the phone`).toBe(true);
 }
 
 let family: Family;
@@ -290,7 +305,7 @@ test("you: settings, notices, phones, a key you didn't open, family activity", a
   }
 });
 
-test("in Spanish, at the largest text size, and with full motion", async ({browser}) => {
+test("Spanish sign-in, PIN feedback, and account screens", async ({browser}) => {
   const spanish = await browser.newContext({viewport: phone, reducedMotion: "reduce", ignoreHTTPSErrors: true, locale: "es-US"});
   try {
     const page = await spanish.newPage();
@@ -307,10 +322,17 @@ test("in Spanish, at the largest text size, and with full motion", async ({brows
     await expect(page.getByRole("heading", {name: "Beto", exact: true})).toBeVisible();
     await expect(page.getByText("Mis tallas")).toBeVisible();
     await shot(page, "es-f11-11_1");
+    await page.context().clearCookies();
+    await page.goto(`/es/sign-in?family=${family.familyId}&person=${family.ids.Beto}`);
+    await page.getByRole("button", {name: es.getIn.enter.forgot, exact: true}).click();
+    await expect(page.getByText(es.getIn.forgot.only.replace("{organizer}", "Christian"), {exact: true})).toBeVisible();
+    await shot(page, "es-forgot-reset-authority");
   } finally {
     await spanish.close();
   }
+});
 
+test("account rows remain readable at double text size", async ({browser}) => {
   // the largest text size: the page zoomed so every word is twice as big, still in one column
   const large = await browser.newContext({viewport: phone, reducedMotion: "reduce", ignoreHTTPSErrors: true});
   try {
@@ -322,10 +344,20 @@ test("in Spanish, at the largest text size, and with full motion", async ({brows
     });
     await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
     await shot(page, "large-f11-11_1");
+    const overflowingLabels = await page.locator(".fge-rows .text-row-title, .fge-rows .text-body")
+      .evaluateAll((labels) => labels.filter((label) => {
+        const text = document.createRange();
+        text.selectNodeContents(label);
+        const bounds = label.getBoundingClientRect();
+        return [...text.getClientRects()].some((rect) => rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+      }).map((label) => label.textContent));
+    expect(overflowingLabels, "Account labels stay in their text column without covering controls").toEqual([]);
   } finally {
     await large.close();
   }
+});
 
+test("greeting animates unless reduced motion is requested", async ({browser}) => {
   // full motion: the greeting knits in; with reduced motion it is simply there
   const moving = await browser.newContext({viewport: phone, reducedMotion: "no-preference", ignoreHTTPSErrors: true});
   try {
@@ -548,6 +580,9 @@ test("regression: Forgot suspends the pending PIN and correcting a digit submits
     await page.emulateMedia({reducedMotion: "no-preference"});
     await page.goto(f.keys.Rosa);
     await page.waitForLoadState("networkidle");
+    // Drive corrections inside the settling interval regardless of browser-driver latency.
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
     let submissions = 0;
     page.on("request", (request) => {
       if (request.method() === "POST" && new URL(request.url()).pathname.includes("/key/")) submissions++;
@@ -555,17 +590,62 @@ test("regression: Forgot suspends the pending PIN and correcting a digit submits
     await typePin(page, "4267");
     await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
     await expect(page.getByRole("dialog", {name: t.used.options})).toBeVisible();
-    await page.waitForTimeout(400); // Beyond the product's 260ms settling interval.
+    await page.clock.runFor(400); // Beyond the product's 260ms settling interval.
     expect(submissions).toBe(0);
     await page.getByRole("button", {name: en.ui.close, exact: true}).click();
     await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
     await typePin(page, "7");
     await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
     await typePin(page, "8");
+    await page.clock.runFor(300);
+    await page.clock.resume();
     await expect(page.getByRole("heading", {name: "Rosa", exact: true})).toBeVisible();
     expect(submissions).toBe(1);
     await shot(page, "corrected-pin-signed-in");
   } finally {
+    await remove(f.familyId);
+  }
+});
+
+test("account settings change language, explain installation, and sign out both phones", async ({page, browser}) => {
+  const f = await seed(origin);
+  const other = await browser.newContext({viewport: phone, reducedMotion: "reduce", ignoreHTTPSErrors: true});
+  try {
+    await signedIn(page.context(), f.sessions.Rosa, origin);
+    await signedIn(other, f.sessions.rosaIpad, origin);
+    const ipad = await other.newPage();
+    await ipad.goto("/en/account");
+    await expect(ipad.getByRole("heading", {name: "Rosa", exact: true})).toBeVisible();
+    await page.goto("/en/account");
+    await page.getByRole("button", {name: t.you.homeScreen, exact: true}).click();
+    await expect(page.getByRole("dialog").getByRole("heading", {name: en.notify.install.iphone, exact: true})).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("heading", {name: en.notify.install.android, exact: true})).toBeVisible();
+    await shot(page, "account-home-screen-instructions");
+    await page.getByRole("button", {name: en.ui.close, exact: true}).click();
+    await page.getByRole("button", {name: /^Language/}).click();
+    await page.getByRole("dialog").getByRole("button", {name: en.getIn.language.es, exact: true}).click();
+    await expect(page).toHaveURL(/\/es\/account$/);
+    await expect(page.getByRole("link", {name: /^Mis tallas/})).toBeVisible();
+    const {db, close} = database();
+    try {
+      const [person] = await runForFamily(db, f.familyId, (tx) => tx.select({language: people.language}).from(people)
+        .where(and(eq(people.familyId, f.familyId), eq(people.id, f.ids.Rosa))));
+      expect(person.language).toBe("es");
+    } finally { await close(); }
+    await shot(page, "account-language-changed-to-spanish");
+    await page.getByRole("button", {name: new RegExp(`^${es.getIn.you.language}`)}).click();
+    await page.getByRole("dialog").getByRole("button", {name: es.getIn.language.en, exact: true}).click();
+    await expect(page).toHaveURL(/\/en\/account$/);
+    await page.getByRole("link", {name: /^Your phones/}).click();
+    await page.getByRole("button", {name: t.phones.signOutAll, exact: true}).click();
+    await shot(page, "account-sign-out-both-phones-confirmation");
+    await page.getByRole("dialog").getByRole("button", {name: t.phones.signOutAll, exact: true}).click();
+    await expect(page).toHaveURL(/\/en\/sign-in$/);
+    await ipad.reload();
+    await expect(ipad).toHaveURL(/\/en\/sign-in$/);
+    await shot(page, "account-all-phones-signed-out");
+  } finally {
+    await other.close();
     await remove(f.familyId);
   }
 });

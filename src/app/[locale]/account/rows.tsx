@@ -10,6 +10,7 @@ import {Sheet} from "@/components/ui/sheet";
 import {Bullet} from "../sign-in/get-in";
 import type {AuthResult} from "../sign-in/actions";
 import {reportEvent, setLanguage, signOut} from "./actions";
+import styles from "./rows.module.css";
 
 /** The leading 44px ink disc of a settings row. */
 const DISC_TONE = {
@@ -36,7 +37,7 @@ function SheetRow({icon, title, sub, sheetTitle, children}: {
   return (
     <li>
       <button type="button" className="fge-press block w-full cursor-pointer rounded-[20px] text-left" onClick={() => setOpen(true)}>
-        <ListRow as="span" lead={<RowDisc icon={icon} />} title={title} sub={sub} trail={<Chevron />} />
+        <ListRow as="span" className={styles.row} lead={<RowDisc icon={icon} />} title={title} sub={sub} trail={<Chevron />} />
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title={sheetTitle} closeLabel={ui("close")}>{children}</Sheet>
     </li>
