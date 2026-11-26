@@ -158,6 +158,7 @@
       "pinPattern": "Ese patrón es fácil de adivinar. Elige cuatro dígitos que no se repitan ni estén en orden.",
       "pinDate": "Parece una fecha o un año. Elige otros cuatro dígitos que tu familia no pueda adivinar.",
       "invalidPin": "El PIN no coincide. Inténtalo de nuevo.",
+      "connectionFailed": "No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.",
       "pinLocked": "Hubo demasiados intentos con un PIN incorrecto. Espera 15 minutos o prueba con Face ID.",
       "newDevicesLocked": "El acceso con PIN desde dispositivos nuevos está bloqueado. Usa Face ID, un dispositivo que ya hayas usado o pide una llave nueva.",
       "tryLater": "Hubo demasiados intentos. Espera un poco y vuelve a intentarlo.",
@@ -862,7 +863,7 @@
     },
     "activity": {
       "title": "Actividad de la familia",
-      "lead": "Todos los adultos pueden ver esto. Nunca muestra quién tiene a quién, ni por qué.",
+      "lead": "Todos en la familia pueden ver esta actividad. Nunca muestra quién tiene a quién, ni por qué.",
       "joined": "{name} se unió",
       "reset": "Se restableció el PIN de alguien",
       "resetSub": "{date} · con una llave nueva de {organizer}",

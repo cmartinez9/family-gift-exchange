@@ -190,6 +190,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
   const back = useTranslations("getIn.hello");
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("words");
+  const [title, setTitle] = useState("");
   const [state, submit, pending] = useActionState(addFirstThing, {});
   const camera = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<{file: File; url: string} | null>(null);
@@ -262,7 +263,8 @@ export function AddStep({ownerId}: {ownerId: string}) {
                 <TextButton className="px-0 text-ink" disabled={preparing || pending} onClick={() => camera.current?.click()}>{t("photoChange")}</TextButton>
               </div>
               {preparing && <p role="status">{lists("preparingPhoto")}</p>}
-              <TextField label={t("photoTitle")} name="title" required maxLength={200} placeholder={t("photoPlaceholder")} surface="white" />
+              <TextField label={t("photoTitle")} name="title" required maxLength={200} placeholder={t("photoPlaceholder")} surface="white"
+                value={title} onChange={(event) => setTitle(event.target.value)} />
             </Card>
             {error}
           </div>
@@ -271,6 +273,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
             <input type="hidden" name="kind" value="note" />
             <Card className="flex flex-col gap-3 rounded-item p-[18px]">
               <TextField label={t("what")} name="title" required maxLength={200} placeholder={t("placeholder")} surface="white"
+                value={title} onChange={(event) => setTitle(event.target.value)}
                 className="[&_label]:font-extrabold [&_label]:text-ink" />
               <Button type="submit" variant="card" icon="plus" disabled={pending}>{t("add")}</Button>
             </Card>
@@ -308,6 +311,7 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
   const [card, setCard] = useState<PreviewCard | null>(null);
   const [failed, setFailed] = useState(false);
   const [want, setWant] = useState(false);
+  const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const version = useRef(0);
   const field = useRef<HTMLInputElement>(null);
@@ -397,7 +401,8 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
                 <Chip pressed={want} onPressedChange={setWant} className="self-start pr-4 pl-3">
                   <span className="flex items-center gap-2"><Heart on={want} />{t("want")}</span>
                 </Chip>
-                <TextField label={t("noteField")} name="note" maxLength={500} className="[&_label]:sr-only" placeholder={t("noteField")} />
+                <TextField label={t("noteField")} name="note" maxLength={500} className="[&_label]:sr-only" placeholder={t("noteField")}
+                  value={note} onChange={(event) => setNote(event.target.value)} />
               </div>} />
           )}
           {failed && <ErrorBlock title={t("failed")}>{t("failedSub")}</ErrorBlock>}

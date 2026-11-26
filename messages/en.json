@@ -158,6 +158,7 @@
       "pinPattern": "That pattern is easy to guess. Pick four digits that don't repeat or run in order.",
       "pinDate": "That looks like a date or year. Pick four other digits your family can't guess.",
       "invalidPin": "That PIN didn't match. Try again.",
+      "connectionFailed": "Couldn't connect. Check your connection and try again.",
       "pinLocked": "Too many wrong PINs. Wait 15 minutes or try Face ID.",
       "newDevicesLocked": "PIN sign-in on new devices is locked. Use Face ID, a device you've used before, or ask for a new key.",
       "tryLater": "There have been too many tries. Please wait a bit and try again.",
@@ -862,7 +863,7 @@
     },
     "activity": {
       "title": "Family activity",
-      "lead": "Every grown-up can see this. It never shows who has whom, or why.",
+      "lead": "Everyone in the family can see this activity. It never shows who has whom, or why.",
       "joined": "{name} joined",
       "reset": "Someone's PIN was reset",
       "resetSub": "{date} · with a new key from {organizer}",

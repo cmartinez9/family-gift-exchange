@@ -2,6 +2,7 @@
 
 import {useCallback, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
+import {unstable_rethrow} from "next/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -33,6 +34,15 @@ function Refusal({problem, version}: {problem: Problem; version: number}) {
 }
 
 const settle = () => (prefersReducedMotion() ? 60 : 260);
+
+async function tryPin(action: () => Promise<AuthResult | void>) {
+  try {
+    return await action();
+  } catch (error) {
+    unstable_rethrow(error);
+    return {error: "connectionFailed"};
+  }
+}
 
 function usePinCompletion(onComplete: (pin: string) => void) {
   const timer = useRef<number | undefined>(undefined);
@@ -116,7 +126,7 @@ export function MakePin({save, top}: {
     }
     haptic("success");
     start(async () => {
-      const result = await save(typed);
+      const result = await tryPin(() => save(typed));
       if (result?.error) {
         first.current = "";
         setPhase("make");
@@ -170,6 +180,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
 }) {
   const t = useTranslations("getIn.enter");
   const pinText = useTranslations("getIn.pin");
+  const feedback = useTranslations("auth.feedback");
   const [pin, setPin] = useState("");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [version, setVersion] = useState(0);
@@ -179,6 +190,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
 
   function explain(result: AuthResult): Problem {
     switch (result.error) {
+      case "connectionFailed": return {title: pinText("problem"), sub: feedback("connectionFailed")};
       case "invalidPin":
         return {title: t("wrong"), sub: typeof result.triesLeft === "number" && result.triesLeft > 0
           ? t("wrongSub", {tries: result.triesLeft, organizer}) : t("wrongSubPlain", {organizer})};
@@ -192,7 +204,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
 
   function send(typed: string) {
     start(async () => {
-      const result = await submit(pinForm(typed));
+      const result = await tryPin(() => submit(pinForm(typed)));
       if (!result?.error) return;
       haptic("error");
       setPin("");

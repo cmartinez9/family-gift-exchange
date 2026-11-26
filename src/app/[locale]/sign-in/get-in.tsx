@@ -249,6 +249,8 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
   const [locked, setLocked] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<AuthResult>({});
+  const [resetRequested, setResetRequested] = useState(false);
+  const [keyReported, setKeyReported] = useState(false);
   const [pending, start] = useTransition();
 
   if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
@@ -263,16 +265,22 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
           : <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote>}
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
-        <Button variant="card" disabled={pending || Boolean(result.success)} onClick={() => start(async () => {
+        <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
           const response = await forgotPin(familyId, entry.personId);
           setResult(response);
-          if (response.success) setOpen(false);
+          if (response.success) {
+            setResetRequested(true);
+            setOpen(false);
+          }
         })}>{forgot("ask", {organizer})}</Button>
         <p className="text-body text-muted-ink">{t("askSub", {organizer})}</p>
-        <Button variant="soft" disabled={pending || Boolean(result.success)} onClick={() => start(async () => {
+        <Button variant="soft" disabled={pending || keyReported} onClick={() => start(async () => {
           const response = await reportUsedKey(familyId, value, typed);
           setResult(response);
-          if (response.success) setOpen(false);
+          if (response.success) {
+            setKeyReported(true);
+            setOpen(false);
+          }
         })}>{t("never")}</Button>
         <p className="text-body text-muted-ink">{t("neverSub", {organizer})}</p>
         {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}

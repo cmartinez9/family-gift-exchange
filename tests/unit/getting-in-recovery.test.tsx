@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import {act, type ReactNode} from "react";
+import {act, Component, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
+import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import {KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
@@ -147,6 +148,72 @@ it("cancels pending PIN creation when leaving confirmation", async () => {
   expect(save).not.toHaveBeenCalled();
 });
 
+it("keeps PIN entry available after a transport failure", async () => {
+  vi.useFakeTimers();
+  const submit = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<EnterPin title="PIN" lead="Enter" organizer="Rosa" onLocked={vi.fn()} submit={submit} />);
+  await type("4268");
+  await advance(260);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.auth.feedback.connectionFailed);
+  expect(button("4").disabled).toBe(false);
+  await type("4268");
+  await advance(260);
+  expect(submit).toHaveBeenCalledTimes(2);
+  expect((submit.mock.calls[1][0] as FormData).get("pin")).toBe("4268");
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.enter.wrong);
+});
+
+it("lets PIN creation restart after a transport failure", async () => {
+  vi.useFakeTimers();
+  const save = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue(undefined);
+  await render(<MakePin save={save} />);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await type("4268");
+    await advance(260);
+    await type("4268");
+    await advance(260);
+    if (attempt === 0) {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.auth.feedback.connectionFailed);
+      expect(container.querySelector("h1")?.textContent).toBe(en.getIn.pin.makeTitle);
+      expect(button("4").disabled).toBe(false);
+    }
+  }
+  expect(save.mock.calls).toEqual([["4268"], ["4268"]]);
+});
+
+class NavigationBoundary extends Component<{children: ReactNode; onError: (error: Error) => void}, {failed: boolean}> {
+  state = {failed: false};
+  static getDerivedStateFromError() { return {failed: true}; }
+  componentDidCatch(error: Error) { this.props.onError(error); }
+  render() { return this.state.failed ? <p>Navigation handled</p> : this.props.children; }
+}
+
+it.each(["enter", "make"])("preserves Next.js redirects from %s PIN actions", async (flow) => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let navigation: unknown;
+  try {
+    redirect("/en/account");
+  } catch (error) {
+    navigation = error;
+  }
+  const action = vi.fn().mockRejectedValue(navigation);
+  const caught = vi.fn();
+  await render(<NavigationBoundary onError={caught}>
+    {flow === "enter"
+      ? <EnterPin title="PIN" lead="Enter" organizer="Rosa" onLocked={vi.fn()} submit={action} />
+      : <MakePin save={action} />}
+  </NavigationBoundary>);
+  await type("4268");
+  await advance(260);
+  if (flow === "make") {
+    await type("4268");
+    await advance(260);
+  }
+  expect(caught).toHaveBeenCalledExactlyOnceWith(navigation);
+  expect(container.textContent).toBe("Navigation handled");
+});
+
 it.each(["returning", "used-key"])("counts down a %s lock and restores PIN entry without reloading", async (entry) => {
   vi.useFakeTimers();
   actions.enterPin.mockResolvedValueOnce({error: "pinLocked", minutes: 2}).mockResolvedValue({error: "invalidPin", triesLeft: 4});
@@ -251,12 +318,41 @@ it.each([
   expect(container.querySelector('[role="status"]')?.textContent).toBe(en.auth.feedback[success]);
 });
 
-async function editLink(value: string) {
+it.each([
+  ["reportUsedKey", en.getIn.used.never, "keyDisputed", "forgotPin", "Ask Rosa for a new key", "resetRequested"],
+  ["forgotPin", "Ask Rosa for a new key", "resetRequested", "reportUsedKey", en.getIn.used.never, "keyDisputed"],
+] as const)("allows both recovery actions when %s finishes first", async (first, firstLabel, firstSuccess, second, secondLabel, secondSuccess) => {
+  actions[first].mockResolvedValue({success: firstSuccess});
+  actions[second].mockResolvedValue({success: secondSuccess});
+  await render(<KeyAlreadyOpened familyId="family" value="key" typed={false} organizer="Rosa"
+    entry={{personId: "person", name: "Ana", familyName: "Family", available: false, usedAt: "2030-01-01"}} />);
+  const {sheet, finish} = prepareSheet();
+  await click(en.getIn.enter.forgot);
+  await click(firstLabel);
+  await finish();
+  expect(sheet.open).toBe(false);
+  await click(en.getIn.enter.forgot);
+  expect(button(firstLabel).disabled).toBe(true);
+  expect(button(secondLabel).disabled).toBe(false);
+  await click(secondLabel);
+  await finish();
+  expect(actions[first]).toHaveBeenCalledTimes(1);
+  expect(actions[second]).toHaveBeenCalledTimes(1);
+  await click(en.getIn.enter.forgot);
+  expect(button(firstLabel).disabled).toBe(true);
+  expect(button(secondLabel).disabled).toBe(true);
+});
+
+async function editField(selector: string, value: string) {
   await act(async () => {
-    const field = container.querySelector<HTMLInputElement>('input[name="link"]')!;
+    const field = container.querySelector<HTMLInputElement>(selector)!;
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
     field.dispatchEvent(new Event("input", {bubbles: true}));
   });
+}
+
+async function editLink(value: string) {
+  await editField('input[name="link"]', value);
 }
 
 const preview: PreviewState = {card: {url: "https://shop.example/gift", title: "A sweater", store: "Shop", icon: "shop", price: null}};
@@ -296,6 +392,42 @@ it("ignores a stale preview rejection after a newer link has loaded", async () =
   expect(container.querySelector("h2")?.textContent).toBe("A sweater");
 });
 
+it("preserves a written title after a failed save and submits it again", async () => {
+  await render(<AddStep ownerId="person" />);
+  await editField('input[name="title"]', "Gift card for coffee");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { container.querySelector("form")!.requestSubmit(); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.add.failed);
+    expect(container.querySelector<HTMLInputElement>('input[name="title"]')?.value).toBe("Gift card for coffee");
+  }
+  expect(welcome.addFirstThing.mock.calls.map((call) => (call[1] as FormData).get("title"))).toEqual([
+    "Gift card for coffee", "Gift card for coffee",
+  ]);
+});
+
+it("preserves the link note and preference when retrying a failed save", async () => {
+  vi.useFakeTimers();
+  lists.previewItemLink.mockResolvedValue(preview);
+  await render(<AddStep ownerId="person" />);
+  await click(en.getIn.add.paste);
+  await editLink("https://shop.example/gift");
+  await advance(500);
+  await editField('input[name="note"]', "Blue, size M");
+  await click(en.getIn.paste.want);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { container.querySelector("form")!.requestSubmit(); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.add.failed);
+    expect(container.querySelector<HTMLInputElement>('input[name="note"]')?.value).toBe("Blue, size M");
+  }
+  expect(welcome.addFirstThing.mock.calls.map((call) => {
+    const form = call[1] as FormData;
+    return [form.get("link"), form.get("note"), form.get("starred")];
+  })).toEqual([
+    ["https://shop.example/gift", "Blue, size M", "on"],
+    ["https://shop.example/gift", "Blue, size M", "on"],
+  ]);
+});
+
 async function selectPhoto(file: File) {
   const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
   Object.defineProperty(input, "files", {configurable: true, value: [file]});
@@ -322,14 +454,18 @@ it("prepares a large camera photo and submits the smaller file", async () => {
   await act(async () => decoded.resolve());
   expect(button(en.getIn.add.add).disabled).toBe(false);
   expect(drawImage).toHaveBeenCalledTimes(1);
-  const title = container.querySelector<HTMLInputElement>('input[name="title"]')!;
-  title.value = "A sweater";
+  await editField('input[name="title"]', "A sweater");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
   const data = welcome.addFirstThing.mock.calls[0][1] as FormData;
   expect(data.get("kind")).toBe("photo");
   expect(data.get("title")).toBe("A sweater");
   expect(data.getAll("photo")).toHaveLength(1);
   expect(data.get("photo")).toMatchObject({name: "photo.jpg", type: "image/jpeg", size: 100_000});
+  expect(container.querySelector<HTMLInputElement>('input[name="title"]')?.value).toBe("A sweater");
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
+  const retried = welcome.addFirstThing.mock.calls[1][1] as FormData;
+  expect(retried.get("title")).toBe("A sweater");
+  expect(retried.get("photo")).toEqual(data.get("photo"));
   await render(<p>Another screen</p>);
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:photo");
 });
@@ -342,7 +478,7 @@ it("shows preparation failures without uploading the original", async () => {
   expect(button(en.getIn.add.add).disabled).toBe(true);
   expect(welcome.addFirstThing).not.toHaveBeenCalled();
   await click(en.getIn.hello.helperBack);
-  container.querySelector<HTMLInputElement>('input[name="title"]')!.value = "A sweater";
+  await editField('input[name="title"]', "A sweater");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
   const data = welcome.addFirstThing.mock.calls[0][1] as FormData;
   expect(data.get("kind")).toBe("note");
