@@ -93,6 +93,21 @@ export type MemberInput = {
   name: string; language: Locale; helperId: string | null; householdId: string | null;
 };
 
+export async function addMembers(tx: FamilyTransaction, viewer: Viewer, names: string[], language: Locale) {
+  const {familyId} = viewer;
+  await lockFamily(tx, familyId);
+  if (!await isManager(tx, viewer)) return "forbidden";
+  const [{total}] = await tx.select({total: count()}).from(people).where(peopleOnly(familyId));
+  if (total + names.length > 60) return "familyFull";
+  const exchange = await currentExchange(tx, familyId);
+  const added = await tx.insert(people).values(names.map((displayName) => ({familyId, displayName, language})))
+    .returning({id: people.id});
+  if (exchange?.status === "setup" || exchange?.status === "open") {
+    await tx.insert(participants).values(added.map(({id: personId}) => ({familyId, exchangeId: exchange.id, personId})));
+  }
+  return null;
+}
+
 export async function saveMember(tx: FamilyTransaction, viewer: Viewer, id: string | null, input: MemberInput) {
   const {familyId} = viewer;
   await lockFamily(tx, familyId);

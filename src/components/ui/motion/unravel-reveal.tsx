@@ -174,7 +174,7 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
     progress.current?.setAttribute("aria-valuenow", "100");
     cancelAnimationFrame(frames.current.yarn);
     setPhase("revealed");
-    setAnnounce(`${labels.lead} ${name}`);
+    setAnnounce(`${labels.lead} ${latest.current.given ?? ""}`);
     haptic("success");
     const fade = (selector: string, keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
       const element = q<HTMLElement | SVGElement>(selector);
@@ -191,7 +191,7 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
     fade("[data-reveal-band]", [{opacity: 0, transform: "translateY(12px)"}, {opacity: 1, transform: "none"}], {duration: 420, delay: 780, easing: EASE.interface});
     showNext(instant ? 0 : 950);
     callbacks.current.onRevealed?.();
-  }, [labels.lead, name, q, showNext]);
+  }, [labels.lead, q, showNext]);
 
   const openNow = useCallback(() => {
     const s = state.current;

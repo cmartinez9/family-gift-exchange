@@ -5,7 +5,7 @@ import {revalidatePath} from "next/cache";
 import QRCode from "qrcode";
 import {requireViewer} from "@/server/auth";
 import {issueKey, markKeySent, type KeyKind} from "@/server/auth/access";
-import {changeCoOrganizer, removeMember, saveHousehold, saveMember} from "@/server/auth/families";
+import {addMembers, changeCoOrganizer, removeMember, saveHousehold, saveMember} from "@/server/auth/families";
 import {authenticatorSecret} from "@/server/auth/pin";
 import {appOrigin} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
@@ -107,14 +107,12 @@ export async function sentKey(keyId: string): Promise<AuthResult> {
 
 /** Who's in: one name, or a pasted list (one per line or separated by commas). */
 export async function addNames(_: AuthResult, data: FormData): Promise<AuthResult & {added?: number}> {
-  const names = [...new Set(field(data, "names").split(/[\n,;]+/).map((name) => name.trim()).filter(Boolean))];
+  const names = field(data, "names").split(/[\n,;]+/).map((name) => name.trim()).filter(Boolean);
   if (!names.length || names.length > 30 || names.some((name) => name.length > 60)) return {error: "invalidName"};
   const viewer = await requireViewer();
   const language = await getLocale() === "es" ? "es" : "en";
-  for (const name of names) {
-    const error = await withFamily(viewer.familyId, (tx) => saveMember(tx, viewer, null, {name, language, helperId: null, householdId: null}));
-    if (error) return {error};
-  }
+  const error = await withFamily(viewer.familyId, (tx) => addMembers(tx, viewer, names, language));
+  if (error) return {error};
   revalidatePath(`/${await getLocale()}/exchanges`, "layout");
   revalidatePath(`/${await getLocale()}/family`);
   return {success: "saved", added: names.length};

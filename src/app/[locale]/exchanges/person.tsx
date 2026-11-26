@@ -271,15 +271,19 @@ function AskSheet({open, onClose, context, name}: {open: boolean; onClose: () =>
   const [state, submit, pending] = useActionState(
     (previous: FormState, data: FormData) => memberAction(context, {kind: "ask"}, previous, data), {});
   const id = useId();
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     if (!state.feedback) return;
     haptic("success");
-    onClose();
+    close.current();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the sent question is cleared for the next one
     setText("");
     setPicked(null);
     window.setTimeout(() => toast(state.feedback!), 280);
-  }, [state, onClose]);
+  }, [state]);
   return (
     <Sheet open={open} onClose={onClose} title={name ? t("person.askSheet", {name}) : t("askTitle")} closeLabel={ui("close")}>
       <p className="text-body text-muted-ink">{t("person.askSheetLead")}</p>

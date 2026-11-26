@@ -1,5 +1,5 @@
 import {getFormatter, getLocale, getTranslations} from "next-intl/server";
-import {notFound} from "next/navigation";
+import {notFound, redirect} from "next/navigation";
 import type {ReactNode} from "react";
 import {Avatar} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
 import {readiness} from "@/server/auth/families";
 import {withFamily} from "@/server/db/client";
+import {listExchanges} from "@/server/draw";
 import {getUnreadCount} from "@/server/messages/inbox";
 import {SetupSteps} from "../exchanges/setup";
 import {activityDateFormat} from "../sign-in/styles";
@@ -82,6 +83,10 @@ export default async function FamilyPage() {
   const viewer = await requireViewer();
   const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
   if (!board) notFound();
+  if (board.exchangeId) {
+    const exchange = (await listExchanges(viewer)).find(({id}) => id === board.exchangeId);
+    if (exchange?.status === "setup") redirect(`/${await getLocale()}/exchanges/${exchange.id}/manage`);
+  }
   const [t, draw, ui, format, chat, inbox, lists, unread] = await Promise.all([
     getTranslations("auth"), getTranslations("draw"), getTranslations("ui"), getFormatter(),
     getTranslations("notify.groupChat"), getTranslations("notify.inbox"), getTranslations("lists"), getUnreadCount(viewer),

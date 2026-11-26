@@ -5,6 +5,7 @@ import {eq} from "drizzle-orm";
 import {connectDatabase} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {practiceFamilies} from "../../src/server/draw/schema";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 async function newOrganizer(page: Page) {
   const name = `The Snowbell Family ${randomUUID().slice(0, 6)}`;
@@ -16,7 +17,7 @@ async function newOrganizer(page: Page) {
   await page.getByLabel("Type the PIN again").fill("4268");
   await page.getByRole("button", {name: "Create my family"}).click();
   await page.getByRole("link", {name: "Not now"}).click();
-  await expect(page.getByRole("heading", {name})).toBeVisible();
+  await openFamilyAfterDetails(page);
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!;
   return {name, id: session.value.split(".")[0]};
 }

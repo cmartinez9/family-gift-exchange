@@ -6,6 +6,7 @@ import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {pushSubscriptions} from "../../src/server/messages/schema";
 import {settled, signInWithPin, signOut, typePin} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 
@@ -43,7 +44,7 @@ test("sets up the family, joins by key, switches devices, disputes a session and
   const other = await browser.newContext({...device, ignoreHTTPSErrors: true});
   try {
     await page.getByRole("link", {name: "Not now"}).click();
-    await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
+    await openFamilyAfterDetails(page);
     await page.locator("summary").filter({hasText: /^Add a person$/}).click();
     await page.getByRole("textbox", {name: "Name or nickname"}).fill("Snowbit");
     await page.getByRole("button", {name: "Add a person"}).click();
@@ -125,6 +126,7 @@ test("registers a discoverable credential and signs in from the bare app address
   const familyId = await startFamily(page, `Icicle ${randomUUID().slice(0, 6)}`);
   try {
     await page.getByRole("button", {name: "Yes, use Face ID"}).click();
+    await openFamilyAfterDetails(page);
     await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
     await page.context().clearCookies();
     await page.goto("/en");
@@ -155,6 +157,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
   const guest = await browser.newContext({...device, ignoreHTTPSErrors: true, locale: "es-US"});
   try {
     await page.getByRole("link", {name: "Not now"}).click();
+    await openFamilyAfterDetails(page);
     await page.locator("summary").filter({hasText: /^Add a person$/}).click();
     await page.getByRole("textbox", {name: "Name or nickname"}).fill("Pino");
     const add = page.locator("details[open]").filter({has: page.getByRole("button", {name: "Add a person"})});

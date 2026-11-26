@@ -6,6 +6,7 @@ import {eq} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {openKey, signInWithPin, signOut, skipFaceId, typePin} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 const replacementPin = "6285";
@@ -21,6 +22,7 @@ async function createFamily(page: Page) {
   await expect(page.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
   const familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
   await page.getByRole("link", {name: "Not now"}).click();
+  await openFamilyAfterDetails(page);
   await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
   return familyId;
 }

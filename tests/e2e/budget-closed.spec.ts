@@ -3,6 +3,7 @@ import {expect, test, type Page, type TestInfo} from "@playwright/test";
 import {Pool} from "pg";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const database = new Pool({connectionString: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL});
 test.setTimeout(90_000);
@@ -19,7 +20,7 @@ async function organizer(page: Page) {
   await page.getByRole("button", {name: en.auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: en.auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: en.auth.notNow}).click();
-  await expect(page.getByRole("heading", {name})).toBeVisible();
+  await openFamilyAfterDetails(page);
   const cookie = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!;
   const familyId = cookie.value.split(".")[0];
   const {rows: [exchange]} = await database.query("select id from exchanges where family_id = $1", [familyId]);

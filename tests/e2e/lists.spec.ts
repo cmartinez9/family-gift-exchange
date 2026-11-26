@@ -8,6 +8,7 @@ import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 
@@ -23,7 +24,7 @@ async function startFamily(page: Page, language: "en" | "es") {
   await page.getByRole("button", {name: auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
-  await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
+  await openFamilyAfterDetails(page, language);
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session");
   return session!.value.split(".")[0];
 }

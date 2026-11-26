@@ -81,13 +81,10 @@ test("setup: the exchange, who's in, who lives where, and the draw", async ({bro
   await page.getByLabel("Type the PIN again").fill("4268");
   await page.getByRole("button", {name: "Create my family"}).click();
   await page.getByRole("link", {name: "Not now"}).click();
-  await expect(page.getByRole("heading", {name: "Who lives where?"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
   const session = (await context.cookies()).find(({name}) => name === "__Host-fge-session")!;
   state.familyId = session.value.split(".")[0];
 
-  await page.goto("/en/exchanges");
-  await page.getByRole("link", {name: "The Riveras"}).click();
-  await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
   state.exchangeId = page.url().match(/exchanges\/([^/]+)\/manage/)![1];
   await page.getByLabel("Exchange name").fill("Christmas 2026");
   await page.getByLabel("Gift day", {exact: true}).fill("2026-12-24");

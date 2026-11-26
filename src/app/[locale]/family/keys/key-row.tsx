@@ -80,14 +80,15 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
   const format = useFormatter();
   const [pending, transition] = useTransition();
   const [prepared, setPrepared] = useState<Record<string, Prepared>>({});
-  // keys made for the QR walk and the printed cards, kept apart from the rows
   const [shown, setShown] = useState<Record<string, Prepared>>({});
   const [feedback, setFeedback] = useState<Record<string, AuthResult>>({});
   const [sent, setSent] = useState<Set<string>>(() => new Set(people.filter(({sent}) => sent).map(({id}) => id)));
   const [reset, setReset] = useState<KeyPerson | null>(null);
   const [qr, setQr] = useState<number | null>(null);
-  const [printing, setPrinting] = useState(false);
+  const [printBatch, setPrintBatch] = useState<Array<{person: KeyPerson; prepared?: Prepared}> | null>(null);
   const waiting = people.filter(({joined}) => !joined);
+  const printReady = !pending && !!printBatch?.length && printBatch.every(({prepared}) =>
+    prepared?.key?.qr && prepared.key.code && prepared.key.familyAddress);
 
   function prepare(person: KeyPerson, kind: KeyKind, into: "row" | "overlay" = "row") {
     if (into === "row") setFeedback((all) => ({...all, [person.id]: {}}));
@@ -137,9 +138,19 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
     prepare(person, "qr", "overlay");
   }
 
-  async function printAll() {
-    setPrinting(true);
-    for (const person of waiting) prepare(person, "print", "overlay");
+  function printAll() {
+    setPrintBatch(waiting.map((person) => ({person})));
+    transition(async () => {
+      for (const person of waiting) {
+        let result: Prepared;
+        try {
+          result = await prepareKey(person.id, "print");
+        } catch {
+          result = {error: "unavailable"};
+        }
+        setPrintBatch((batch) => batch?.map((card) => card.person.id === person.id ? {...card, prepared: result} : card) ?? null);
+      }
+    });
   }
 
   const panel = (person: KeyPerson) => {
@@ -154,7 +165,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
 
   return (
     <>
-      <div className="print:hidden" inert={qr !== null || printing}>
+      <div className="print:hidden" inert={qr !== null || printBatch !== null}>
       <KnitIn className="flex flex-col gap-3 px-edge pt-6">
         <Card flush className="px-5 py-1">
           <ul className="fge-rows flex flex-col">
@@ -225,7 +236,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
         {waiting.length > 0 && (
           <div className="flex flex-wrap gap-2">
             <Button variant="small" icon="qr" className="bg-snow-white! text-ink!" onClick={() => showQr(0)}>{t("showQr")}</Button>
-            <Button variant="small" icon="print" className="bg-snow-white! text-ink!" onClick={printAll}>{k("printCards")}</Button>
+            <Button variant="small" icon="print" className="bg-snow-white! text-ink!" disabled={pending} onClick={printAll}>{k("printCards")}</Button>
           </div>
         )}
       </KnitIn>
@@ -248,26 +259,29 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
         </Overlay>
       )}
 
-      {printing && (
-        <Overlay onClose={() => setPrinting(false)} backLabel={t("sendKeys")} printable
-          action={<Button icon="print" onClick={() => window.print()}>{k("printCount", {count: waiting.length})}</Button>}>
+      {printBatch && (
+        <Overlay onClose={() => setPrintBatch(null)} backLabel={t("sendKeys")} printable
+          action={<Button icon="print" disabled={!printReady} onClick={() => window.print()}>{k("printCount", {count: printBatch.length})}</Button>}>
           <div className="print:hidden">
-            <PageTitle title={t("print")} as="h2" lead={k("printLead", {names: new Intl.ListFormat(undefined, {type: "conjunction"}).format(waiting.map(({name}) => name))})} />
+            <PageTitle title={t("print")} as="h2" lead={k("printLead", {names: new Intl.ListFormat(undefined, {type: "conjunction"}).format(printBatch.map(({person}) => person.name))})} />
           </div>
           <ul className="grid grid-cols-2 gap-3 px-edge pt-6 pb-6 print:grid-cols-3 print:gap-6">
-            {waiting.map((person) => {
-              const key = shown[person.id]?.key;
+            {printBatch.map(({person, prepared}) => {
+              const key = prepared?.key;
               return (
                 <li key={person.id} className="flex break-inside-avoid flex-col overflow-hidden rounded-[22px] bg-snow-white text-ink print:border print:border-black">
                   <div className="flex h-16 items-center justify-center bg-ink px-2">
                     <StitchedText text={person.name} cell={STITCH_CELL.pass * 0.7} className="max-w-full [&>svg]:h-auto [&>svg]:max-w-full" />
                   </div>
                   <div className="flex flex-col items-center gap-1.5 p-3 text-center">
-                    {key?.qr ? <Image unoptimized src={key.qr} width={140} height={140} alt={t("keyQr")} /> : (
+                    {prepared?.error ? <Feedback state={prepared} /> : key?.qr ? <Image unoptimized src={key.qr} width={140} height={140} alt={t("keyQr")} /> : (
                       <div className="size-[140px] animate-pulse rounded-[14px] bg-card-track" aria-busy="true" />
                     )}
                     <p className="text-label normal-case tracking-normal">{k("scanCard")}</p>
-                    {key && <p className="text-body-strong">{key.code}</p>}
+                    {key && <>
+                      <p className="text-body-strong">{key.code}</p>
+                      <p className="text-label break-all normal-case tracking-normal">{t("familyAddressOnCard", {url: key.familyAddress})}</p>
+                    </>}
                   </div>
                 </li>
               );

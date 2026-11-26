@@ -5,6 +5,7 @@ import en from "../../messages/en.json" with {type: "json"};
 import {connectDatabase, runForFamily, type FamilyTransaction} from "../../src/server/db/database";
 import {claims, families, items, people} from "../../src/server/db/schema";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 const {auth, lists} = en;
@@ -28,6 +29,7 @@ async function createFamily(page: Page) {
   await page.getByRole("button", {name: auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
+  await openFamilyAfterDetails(page);
   await expect(page.getByRole("link", {name: auth.sendKeys})).toBeVisible();
   return (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
 }
