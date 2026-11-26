@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {and, asc, count, desc, eq, gt, inArray, isNull} from "drizzle-orm";
 import type {Locale} from "@/i18n/routing";
 import type {FamilyTransaction} from "../db/database";
-import {exchanges, families, households, keepApart, participants, people} from "../db/schema";
+import {claims, exchanges, families, households, keepApart, participants, people} from "../db/schema";
 import type {Viewer} from "./index";
 import {activePerson, isManager, lockFamily, signInDevice, type Device} from "./access";
 import {hashPin, keyedHash} from "./pin";
@@ -149,6 +149,9 @@ export async function removeMember(tx: FamilyTransaction, viewer: Viewer, person
       .where(and(eq(participants.familyId, familyId), eq(participants.exchangeId, exchange.id), eq(participants.personId, personId)));
   }
   await tx.update(people).set({removedAt: now}).where(and(peopleOnly(familyId), eq(people.id, personId)));
+  await tx.delete(claims).where(and(
+    eq(claims.familyId, familyId), eq(claims.claimerId, personId), isNull(claims.boughtAt),
+  ));
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), isNull(personalKeys.revokedAt),
   ));
