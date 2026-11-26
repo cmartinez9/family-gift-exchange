@@ -1,0 +1,15 @@
+{
+  "home": {
+    "title": "Family Gift Exchange",
+    "language": "Language"
+  },
+  "devMessages": {
+    "title": "Captured messages",
+    "empty": "No messages have been captured.",
+    "created": "Captured at",
+    "channel": "Channel",
+    "template": "Template",
+    "language": "Language",
+    "person": "Person ID"
+  }
+}
