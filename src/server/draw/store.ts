@@ -7,7 +7,7 @@ import {drawSeal, encryptionKey, openText, sealText} from "./sealing";
 import {listSessionDisputes} from "../auth/security";
 import {publishDraw, type DrawEvents} from "./events";
 import {repairDraw} from "./repair";
-import {drawRules, type DrawPerson, type KeepApartPair, type Pairs} from "./solver";
+import {drawRules, solveDraw, type DrawPerson, type KeepApartPair, type Pairs} from "./solver";
 
 export const exchangeFields = {
   id: exchanges.id,
@@ -295,7 +295,10 @@ export async function privateDrawRepair(
   const questionGivers = fullRedraw ? [] : (await tx.selectDistinct({id: questions.askerId}).from(questions).where(and(
     questionScope(familyId, exchange.id), inArray(questions.askerId, visibleGivers),
   ))).map(({id}) => id);
-  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, seenGivers, questionGivers, fullRedraw});
+  const rules = snapshotRules(snapshot);
+  return repairDraw(rules, previous, givers, checkTime, {observers, seenGivers, questionGivers, fullRedraw})
+    ?? repairDraw(rules, previous, givers, checkTime)
+    ?? solveDraw(rules, {checkTime});
 }
 
 async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {

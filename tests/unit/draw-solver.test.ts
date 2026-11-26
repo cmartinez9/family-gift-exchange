@@ -229,14 +229,34 @@ it("protects each exposed match from other organizers while allowing its own org
   const changed = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
   const all = possibleDraws(ids).filter((pairs) => pairs.get("A") !== "B" && pairs.get("B") !== "C"
     && changed(pairs) === changed(next) && modelOneLoop(pairs) === modelOneLoop(next));
-  for (const [giver, observers] of [["A", ["E"]], ["B", ["A", "E"]]] as const) {
+  for (const [giver, observers] of [["A", ["E"]], ["B", ["A"]], ["B", ["E"]]] as const) {
     expect(next.get(giver)).not.toBe(previous.get(giver));
     const alternatives = all.filter((pairs) => observers.every((observer) => pairs.get(observer) === next.get(observer)));
     expect(new Set(alternatives.map((pairs) => pairs.get(giver))).size).toBeGreaterThan(1);
   }
 });
 
-it("does not publish a private repair when organizer observations determine the new match", () => {
+it("checks each organizer separately even when pooled knowledge determines the repaired match", () => {
+  const ids = ["A", "B", "C", "D", "E"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const observers = ["A", "C", "D"];
+  const next = repairDraw(drawRules(people, []), previous, ["B"], undefined, {
+    observers, seenGivers: [], questionGivers: [], fullRedraw: true,
+  })!;
+  expect(next).not.toBeNull();
+  expect(validate(people, [], next)).toBe(true);
+  expect(next.get("B")).not.toBe("C");
+  const all = possibleDraws(ids).filter((pairs) => pairs.get("B") !== "C" && modelOneLoop(pairs) === modelOneLoop(next));
+  for (const observer of observers) {
+    const alternatives = all.filter((pairs) => pairs.get(observer) === next.get(observer));
+    expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
+  }
+  const pooled = all.filter((pairs) => observers.every((id) => pairs.get(id) === next.get(id)));
+  expect(new Set(pooled.map((pairs) => pairs.get("B"))).size).toBe(1);
+});
+
+it("identifies when no per-organizer private repair exists in a tiny family", () => {
   const ids = ["A", "B", "C", "D"];
   const people = ids.map((id) => ({id, householdId: null, helperId: null}));
   const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));

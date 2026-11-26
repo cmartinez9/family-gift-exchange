@@ -26,13 +26,14 @@ export function repairDraw(
   const observers = [...new Set(privacy?.observers)].sort();
   const questionGivers = [...new Set(privacy?.questionGivers)].sort();
   const owner = (id: string) => people[indices.get(id)!].helperId ?? id;
-  const views = [...new Set([...required].map(owner))].flatMap((authorized) => {
-    const unauthorized = observers.filter((id) => owner(id) !== authorized);
-    if (!unauthorized.length) return [];
+  const views = [...new Set(observers.map(owner))].flatMap((organizer) => {
+    const accessible = observers.filter((id) => owner(id) === organizer);
+    const protectedGivers = [...required].filter((id) => owner(id) !== organizer);
+    if (!protectedGivers.length) return [];
     return [{
-      observers: unauthorized,
-      givers: [...required].filter((id) => owner(id) === authorized),
-      questionGivers: questionGivers.filter((id) => unauthorized.includes(id) || unauthorized.includes(previous.get(id)!)),
+      observers: accessible,
+      givers: protectedGivers,
+      questionGivers: questionGivers.filter((id) => accessible.includes(id) || accessible.includes(previous.get(id)!)),
     }];
   });
   const candidates: {pairs: Pairs; observations: string[]}[] = [];

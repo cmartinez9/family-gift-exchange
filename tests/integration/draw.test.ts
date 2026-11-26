@@ -21,6 +21,7 @@ import {readiness, removeMember} from "../../src/server/auth/families";
 import {renderServerTree} from "../helpers/render-server";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
+import * as repair from "../../src/server/draw/repair";
 import * as solver from "../../src/server/draw/solver";
 import MemberExchangePage from "../../src/app/[locale]/exchanges/[exchangeId]/page";
 import ManagePage from "../../src/app/[locale]/exchanges/[exchangeId]/manage/page";
@@ -438,7 +439,8 @@ it("loads and starts isolated practice while the real family has an unresolved r
   await expect(runForFamily(app.db, f.familyId, (tx) => disputeSession(tx, reporter, f.viewers[1].sessionId, new Date())))
     .resolves.toBe(true);
   vi.spyOn(console, "info").mockImplementation(() => {});
-  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "repairImpossible"});
+  vi.spyOn(repair, "repairDraw").mockImplementation(() => { throw new DrawError("checkTimedOut"); });
+  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "checkTimedOut"});
   signedIn.viewer = f.organizer;
   const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(renderToStaticMarkup);
   expect(await practiceSeason(f.organizer)).toBeNull();
@@ -458,7 +460,7 @@ it("loads and starts isolated practice while the real family has an unresolved r
   expect(log.length).toBeGreaterThan(0);
   await expect(practiceSeason(reporter)).rejects.toMatchObject({code: "forbidden"});
   expect(await practiceSeason(f.coOrganizer)).toBeNull();
-  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "checkTimedOut"});
   expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.version).toBe(1);
 });
 
@@ -750,7 +752,7 @@ it("applies the secrecy constraint to a confirmed redraw with a pending disputed
   expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.disputedRevealRepairedAt).toBeInstanceOf(Date);
 });
 
-it("keeps every account usable after an impossible private repair while blocking sealed data", async () => {
+it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D draw with organizers A and C through a %s", async (recovery) => {
   const f = await fixture({count: 5, active: 4});
   await runForFamily(app.db, f.familyId, (tx) => tx.update(people).set({helperId: f.ids[1]})
     .where(and(eq(people.familyId, f.familyId), eq(people.id, f.ids[4]))));
@@ -764,8 +766,14 @@ it("keeps every account usable after an impossible private repair while blocking
   ));
   const owner = {...f.viewers[1], sessionId: session.id};
   signedIn.viewer = owner;
-  vi.spyOn(console, "info").mockImplementation(() => {});
-  await expect(reportSession(f.viewers[1].sessionId)).resolves.toEqual({error: "repairRequired"});
+  if (recovery === "local repair") {
+    await expect(reportSession(f.viewers[1].sessionId)).rejects.toThrow("redirect:/en/account?reported=1");
+  } else {
+    await expect(runForFamily(app.db, f.familyId, (tx) => disputeSession(tx, owner, f.viewers[1].sessionId, new Date())))
+      .resolves.toBe(true);
+    await expect(runDraw(f.organizer, f.exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "confirmationRequired"});
+    await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"});
+  }
   const disputes = await runForFamily(app.db, f.familyId, (tx) => listSessionDisputes(tx, f.familyId, owner.personId));
   expect(disputes.map(({sessionId}) => sessionId)).toContain(f.viewers[1].sessionId);
   expect(await runForFamily(app.db, f.familyId, (tx) => account(tx, owner))).toMatchObject({
@@ -780,15 +788,21 @@ it("keeps every account usable after an impossible private repair while blocking
     expect(html).toContain("Switch person or sign out");
     expect(html).toContain('href="/exchanges"');
   }
-  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "repairImpossible"});
-  await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "repairImpossible"});
-  await expect(askYourPerson(owner, f.exchangeId, 1, "Still there?")).rejects.toMatchObject({code: "repairImpossible"});
-  await expect(answerQuestion(f.viewers[2], f.exchangeId, question.id, 1, "Another answer"))
-    .rejects.toMatchObject({code: "repairImpossible"});
-  expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.version).toBe(1);
-  await expect(runDraw(f.organizer, f.exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "confirmationRequired"});
-  await expect(runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"}))
-    .rejects.toMatchObject({code: "repairImpossible"});
+  const actual = new Map<string, string>();
+  for (const viewer of [f.organizer, owner, f.coOrganizer, f.viewers[3]]) {
+    expect(await memberDrawStatus(viewer, f.exchangeId)).toMatchObject({status: "ready", exchange: {version: 2}});
+    actual.set(viewer.personId, (await revealMyPerson(viewer, f.exchangeId, 2)).person.id);
+  }
+  expect(actual.get(owner.personId)).not.toBe(f.ids[2]);
+  expect(new Set(actual.values()).size).toBe(4);
+  expect(await checkSealedDraw(f.organizer, f.exchangeId)).toMatchObject({valid: true, count: 4});
+  expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.disputedRevealRepairedAt).toBeInstanceOf(Date);
+  expect((await listOwnQuestions(owner, f.exchangeId)).outgoing).toEqual([]);
+  expect((await listOwnQuestions(f.viewers[2], f.exchangeId)).incoming.map(({id}) => id)).not.toContain(question.id);
+  const replacementQuestion = await askYourPerson(owner, f.exchangeId, 2, "Still there?");
+  const recipient = f.viewers.find(({personId}) => personId === actual.get(owner.personId))!;
+  await answerQuestion(recipient, f.exchangeId, replacementQuestion.id, 2, "Yes");
+  expect((await listOwnQuestions(owner, f.exchangeId)).outgoing).toContainEqual(expect.objectContaining({answer: "Yes"}));
   signedIn.viewer = owner;
   await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/account");
   signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
@@ -1086,22 +1100,23 @@ it.each(["en", "es"] as const)("renders localized recovery on member and sealed-
   signedIn.viewer = owner;
   signedIn.locale = locale;
   vi.spyOn(console, "info").mockImplementation(() => {});
+  vi.spyOn(repair, "repairDraw").mockImplementation(() => { throw new DrawError("checkTimedOut"); });
   await expect(reportSession(f.viewers[1].sessionId)).resolves.toEqual({error: "repairRequired"});
   const messages = locale === "es" ? (await import("../../messages/es.json")).default
     : (await import("../../messages/en.json")).default;
   const params = Promise.resolve({exchangeId: f.exchangeId});
   const memberHtml = renderToStaticMarkup(await renderServerTree(await MemberExchangePage({params})));
-  expect(memberHtml).toContain(messages.draw.errors.repairImpossible);
+  expect(memberHtml).toContain(messages.draw.errors.checkTimedOut);
   expect(memberHtml).toContain('role="alert"');
   expect(memberHtml).toContain('href="/account"');
   signedIn.viewer = f.organizer;
   const manageHtml = renderToStaticMarkup(await renderServerTree(await ManagePage({params, searchParams: Promise.resolve({check: "1"})})));
-  expect(manageHtml).toContain(messages.draw.errors.repairImpossible);
+  expect(manageHtml).toContain(messages.draw.errors.checkTimedOut);
   expect(manageHtml).toContain('href="/account"');
   expect(manageHtml).toContain(`href="/exchanges/${f.exchangeId}/manage"`);
   expect(manageHtml).toContain('name="confirmation"');
-  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "repairImpossible"});
-  await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "checkTimedOut"});
+  await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "checkTimedOut"});
 });
 
 it("keeps access denials and unexpected failures out of recoverable draw states", async () => {
