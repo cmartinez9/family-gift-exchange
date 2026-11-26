@@ -45,7 +45,7 @@ export default async function PersonListPage({params}: {params: Promise<{personI
       <ul className="space-y-4">
         {list.items.map((item, index) => (
           <li key={item.id}>
-            <ItemCard item={item} ownerId={list.owner.id} canEdit={list.canEdit} canClaim={list.canClaim}
+            <ItemCard item={item} ownerId={list.owner.id} actingAs={viewer.actingAs} canEdit={list.canEdit} canClaim={list.canClaim}
               first={index === 0} last={index === list.items.length - 1} budget={budget} />
           </li>
         ))}

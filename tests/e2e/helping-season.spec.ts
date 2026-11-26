@@ -144,6 +144,82 @@ for (const exit of ["navigation", "Done", "home"] as const) {
   });
 }
 
+test("rejects stale claim actions after another tab switches the acting profile", async ({browser}) => {
+  test.setTimeout(60_000);
+  const f = await family(browser);
+  try {
+    const owner = await f.signedIn("Ana");
+    await owner.goto(`/en/lists/${f.ids.Ana}/items/new?kind=note`);
+    await owner.getByLabel("Item name", {exact: true}).fill("Warm mittens");
+    await owner.getByRole("button", {name: "Save item", exact: true}).click();
+    await expect(owner.getByRole("article", {name: "Warm mittens"})).toBeVisible();
+
+    const rosa = await f.signedIn("Rosa");
+    const switcher = await rosa.context().newPage();
+    await rosa.goto(`/en/lists/${f.ids.Ana}`);
+    await switcher.goto("/en/account");
+    await switcher.getByRole("button", {name: "Help Tito", exact: true}).click();
+    await expect(switcher).toHaveURL(/\/en\/helping$/);
+    await rosa.getByRole("button", {name: "I’m getting this", exact: true}).click();
+    await expect(rosa.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
+
+    await rosa.reload();
+    await expect(rosa.getByRole("button", {name: "I’m getting this", exact: true})).toBeVisible();
+    await rosa.getByRole("button", {name: "I’m getting this", exact: true}).click();
+    await expect(rosa.getByText("You’re getting this", {exact: true})).toBeVisible();
+    const reserved = await rosa.context().newPage();
+    await reserved.goto(`/en/lists/${f.ids.Ana}`);
+    await expect(reserved.getByRole("button", {name: "Undo mark", exact: true})).toBeVisible();
+    await rosa.goto("/en/lists/getting");
+    await rosa.getByRole("checkbox", {name: "Bought", exact: true}).check();
+    await expect(rosa.getByRole("checkbox", {name: "Bought", exact: true})).toBeEnabled();
+    await rosa.getByRole("checkbox", {name: "Wrapped", exact: true}).check();
+    await expect(rosa.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeEnabled();
+    await rosa.reload();
+    await expect(rosa.getByRole("checkbox", {name: "Bought", exact: true})).toBeChecked();
+    await expect(rosa.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeChecked();
+
+    await switcher.getByRole("button", {name: "Done", exact: true}).click();
+    await expect(switcher).toHaveURL(/\/en\/account$/);
+    await reserved.getByRole("button", {name: "Undo mark", exact: true}).click();
+    await expect(reserved.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
+    for (const name of ["Bought", "Wrapped"]) {
+      const tick = rosa.getByRole("checkbox", {name, exact: true});
+      await tick.uncheck();
+      await expect(tick).toBeChecked();
+    }
+    await expect(rosa.getByRole("main").getByRole("alert")).toHaveText(["You can’t make this change.", "You can’t make this change."]);
+    await switcher.getByRole("button", {name: "Help Tito", exact: true}).click();
+    await expect(switcher).toHaveURL(/\/en\/helping$/);
+    await rosa.reload();
+    await expect(rosa.getByRole("checkbox", {name: "Bought", exact: true})).toBeChecked();
+    await expect(rosa.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeChecked();
+  } finally {
+    await f.close();
+  }
+});
+
+for (const locale of ["en", "es"] as const) {
+  test(`follows the helping reveal buttons in ${locale}`, async ({browser}) => {
+    const f = await family(browser);
+    try {
+      const helper = await f.signedIn("Rosa");
+      await helper.goto("/en/account");
+      await helper.getByRole("button", {name: "Help Tito", exact: true}).click();
+      await expect(helper).toHaveURL(/\/en\/helping$/);
+      await helper.goto(`/${locale}/helping`);
+      await expect(helper.getByText(locale === "en"
+        ? "Hand Tito your phone. Tap “Show Tito”, then Tito taps “Open your person”. You can look away."
+        : "Pásale tu teléfono a Tito. Toca “Mostrar a Tito”; después, Tito toca “Descubrir a tu persona”. Tú puedes mirar hacia otro lado.")).toBeVisible();
+      await helper.getByRole("link", {name: locale === "en" ? "Show Tito" : "Mostrar a Tito", exact: true}).click();
+      await helper.getByRole("button", {name: locale === "en" ? "Open your person" : "Descubrir a tu persona", exact: true}).click();
+      await expect(helper.getByRole("status").filter({hasText: "Beto"})).toBeVisible();
+    } finally {
+      await f.close();
+    }
+  });
+}
+
 test("helping someone, notices, the family chat and the end of the season match the final design", async ({browser}) => {
   test.setTimeout(240_000);
   const f = await family(browser);
