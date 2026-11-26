@@ -204,13 +204,14 @@ export const claims = pgTable("claims", {
   familyId: familyId(),
   id: uuid("id").defaultRandom().notNull(),
   itemId: uuid("item_id").notNull(),
-  exchangeId: uuid("exchange_id").notNull(),
+  exchangeId: uuid("exchange_id"),
   claimerId: uuid("claimer_id").notNull(),
   boughtAt: instant("bought_at"),
   wrappedAt: instant("wrapped_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
-  uniqueIndex("claims_one_per_item_per_exchange").on(table.familyId, table.exchangeId, table.itemId),
+  uniqueIndex("claims_one_per_item").on(table.familyId, table.itemId),
+  index("claims_claimer_idx").on(table.familyId, table.claimerId),
   foreignKey({
     name: "claims_item_fk",
     columns: [table.familyId, table.itemId],
@@ -218,8 +219,13 @@ export const claims = pgTable("claims", {
   }),
   foreignKey({
     name: "claims_claimer_fk",
-    columns: [table.familyId, table.exchangeId, table.claimerId],
-    foreignColumns: [participants.familyId, participants.exchangeId, participants.personId],
+    columns: [table.familyId, table.claimerId],
+    foreignColumns: [people.familyId, people.id],
+  }),
+  foreignKey({
+    name: "claims_exchange_fk",
+    columns: [table.familyId, table.exchangeId],
+    foreignColumns: [exchanges.familyId, exchanges.id],
   }),
 ]);
 

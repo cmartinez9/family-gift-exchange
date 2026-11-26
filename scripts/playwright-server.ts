@@ -24,7 +24,8 @@ try {
 // Server Actions fetch local redirects from the same HTTPS origin.
 setDefaultCACertificates([...getCACertificates("default"), tls.cert.toString("utf8")]);
 
-const app = next({dev: false, hostname: "localhost", port: 3100});
+const port = Number(process.env.E2E_PORT || 3100);
+const app = next({dev: false, hostname: "localhost", port});
 await app.prepare();
 const handle = app.getRequestHandler();
-createServer(tls, (request, response) => void handle(request, response)).listen(3100, "127.0.0.1");
+createServer(tls, (request, response) => void handle(request, response)).listen(port, "127.0.0.1");

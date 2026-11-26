@@ -6,7 +6,9 @@ import {afterEach, expect, it, vi} from "vitest";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
 import type {FamilyTransaction} from "../../src/server/db/database";
-import {families, households, people} from "../../src/server/db/schema";
+import {claims, families, households, people} from "../../src/server/db/schema";
+import {addListItem, getWishlist} from "../../src/server/lists";
+import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
 import {
   allowCodeTry, disputeUsedKey, inspectKey, issueKey, lockFamily, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
 } from "../../src/server/auth/access";
@@ -544,6 +546,86 @@ it("manages households, pairs, co-organizers and helpers inside the family", asy
   await expect(tx(f.familyId, (t) => actFor(t, f.viewer, f.viewer.personId))).resolves.toBe(true);
   await expect(tx(f.familyId, (t) => removeMember(t, f.viewer, f.personId, now))).resolves.toBeNull();
   await expect(f.issue()).resolves.toEqual({error: "unavailable"});
+});
+
+it("releases only unpurchased claims on member removal and rolls back with membership", async () => {
+  const f = await fixture();
+  const joined = (await f.redeem((requireIssuedKey(await f.issue())).token!, makeDevice())).session!;
+  const member = (await resolve(joined.cookie))!;
+  const remainingId = await f.add("Firleaf");
+  const key = requireIssuedKey(await tx(f.familyId, (t) => issueKey(t, f.viewer, remainingId, "share", pepper, now)));
+  const remainingSession = (await f.redeem(key.token!, makeDevice())).session!;
+  const remaining = (await resolve(remainingSession.cookie))!;
+  const pending = await addListItem(f.viewer, f.viewer.personId, {kind: "note", title: "Book"});
+  const bought = await addListItem(f.viewer, f.viewer.personId, {kind: "note", title: "Scarf"});
+  const other = await addListItem(f.viewer, f.viewer.personId, {kind: "note", title: "Mittens"});
+  const ownerBefore = await getWishlist(f.viewer, f.viewer.personId);
+  await claimItem(member, pending.id);
+  await claimItem(member, bought.id);
+  await setClaimTick(member, pending.id, "wrapped", true);
+  await setClaimTick(member, bought.id, "bought", true);
+  await claimItem(remaining, other.id);
+  const beforeRemoval = await getWishlist(remaining, f.viewer.personId);
+
+  await expect(tx(f.familyId, (t) => removeMember(t, member, remainingId, now))).resolves.toBe("forbidden");
+  await expect(tx(f.familyId, async (t) => {
+    expect(await removeMember(t, f.viewer, f.personId, now)).toBeNull();
+    throw new Error("Abort member removal");
+  })).rejects.toThrow("Abort member removal");
+  expect(await resolve(joined.cookie)).toMatchObject({personId: f.personId});
+  expect(await getWishlist(remaining, f.viewer.personId)).toEqual(beforeRemoval);
+  expect(await getGettingList(member)).toEqual(expect.arrayContaining([
+    expect.objectContaining({itemId: pending.id, bought: false, wrapped: true}),
+    expect.objectContaining({itemId: bought.id, bought: true}),
+  ]));
+
+  await expect(tx(f.familyId, (t) => removeMember(t, f.viewer, f.personId, now))).resolves.toBeNull();
+  expect(await resolve(joined.cookie)).toBeNull();
+  const afterRemoval = await getWishlist(remaining, f.viewer.personId);
+  expect(afterRemoval.items).toEqual([
+    pending, {...bought, claim: "someone"}, {...other, claim: "mine"},
+  ]);
+  await expect(claimItem(remaining, pending.id)).resolves.toBeUndefined();
+  await expect(claimItem(remaining, bought.id)).rejects.toMatchObject({code: "already-claimed"});
+  expect(await getWishlist(f.viewer, f.viewer.personId)).toEqual(ownerBefore);
+});
+
+it("blocks in-flight claims until member removal commits", async () => {
+  const f = await fixture();
+  const joined = (await f.redeem((requireIssuedKey(await f.issue())).token!, makeDevice())).session!;
+  const member = (await resolve(joined.cookie))!;
+  const item = await addListItem(f.viewer, f.viewer.personId, {kind: "note", title: "Candle"});
+  const ready = Promise.withResolvers<number>();
+  const commit = Promise.withResolvers<void>();
+  const removal = tx(f.familyId, async (t) => {
+    expect(await removeMember(t, f.viewer, f.personId, now)).toBeNull();
+    const result = await t.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+    ready.resolve(result.rows[0].pid);
+    await commit.promise;
+  });
+  void removal.catch(ready.reject);
+  let claim: Promise<void> | undefined;
+  try {
+    const removerPid = await ready.promise;
+    claim = claimItem(member, item.id);
+    void claim.catch(() => undefined);
+    await vi.waitFor(async () => {
+      const result = await tx(f.familyId, (t) => t.execute<{waiting: boolean}>(sql`
+        select exists (
+          select 1 from pg_stat_activity where ${removerPid}::integer = any(pg_blocking_pids(pid))
+        ) as waiting
+      `));
+      expect(result.rows[0].waiting).toBe(true);
+    }, {timeout: 2000, interval: 10});
+  } finally {
+    commit.resolve();
+    await removal;
+    if (claim) await Promise.allSettled([claim]);
+  }
+  await expect(claim).rejects.toMatchObject({code: "not-found"});
+  expect(await tx(f.familyId, (t) => t.select().from(claims).where(and(
+    eq(claims.familyId, f.familyId), eq(claims.itemId, item.id),
+  )))).toEqual([]);
 });
 
 it("applies row-level family isolation to every auth table", async () => {

@@ -11,6 +11,7 @@ import {reportEvent, setLanguage, signOut, switchProfile} from "./actions";
 export default async function AccountPage({searchParams}: {searchParams: Promise<{reported?: string; face?: string}>}) {
   const viewer = await requireViewer();
   const t = await getTranslations("auth");
+  const lists = await getTranslations("lists");
   const format = await getFormatter();
   const {name, helpers, activity} = await withFamily(viewer.familyId, (tx) => account(tx, viewer));
   const actingFor = helpers.find(({id}) => id === viewer.actingAs);
@@ -19,6 +20,10 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
     <main className={sectionClass}>
       <h1 className="text-2xl font-semibold">{t("hello", {name})}</h1>
       {actingFor && <p>{t("actingFor", {name: actingFor.name})}</p>}
+      <nav className="flex flex-wrap gap-x-4" aria-label={lists("navigation")}>
+        <Link className={linkClass} href={`/lists/${viewer.actingAs}`}>{lists("myList")}</Link>
+        <Link className={linkClass} href="/lists">{lists("familyLists")}</Link>
+      </nav>
       {helpers.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-xl font-semibold">{t("helpHeading")}</h2>
