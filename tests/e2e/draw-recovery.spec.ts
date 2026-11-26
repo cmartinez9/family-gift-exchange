@@ -587,6 +587,7 @@ test("dropouts and late joiners preserve unaffected matches while a confirmed re
     const beforeReport = await open(asker, f.member);
     await asker.locator("summary").filter({hasText: /^Something wrong\?$/}).click();
     await asker.getByRole("button", {name: "Try to fix my match", exact: true}).click();
+    await expect(asker.getByRole("button", {name: "Try to fix my match", exact: true})).toHaveCount(0);
     expect(await open(asker, f.member)).not.toBe(beforeReport);
     await expect(asker.getByRole("button", {name: "Try to fix my match", exact: true})).toHaveCount(0);
     await capture(asker, info, "member-report-changes-only-once");

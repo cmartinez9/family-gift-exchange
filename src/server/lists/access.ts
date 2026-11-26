@@ -10,7 +10,7 @@ export type ListViewer = Viewer;
 export class ListError extends Error {
   constructor(readonly code:
     | "not-found" | "forbidden" | "invalid-item" | "invalid-size"
-    | "invalid-profile" | "invalid-budget" | "already-claimed"
+    | "invalid-profile" | "invalid-budget" | "closed" | "already-claimed"
     | "item-changed" | "invalid-photo" | "storage-unavailable",
   ) {
     super(code);

@@ -20,7 +20,7 @@ import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionD
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {readiness, removeMember} from "../../src/server/auth/families";
-import {addListItem, getWishlist} from "../../src/server/lists";
+import {addListItem, getListExchangeCard, getWishlist} from "../../src/server/lists";
 import {renderServerTree} from "../helpers/render-server";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
@@ -33,6 +33,7 @@ import {drawPage} from "../../src/app/[locale]/exchanges/components";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
 import {reveal as revealAction} from "../../src/app/[locale]/exchanges/actions";
+import {saveBudget} from "../../src/app/[locale]/lists/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
@@ -401,6 +402,23 @@ it("creates, edits and closes an exchange manually regardless of its gift day", 
   expect(await admin.db.select().from(questions).where(eq(questions.familyId, familyId))).toEqual([]);
   await expect(runDraw(organizer, exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "closed"});
   expect(await memberDrawStatus(viewers[1], exchangeId)).toMatchObject({status: "closed"});
+});
+
+it("rejects a stale Family lists budget form after the exchange closes", async () => {
+  const {organizer, exchangeId} = await fixture();
+  signedIn.viewer = organizer;
+  const card = await getListExchangeCard(organizer);
+  expect(card).toMatchObject({id: exchangeId, budgetAmount: "25.00"});
+  const form = new FormData();
+  form.set("budget", "50");
+
+  await closeExchange(organizer, exchangeId);
+
+  const result = await saveBudget(card!.id, {}, form);
+  expect(await listExchanges(organizer)).toEqual([expect.objectContaining({
+    id: exchangeId, status: "closed", budgetAmount: "25.00",
+  })]);
+  expect(result).toEqual({error: "closed"});
 });
 
 it("gates a full synthetic practice season to its owner", async () => {

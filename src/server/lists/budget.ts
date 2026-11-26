@@ -37,6 +37,7 @@ export async function setExchangeBudget(
       budgetAmount: exchanges.budgetAmount, status: exchanges.status,
     }).from(exchanges).where(scope).for("no key update");
     if (!exchange) throw new ListError("not-found");
+    if (exchange.status === "closed") throw new ListError("closed");
     if (exchange.budgetAmount === budgetAmount) return;
     await tx.update(exchanges).set({budgetAmount}).where(scope);
     if (exchange.status === "drawn" || exchange.status === "locked") {
