@@ -112,7 +112,7 @@
     "expires": "Use by {at}.",
     "resetPin": "Reset PIN",
     "noResetRequest": "There is no open request for this person.",
-    "resetConfirm": "Confirm with them first. Their old PIN works until they use the new key. They'll see this in their sign-in activity.",
+    "resetConfirm": "Confirm with them first. If their old PIN still works, they can keep using it until they redeem the new key. A safety lockdown may already have cleared it. They'll see this in their sign-in activity.",
     "prepareReset": "Prepare a new key",
     "status": {
       "invited": "Invited",

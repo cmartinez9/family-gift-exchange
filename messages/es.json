@@ -112,7 +112,7 @@
     "expires": "Úsala antes del {at}.",
     "resetPin": "Restablecer el PIN",
     "noResetRequest": "Esta persona no tiene una solicitud pendiente.",
-    "resetConfirm": "Confírmalo primero con esta persona. Su PIN anterior funciona hasta que use la llave nueva. Verá el cambio en la actividad de su cuenta.",
+    "resetConfirm": "Confírmalo primero con esta persona. Si su PIN anterior aún funciona, puede seguir usándolo hasta que use la llave nueva. Es posible que un bloqueo de seguridad ya lo haya borrado. Verá el cambio en la actividad de su cuenta.",
     "prepareReset": "Preparar una llave nueva",
     "status": {
       "invited": "Invitada",
