@@ -10,7 +10,7 @@
 | 4 | `src/server/messages/index.ts` | Message templates, queue, delivery adapters, and reminders |
 | Shared | `src/app`, `src/i18n`, `src/server/db` | Routing, locale setup, database connection, and shared tables |
 
-Use named exports. Use kebab-case for file and directory names, camelCase for TypeScript fields, and snake_case for SQL. Keep domain helpers beside their entry points. Place translated routes under `src/app/[locale]`, translation messages in `messages/{en,es}.json`, and theme variables in `src/styles/tokens.css`.
+Use named exports for domain modules and default exports where framework or tool conventions require them. Use kebab-case for file and directory names, camelCase for TypeScript fields, and snake_case for SQL. Keep domain helpers beside their entry points. Place translated routes under `src/app/[locale]`, translation messages in `messages/{en,es}.json`, and theme variables in `src/styles/tokens.css`.
 
 ## Requests and data access
 
@@ -18,7 +18,7 @@ Keep reads in Server Components and use feature-local `actions.ts` files with `"
 
 Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep pool-level access limited to tooling and the local message viewer. RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
-Restrict pairing data to the draw module. Store only sealed recipients in assignments and questions, with their draw version. Keep the normal app role off both tables. Phase 2 owns their privileged queries, the authorized single-person reveal and question projections, and the draw and repair summaries. Organizer screens use summaries. Use the claim identity only for internal authorization and the caller's own actions. Expose anonymous claim state to other members and omit that state from the item's owner. Send only approved template identifiers and destination profiles to the message module.
+Restrict pairing data to the draw module. Store only sealed recipients in assignments and questions, with their draw version. Keep the normal app role off both tables. Phase 2 owns their privileged queries, the authorized single-person reveal and question projections, and the draw and repair summaries. Organizer screens use summaries. Use the claim identity only for internal authorization and the caller's own actions. Expose anonymous claim state to other members and omit that state from the item's owner. Send only payloads defined by the message module's [`Message` type](../src/server/messages/index.ts), keeping pairing and claim data out of message payloads.
 
 ## PostgreSQL and migrations
 
@@ -26,7 +26,7 @@ Drizzle schemas live in `src/server/db/schema.ts` and `src/server/draw/schema.ts
 
 For deployments, `DATABASE_URL` should connect as a runtime login allowed to assume `fge_app`, with neither table ownership nor RLS bypass. Use `DATABASE_ADMIN_URL` for migrations, with privileges to manage the schema and role. For local Compose and CI, the disposable database owner can run migrations and assume the same `fge_app` role that application queries use. The local viewer uses that local owner connection to inspect the latest 100 captured rows across practice families.
 
-The sender captures local and preview messages. Production messages queue with status `pending` for Phase 4 delivery. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds.
+The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`: `production` queues messages with status `pending`; all other environments capture them. Delivery adapters belong to Phase 4. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
 
 ## Tests
 

@@ -1,6 +1,6 @@
 # Family Gift Exchange
 
-A phone-first family Christmas gift exchange with a blind draw and shared wishlists in English and Spanish. This branch contains the v2 foundation.
+A phone-first family Christmas gift exchange being built with a blind draw and shared wishlists in English and Spanish. This branch contains the phase 0 foundation: a bilingual home page, database schema, and captured message outbox. The family exchange workflows are planned for later phases.
 
 ## Run locally
 
