@@ -183,7 +183,10 @@
       "needsNewKey": "Esta cuenta necesita una llave privada nueva.",
       "operatorRecovery": "Pídele una llave nueva de organizador a la persona que administra esta aplicación.",
       "previewAgain": "Vuelve a verificar tu código antes de continuar."
-    }
+    },
+    "revealActivity": "Tu persona se abrió en otros dispositivos",
+    "noRevealActivity": "Tu persona no se ha abierto desde otro inicio de sesión.",
+    "revealOpened": "{exchange}: se abrió en {device}."
   },
   "lists": {
     "account": "Mi cuenta",
@@ -407,7 +410,7 @@
       "confirmationRequired": "Escribe la confirmación tal como aparece.",
       "drawImpossible": "No pudimos hacer el sorteo con estas reglas. Revisa quién participa y quiénes no deben sacarse entre sí.",
       "checkTimedOut": "La revisión tomó demasiado tiempo. Inténtalo de nuevo o simplifica las reglas.",
-      "repairImpossible": "No hay un cambio pequeño que respete todas las reglas del sorteo.",
+      "repairImpossible": "Ninguna reparación local respeta todas las reglas. Confirma un nuevo sorteo para reemplazarlo.",
       "alreadyReported": "Ya reportaste un problema con tu persona en este intercambio.",
       "revealFirst": "Primero descubre quién es tu persona.",
       "invalidQuestion": "Escribe un mensaje de entre 1 y 500 caracteres.",
@@ -535,6 +538,7 @@
     "answerButton": "Enviar respuesta",
     "answerSent": "Se envió la respuesta.",
     "answered": "Ya respondiste.",
-    "answerPending": "Esperando respuesta"
+    "answerPending": "Esperando respuesta",
+    "disputedRevealRepaired": "Se reparó una revelación reportada. Las personas afectadas tienen nuevos nombres."
   }
 }

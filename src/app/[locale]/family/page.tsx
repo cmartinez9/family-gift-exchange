@@ -137,11 +137,11 @@ export default async function FamilyPage() {
           .map(({personA, personB}) => (
             <div key={`${personA}.${personB}`}>
               <p>{t("pairNames", {first: visibleMembers.get(personA)!, second: visibleMembers.get(personB)!})}</p>
-              {board.constraintsOpen && <AuthForm action={updatePair.bind(null, [personA, personB])} label={t("removePair")} />}
+              {board.constraintsOpen && board.exchangeId && <AuthForm action={updatePair.bind(null, board.exchangeId, [personA, personB])} label={t("removePair")} />}
             </div>
           ))}
-        {board.constraintsOpen && board.members.length >= 2 && (
-          <AuthForm action={updatePair.bind(null, null)} label={t("addPair")}>
+        {board.constraintsOpen && board.exchangeId && board.members.length >= 2 && (
+          <AuthForm action={updatePair.bind(null, board.exchangeId, null)} label={t("addPair")}>
             {(["first", "second"] as const).map((key) => (
               <label key={key} className="block">{t(key)}
                 <select name={key} className={inputClass} defaultValue="" required>

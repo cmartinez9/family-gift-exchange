@@ -195,6 +195,7 @@ export default async function ManagePage({params, searchParams}: {
       <Link className={link} href="/exchanges">{t("back")}</Link>
       <h1 className={heading}>{name}</h1>
       <Link className={link} href={`/exchanges/${id}`} prefetch={false}>{t("yourPerson")}</Link>
+      {state.exchange.disputedRevealRepairedAt && <p role="status">{t("disputedRevealRepaired")}</p>}
       <FeasibilityControl state={state} viewer={viewer} />
       {check === "1" && <Proof id={id} viewer={viewer} />}
       {status !== "closed" && (

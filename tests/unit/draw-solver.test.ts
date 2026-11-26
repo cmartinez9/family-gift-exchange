@@ -63,7 +63,7 @@ const family = fc.record({
   seed: fc.integer({min: 1, max: 0x7fffffff}),
 });
 
-it("solves 100,000 generated families and keeps local repairs within two givers", () => {
+it("solves 100,000 generated families and validates local repairs", () => {
   let comparedSmall = 0;
   let repaired = 0;
   let inserted = 0;
@@ -102,7 +102,7 @@ it("solves 100,000 generated families and keeps local repairs within two givers"
     if (next) {
       repaired++;
       const changed = remaining.filter(({id}) => next.get(id) !== pairs.get(id));
-      if (!validate(remaining, excluded, next) || changed.length < 1 || changed.length > 2) return false;
+      if (!validate(remaining, excluded, next) || changed.length < 1 || changed.length > remaining.length) return false;
     }
 
     const expanded = insertIntoDraw(drawRules(all, excluded), pairs, all.at(-1)!.id);
@@ -117,7 +117,7 @@ it("solves 100,000 generated families and keeps local repairs within two givers"
     if (updated) {
       reported++;
       const changed = people.filter(({id}) => updated.get(id) !== pairs.get(id));
-      if (!validate(people, excluded, updated) || changed.length !== 2 || updated.get(target) === pairs.get(target)) {
+      if (!validate(people, excluded, updated) || changed.length < 2 || updated.get(target) === pairs.get(target)) {
         return false;
       }
     }
@@ -145,4 +145,33 @@ it("identifies a majority household and a roster below four", () => {
   }));
   expect(checkRules(drawRules(people, []))).toMatchObject({possible: false, blocker: "householdTooLarge"});
   expect(checkRules(drawRules(people.slice(0, 3), []))).toMatchObject({possible: false, blocker: "tooFew"});
+});
+
+it("tries three changed givers when removing E from A E B C D", () => {
+  const people = ["A", "B", "C", "D"].map((id) => ({id, householdId: null, helperId: null}));
+  const excluded = [{personA: "A", personB: "B"}];
+  const previous = new Map([["A", "E"], ["E", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]);
+  const next = removeFromDraw(drawRules(people, excluded), previous, "E")!;
+  expect(next).not.toBeNull();
+  expect(validate(people, excluded, next)).toBe(true);
+  expect(people.filter(({id}) => next.get(id) !== previous.get(id))).toHaveLength(3);
+  expect(inspectDraw(drawRules(people, excluded), next, excluded).oneLoop).toBe(true);
+});
+
+it("keeps one-giver repairs and exhausts larger repairs before failing", () => {
+  const people = ["A", "B", "C", "D"].map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map([["A", "E"], ["E", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]);
+  const next = removeFromDraw(drawRules(people, []), previous, "E")!;
+  expect(validate(people, [], next)).toBe(true);
+  expect(people.filter(({id}) => next.get(id) !== previous.get(id))).toHaveLength(1);
+  expect(removeFromDraw(drawRules(people.slice(0, 3), []), previous, "E")).toBeNull();
+});
+
+it("expands a reveal repair beyond two givers when needed", () => {
+  const people = ["A", "B", "C", "D"].map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map([["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]);
+  const next = repairReportedPair(drawRules(people, []), previous, "A")!;
+  expect(validate(people, [], next)).toBe(true);
+  expect(next.get("A")).not.toBe(previous.get("A"));
+  expect(people.filter(({id}) => next.get(id) !== previous.get(id))).toHaveLength(3);
 });

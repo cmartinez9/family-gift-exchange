@@ -5,11 +5,12 @@ import {revalidatePath} from "next/cache";
 import QRCode from "qrcode";
 import {requireViewer} from "@/server/auth";
 import {issueKey, markKeySent, type KeyKind} from "@/server/auth/access";
-import {changeCoOrganizer, changeKeepApart, removeMember, saveHousehold, saveMember} from "@/server/auth/families";
+import {changeCoOrganizer, removeMember, saveHousehold, saveMember} from "@/server/auth/families";
 import {authenticatorSecret} from "@/server/auth/pin";
 import {appOrigin} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
+import {DrawError, setKeepApart} from "@/server/draw";
 import type {AuthResult} from "../sign-in/actions";
 
 function field(data: FormData, key: string) {
@@ -51,11 +52,19 @@ export async function updateHousehold(id: string | null, remove: boolean, _: Aut
   return refreshFamily(await withFamily(viewer.familyId, (tx) => saveHousehold(tx, viewer, id, remove ? null : name)));
 }
 
-export async function updatePair(pair: [string, string] | null, _: AuthResult, data: FormData): Promise<AuthResult> {
+export async function updatePair(exchangeId: string, pair: [string, string] | null, _: AuthResult, data: FormData): Promise<AuthResult> {
   const [first, second] = pair ?? [field(data, "first"), field(data, "second")];
-  if (!uuidPattern.test(first) || !uuidPattern.test(second)) return {error: "unavailable"};
+  if (!uuidPattern.test(exchangeId) || !uuidPattern.test(first) || !uuidPattern.test(second)) return {error: "unavailable"};
   const viewer = await requireViewer();
-  return refreshFamily(await withFamily(viewer.familyId, (tx) => changeKeepApart(tx, viewer, first, second, Boolean(pair))));
+  try {
+    await setKeepApart(viewer, exchangeId, first, second, pair ? null : "custom");
+  } catch (error) {
+    const code = error instanceof DrawError ? error.code : "unavailable";
+    return {error: code === "drawLocked" || code === "closed" ? "drawStarted"
+      : code === "invalidKeepApart" ? "differentPeople" : code === "forbidden" ? "forbidden" : "unavailable"};
+  }
+  revalidatePath(`/${await getLocale()}/exchanges`, "layout");
+  return refreshFamily(null);
 }
 
 export async function updateCoOrganizer(_: AuthResult, data: FormData): Promise<AuthResult> {

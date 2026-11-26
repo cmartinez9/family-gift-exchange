@@ -1,6 +1,5 @@
-import {and, eq, inArray} from "drizzle-orm";
-import type {FamilyTransaction} from "../db/database";
-import {exchanges, participants} from "../db/schema";
+import {and, eq} from "drizzle-orm";
+import {participants} from "../db/schema";
 import {
   authorizeSubject, DrawError, lockOrganizer, requireOrganizer, type DrawViewer,
 } from "./access";
@@ -8,13 +7,13 @@ import {publishDraw, type DrawEvents} from "./events";
 import {selectRoster} from "./exchange";
 import {participantIds, recordId} from "./inputs";
 import {insertIntoDraw, removeFromDraw, repairReportedPair} from "./repair";
-import {assignments, drawReports, questions} from "./schema";
-import {drawSeal, encryptionKey, sealText} from "./sealing";
-import {checkRules, inspectDraw, maximumPeople, solveDraw, type Pairs} from "./solver";
+import {drawReports} from "./schema";
+import {drawSeal, encryptionKey} from "./sealing";
+import {checkRules, inspectDraw, maximumPeople, solveDraw} from "./solver";
 import {
-  assignmentScope, auditedDraw, authorizeSealedSubject, checkVersion, currentParticipants, exchangeScope,
+  auditedDraw, authorizeSealedSubject, checkVersion, currentParticipants,
   InvalidSeal, liveRoster, loadDraftRules, loadExchange, loadPairs, loadSnapshot, participantScope, requireOpen,
-  saveSnapshot, snapshotRules, type Exchange, type RuleSnapshot,
+  snapshotRules, writeDraw, writeRepair,
 } from "./store";
 
 export const redrawConfirmation = {en: "REDRAW", es: "VOLVER A SORTEAR"} as const;
@@ -60,50 +59,6 @@ export async function dryRunDraw(viewer: DrawViewer, id: string) {
   return {possible, fewestChoices};
 }
 
-function questionScope(familyId: string, exchangeId: string) {
-  return and(eq(questions.familyId, familyId), eq(questions.exchangeId, exchangeId));
-}
-
-async function writeDraw(
-  tx: FamilyTransaction, familyId: string, exchange: Exchange,
-  pairs: Pairs, snapshot: RuleSnapshot, status: "drawn" | "locked",
-  previous?: Pairs,
-) {
-  const exchangeId = exchange.id;
-  const version = exchange.version + 1;
-  const key = encryptionKey();
-  const seal = drawSeal(key, familyId, exchangeId, version, pairs);
-  const replacement = [...pairs].map(([giverId, recipientId]) => ({
-    familyId, exchangeId, giverId, version,
-    recipientSealed: sealText(key, {field: "assignment", familyId, exchangeId, giverId, version}, recipientId),
-  }));
-
-  await tx.delete(assignments).where(assignmentScope(familyId, exchangeId));
-  await tx.insert(assignments).values(replacement);
-  await saveSnapshot(tx, familyId, exchangeId, snapshot);
-  await tx.update(exchanges).set({drawVersion: version, seal, status}).where(exchangeScope(familyId, exchangeId));
-
-  const scope = participantScope(familyId, exchangeId);
-  if (!previous) {
-    await tx.update(participants).set({seenVersion: null}).where(scope);
-    await tx.delete(questions).where(questionScope(familyId, exchangeId));
-    return {version, seal, participantCount: pairs.size};
-  }
-
-  // Preserve seen status only when the person still has the same recipient.
-  const reset = [...previous].filter(([giver, recipient]) => pairs.get(giver) !== recipient)
-    .map(([giver]) => giver);
-  if (reset.length) {
-    await tx.update(participants).set({seenVersion: null})
-      .where(and(scope, inArray(participants.personId, reset)));
-    await tx.delete(questions).where(and(questionScope(familyId, exchangeId), inArray(questions.askerId, reset)));
-  }
-  await tx.update(participants).set({seenVersion: version})
-    .where(and(scope, eq(participants.status, "in"), eq(participants.seenVersion, exchange.version)));
-
-  return {version, seal, participantCount: pairs.size};
-}
-
 export async function runDraw(
   viewer: DrawViewer, id: string,
   request: {expectedVersion: number; confirmation?: string; selection?: readonly string[]},
@@ -133,7 +88,7 @@ export async function runDraw(
       familyId, exchangeId: exchange.id, version: summary.version,
     }, [...pairs.keys()]);
     return summary;
-  });
+  }, false);
 }
 
 export async function checkSealedDraw(viewer: DrawViewer, id: string) {
@@ -163,22 +118,6 @@ export async function checkSealedDraw(viewer: DrawViewer, id: string) {
       throw error;
     }
   });
-}
-
-async function writeRepair(
-  tx: FamilyTransaction, viewer: DrawViewer, exchange: Exchange, snapshot: RuleSnapshot,
-  previous: Pairs, next: Pairs | null, events?: DrawEvents,
-) {
-  if (!next) throw new DrawError("repairImpossible");
-  const familyId = viewer.familyId;
-  const status = exchange.status === "locked" ? "locked" : "drawn";
-  const summary = await writeDraw(tx, familyId, exchange, next, snapshot, status, previous);
-  const destinations = [...next].filter(([giver, recipient]) => previous.get(giver) !== recipient)
-    .map(([giver]) => giver);
-  await publishDraw(events, tx, {
-    kind: "reassigned", familyId, exchangeId: exchange.id, version: summary.version,
-  }, destinations);
-  return {...summary, changedGivers: destinations.filter((giver) => previous.has(giver)).length};
 }
 
 export async function changeParticipation(
@@ -221,11 +160,11 @@ export async function changeParticipation(
       snapshot.roster.push({id, helperId, householdId});
       if (snapshot.roster.length > maximumPeople) throw new DrawError("invalidParticipants");
       const updated = insertIntoDraw(snapshotRules(snapshot), previous, personId);
-      return writeRepair(tx, viewer, exchange, snapshot, previous, updated, events);
+      return writeRepair(tx, familyId, exchange, snapshot, previous, updated, events);
     }
     snapshot.roster = snapshot.roster.filter(({id}) => id !== personId);
-    const updated = removeFromDraw(snapshotRules(snapshot), previous, personId);
-    return writeRepair(tx, viewer, exchange, snapshot, previous, updated, events);
+    const updated = removeFromDraw(snapshotRules(snapshot), previous, personId, deadline(1500));
+    return writeRepair(tx, familyId, exchange, snapshot, previous, updated, events);
   });
 }
 
@@ -250,8 +189,8 @@ export async function reportPair(
     if (!inserted.rowCount) throw new DrawError("alreadyReported");
 
     const previous = await loadPairs(tx, familyId, exchange, decrypt, "repair");
-    const next = repairReportedPair(snapshotRules(snapshot), previous, viewer.actingAs);
-    const {version} = await writeRepair(tx, viewer, exchange, snapshot, previous, next, events);
+    const next = repairReportedPair(snapshotRules(snapshot), previous, viewer.actingAs, deadline(1500));
+    const {version} = await writeRepair(tx, familyId, exchange, snapshot, previous, next, events);
     return {version};
   });
 }

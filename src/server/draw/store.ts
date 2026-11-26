@@ -1,10 +1,13 @@
-import {and, eq, isNull, sql} from "drizzle-orm";
+import {and, eq, inArray, isNull, sql} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {audit, exchanges, keepApart, participants, people} from "../db/schema";
 import {DrawError, scopeDrawFamily, withDrawFamily, type DrawViewer} from "./access";
-import {assignments, drawRuleSnapshots} from "./schema";
-import {encryptionKey, openText} from "./sealing";
-import {drawRules, type DrawPerson, type KeepApartPair} from "./solver";
+import {assignments, drawOpenings, drawRuleSnapshots, questions} from "./schema";
+import {drawSeal, encryptionKey, openText, sealText} from "./sealing";
+import {listSessionDisputes} from "../auth/security";
+import {publishDraw, type DrawEvents} from "./events";
+import {repairDraw} from "./repair";
+import {drawRules, type DrawPerson, type KeepApartPair, type Pairs} from "./solver";
 
 export const exchangeFields = {
   id: exchanges.id,
@@ -18,6 +21,7 @@ export const exchangeFields = {
   status: exchanges.status,
   version: exchanges.drawVersion,
   seal: exchanges.seal,
+  disputedRevealRepairedAt: exchanges.disputedRevealRepairedAt,
 };
 
 export function exchangeScope(familyId: string, exchangeId: string) {
@@ -136,10 +140,12 @@ export type DrawDecryptor = ReturnType<typeof drawDecryptor>;
 
 export async function auditedDraw<T>(
   familyId: string, action: (tx: FamilyTransaction, decrypt: DrawDecryptor) => Promise<T>,
+  repairDisputes = true,
 ) {
   const decrypt = drawDecryptor();
   try {
     return await withDrawFamily(familyId, async (tx) => {
+      if (repairDisputes) await reconcileDisputedReveals(tx, familyId, decrypt);
       const result = await action(tx, decrypt);
       if (decrypt.purposes.length) {
         // A practice action temporarily switches scopes, but audits belong to its owning family.
@@ -149,7 +155,7 @@ export async function auditedDraw<T>(
         })));
       }
       return result;
-    });
+    }, "update");
   } catch (error) {
     // If the transaction rolled back there is no database audit row.
     for (const purpose of decrypt.purposes) console.info("draw.decrypt", purpose);
@@ -185,4 +191,99 @@ export async function loadRecipient(
     field: "assignment", familyId: viewer.familyId, exchangeId: exchange.id,
     giverId: viewer.actingAs, version: exchange.version,
   }, assignment.sealed);
+}
+
+function questionScope(familyId: string, exchangeId: string) {
+  return and(eq(questions.familyId, familyId), eq(questions.exchangeId, exchangeId));
+}
+
+export async function writeDraw(
+  tx: FamilyTransaction, familyId: string, exchange: Exchange,
+  pairs: Pairs, snapshot: RuleSnapshot, status: "drawn" | "locked",
+  previous?: Pairs,
+) {
+  const exchangeId = exchange.id;
+  const version = exchange.version + 1;
+  const key = encryptionKey();
+  const seal = drawSeal(key, familyId, exchangeId, version, pairs);
+  const replacement = [...pairs].map(([giverId, recipientId]) => ({
+    familyId, exchangeId, giverId, version,
+    recipientSealed: sealText(key, {field: "assignment", familyId, exchangeId, giverId, version}, recipientId),
+  }));
+
+  const changed = previous
+    ? [...previous].filter(([giver, recipient]) => pairs.get(giver) !== recipient).map(([giver]) => giver)
+    : null;
+  await tx.update(drawOpenings).set({invalidatedAt: new Date()}).where(and(
+    eq(drawOpenings.familyId, familyId), eq(drawOpenings.exchangeId, exchangeId),
+    isNull(drawOpenings.invalidatedAt), changed ? inArray(drawOpenings.giverId, changed) : undefined,
+  ));
+  await tx.delete(assignments).where(assignmentScope(familyId, exchangeId));
+  await tx.insert(assignments).values(replacement);
+  await saveSnapshot(tx, familyId, exchangeId, snapshot);
+  await tx.update(exchanges).set({drawVersion: version, seal, status}).where(exchangeScope(familyId, exchangeId));
+
+  const scope = participantScope(familyId, exchangeId);
+  if (!previous) {
+    await tx.update(participants).set({seenVersion: null}).where(scope);
+    await tx.delete(questions).where(questionScope(familyId, exchangeId));
+    return {version, seal, participantCount: pairs.size};
+  }
+
+  // Preserve seen status only when the person still has the same recipient.
+  const reset = changed ?? [];
+  if (reset.length) {
+    await tx.update(participants).set({seenVersion: null})
+      .where(and(scope, inArray(participants.personId, reset)));
+    await tx.delete(questions).where(and(questionScope(familyId, exchangeId), inArray(questions.askerId, reset)));
+  }
+  await tx.update(participants).set({seenVersion: version})
+    .where(and(scope, eq(participants.status, "in"), eq(participants.seenVersion, exchange.version)));
+
+  return {version, seal, participantCount: pairs.size};
+}
+
+export async function writeRepair(
+  tx: FamilyTransaction, familyId: string, exchange: Exchange, snapshot: RuleSnapshot,
+  previous: Pairs, next: Pairs | null, events?: DrawEvents,
+) {
+  if (!next) throw new DrawError("repairImpossible");
+  const status = exchange.status === "locked" ? "locked" : "drawn";
+  const summary = await writeDraw(tx, familyId, exchange, next, snapshot, status, previous);
+  const destinations = [...next].filter(([giver, recipient]) => previous.get(giver) !== recipient)
+    .map(([giver]) => giver);
+  await publishDraw(events, tx, {
+    kind: "reassigned", familyId, exchangeId: exchange.id, version: summary.version,
+  }, destinations);
+  return {...summary, changedGivers: destinations.filter((giver) => previous.has(giver)).length};
+}
+
+async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {
+  const openings = await tx.select({
+    exchangeId: drawOpenings.exchangeId, giverId: drawOpenings.giverId,
+    viewerId: drawOpenings.viewerId, sessionId: drawOpenings.sessionId,
+  }).from(drawOpenings).where(and(eq(drawOpenings.familyId, familyId), isNull(drawOpenings.invalidatedAt)));
+  const affected = new Map<string, Set<string>>();
+  for (const personId of new Set(openings.map(({viewerId}) => viewerId))) {
+    const disputes = await listSessionDisputes(tx, familyId, personId);
+    const sessions = new Set(disputes.map(({sessionId}) => sessionId));
+    for (const opening of openings) {
+      if (opening.viewerId !== personId || !sessions.has(opening.sessionId)) continue;
+      const givers = affected.get(opening.exchangeId) ?? new Set<string>();
+      givers.add(opening.giverId);
+      affected.set(opening.exchangeId, givers);
+    }
+  }
+  for (const [exchangeId, givers] of affected) {
+    const exchange = await loadExchange(tx, familyId, exchangeId);
+    if (exchange.status === "closed" || !exchange.version) continue;
+    const snapshot = await loadSnapshot(tx, familyId, exchangeId);
+    const previous = await loadPairs(tx, familyId, exchange, decrypt, "repair");
+    const end = performance.now() + 1500;
+    const next = repairDraw(snapshotRules(snapshot), previous, [...givers], () => {
+      if (performance.now() > end) throw new DrawError("checkTimedOut");
+    });
+    await writeRepair(tx, familyId, exchange, snapshot, previous, next);
+    await tx.update(exchanges).set({disputedRevealRepairedAt: new Date()}).where(exchangeScope(familyId, exchangeId));
+  }
 }

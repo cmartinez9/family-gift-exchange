@@ -79,6 +79,7 @@ export const drawOpenings = pgTable("draw_openings", {
   viewerId: uuid("viewer_id").notNull(),
   sessionId: uuid("session_id").notNull(),
   openedAt: instant("opened_at").defaultNow().notNull(),
+  invalidatedAt: instant("invalidated_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.exchangeId, table.giverId, table.version, table.sessionId]}),
   check("draw_openings_positive_version", sql`${table.version} > 0`),

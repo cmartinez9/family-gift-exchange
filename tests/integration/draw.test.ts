@@ -2,18 +2,30 @@ import {randomBytes, randomUUID} from "node:crypto";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {audit, families, households, participants, people} from "../../src/server/db/schema";
+import {audit, families, households, keepApart, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
   drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
   organizerExchange, ownRevealOpenings, practiceCommand, practiceMemberView, practiceSeason,
-  previewAsMember, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
+  previewAsMember, repairDisputedReveals, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
   type DrawEvents, type DrawViewer, type ExchangeDetails,
 } from "../../src/server/draw";
+import {issueKey, redeemKey, signInDevice, type Device} from "../../src/server/auth/access";
+import {account, disputeEvent} from "../../src/server/auth/security";
+import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
+import {requireIssuedKey} from "../helpers/issued-key";
+import {reportEvent} from "../../src/app/[locale]/account/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
+const signedIn = vi.hoisted(() => ({viewer: null as DrawViewer | null}));
 vi.mock("server-only", () => ({}));
+vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
+vi.mock("next/navigation", () => ({redirect: (url: string) => { throw new Error(`redirect:${url}`); }}));
+vi.mock("@/server/auth", async (original) => ({
+  ...await original<typeof import("../../src/server/auth")>(),
+  requireViewer: async () => signedIn.viewer!,
+}));
 
 const databaseUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("The draw integration tests need a disposable Postgres database");
@@ -39,6 +51,7 @@ beforeAll(async () => {
     await admin.db.execute(sql`CREATE ROLE ${sql.identifier(login)} LOGIN NOINHERIT PASSWORD ${sql.raw(`'${password}'`)}`);
     await admin.db.execute(sql`GRANT ${sql.identifier(membership)} TO ${sql.identifier(login)}`);
   }
+  vi.stubEnv("DATABASE_URL", testLogin(appRole, password));
   vi.stubEnv("DRAW_DATABASE_URL", testLogin(drawRole, password));
   vi.stubEnv("ASSIGNMENT_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
 });
@@ -71,9 +84,16 @@ async function fixture({helpers = false, count = 7, active = 6} = {}) {
       helperId: index === 1 && helpers ? ids[0] : null,
     })));
   });
-  const viewers = ids.map((personId, index): DrawViewer => ({
-    familyId, personId, actingAs: personId, sessionId: randomUUID(), isOrganizer: index === 0 || index === 2,
-  }));
+  const viewers = await runForFamily(app.db, familyId, async (tx) => {
+    const result: DrawViewer[] = [];
+    for (const [index, personId] of ids.entries()) {
+      const session = await signInDevice(tx, familyId, personId, {
+        hash: digest(secret()), kind: "iphone", network: null,
+      }, new Date());
+      result.push({familyId, personId, actingAs: personId, sessionId: session.id, isOrganizer: index === 0 || index === 2});
+    }
+    return result;
+  });
   const organizer = viewers[0];
   const {id: exchangeId} = await createExchange(organizer, details);
   await setParticipants(organizer, exchangeId, ids.slice(0, active));
@@ -156,7 +176,7 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   expect(await revealMyPerson(deviceTwo, exchangeId, 2)).toEqual(opened);
   await revealMyPerson(deviceTwo, exchangeId, 2);
   expect((await ownRevealOpenings(helper, exchangeId)).map(({sessionId}) => sessionId).sort())
-    .toEqual([helper.sessionId, deviceTwo.sessionId].sort());
+    .toEqual([deviceTwo.sessionId]);
   expect(await ownRevealOpenings(organizer, exchangeId)).toEqual([]);
   await expect(runDraw(organizer, exchangeId, {expectedVersion: 2, confirmation: "yes"}))
     .rejects.toMatchObject({code: "confirmationRequired"});
@@ -369,4 +389,105 @@ it("detects ciphertext substitution without exposing either person", async () =>
   }
   expect(await ownRevealOpenings(organizer, exchangeId)).toEqual([]);
   expect(await memberDrawStatus(viewers[0], exchangeId)).toMatchObject({status: "ready", seen: false});
+});
+
+it("shows an organizer's replacement-key reveal and repairs it after the member disputes the session", async () => {
+  const f = await fixture();
+  const pepper = secret();
+  const memberId = f.ids[1];
+  const tx = <T,>(action: Parameters<typeof runForFamily<T>>[2]) => runForFamily(app.db, f.familyId, action);
+  const device = (kind: Device["kind"]): Device => ({kind, hash: digest(secret()), network: null});
+  const redeem = async (kind: "share" | "reset", chosenPin: string, onDevice: Device) => {
+    const key = requireIssuedKey(await tx((t) => issueKey(t, f.organizer, memberId, kind, pepper, new Date())));
+    const result = await tx((t) => redeemKey(t, {
+      familyId: f.familyId, value: key.token, typed: false, pin: chosenPin, confirmation: chosenPin,
+      pepper, device: onDevice, currentViewer: null, now: new Date(),
+    }));
+    expect(result.session).toBeDefined();
+    return {cookie: result.session!.cookie, viewer: (await tx((t) => findViewer(t, parseSession(result.session!.cookie)!)))!};
+  };
+  await redeem("share", "4268", device("iphone"));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  const impersonator = await redeem("reset", "6285", device("computer"));
+  const stolen = await revealMyPerson(impersonator.viewer, f.exchangeId, 1);
+  await askYourPerson(impersonator.viewer, f.exchangeId, 1, "Favorite color?");
+  const member = await redeem("reset", "4268", device("iphone"));
+  await revealMyPerson(member.viewer, f.exchangeId, 1);
+  const openings = await ownRevealOpenings(member.viewer);
+  expect(openings).toEqual([{
+    exchangeId: f.exchangeId, exchangeName: details.name, version: 1,
+    sessionId: impersonator.viewer.sessionId, deviceKind: "computer", openedAt: expect.any(Date),
+  }]);
+  expect(await ownRevealOpenings(f.organizer, f.exchangeId)).toEqual([]);
+  const {activity} = await tx((t) => account(t, member.viewer));
+  const event = activity.find(({sessionId, kind}) => sessionId === impersonator.viewer.sessionId && kind === "resetUsed")!;
+  signedIn.viewer = member.viewer;
+  await expect(reportEvent(event.id)).rejects.toThrow("redirect:/en/account?reported=1");
+  await Promise.all([repairDisputedReveals(member.viewer), repairDisputedReveals(member.viewer)]);
+  const status = await memberDrawStatus(member.viewer, f.exchangeId);
+  expect(status).toMatchObject({status: "ready", seen: false, exchange: {version: 2}});
+  const repaired = await revealMyPerson(member.viewer, f.exchangeId, 2);
+  expect(repaired.person.id).not.toBe(stolen.person.id);
+  expect(await listOwnQuestions(member.viewer, f.exchangeId)).toMatchObject({outgoing: []});
+  expect(await tx((t) => findViewer(t, parseSession(impersonator.cookie)!))).toBeNull();
+  expect(await ownRevealOpenings(member.viewer)).toEqual(openings);
+  await repairDisputedReveals(member.viewer);
+  expect(await memberDrawStatus(member.viewer, f.exchangeId)).toMatchObject({exchange: {version: 2}});
+  const organizer = await organizerExchange(f.organizer, f.exchangeId);
+  expect(organizer.exchange.disputedRevealRepairedAt).toBeInstanceOf(Date);
+  verifyNoPairing([organizer, await checkSealedDraw(f.organizer, f.exchangeId)]);
+});
+
+it("does not repair an unopened disputed session or an opening invalidated by a redraw", async () => {
+  const f = await fixture();
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  const owner = {...f.viewers[1], sessionId: randomUUID()};
+  const extra = await runForFamily(app.db, f.familyId, (tx) => signInDevice(tx, f.familyId, owner.personId, {
+    hash: digest(secret()), kind: "ipad", network: null,
+  }, new Date()));
+  owner.sessionId = extra.id;
+  const original = f.viewers[1];
+  const event = (await runForFamily(app.db, f.familyId, (tx) => account(tx, owner))).activity
+    .find(({sessionId}) => sessionId === original.sessionId)!;
+  await runForFamily(app.db, f.familyId, (tx) => disputeEvent(tx, owner, event.id, new Date()));
+  await repairDisputedReveals(owner);
+  expect(await memberDrawStatus(owner, f.exchangeId)).toMatchObject({exchange: {version: 1}});
+  await revealMyPerson(f.viewers[3], f.exchangeId, 1);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"});
+  const otherOwner = {...f.viewers[3], sessionId: (await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[3], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ))).id};
+  const oldEvent = (await runForFamily(app.db, f.familyId, (tx) => account(tx, otherOwner))).activity
+    .find(({sessionId}) => sessionId === f.viewers[3].sessionId)!;
+  await runForFamily(app.db, f.familyId, (tx) => disputeEvent(tx, otherOwner, oldEvent.id, new Date()));
+  await repairDisputedReveals(otherOwner);
+  expect(await memberDrawStatus(otherOwner, f.exchangeId)).toMatchObject({exchange: {version: 2}});
+});
+
+it("keeps rules exchange-scoped and preserves inactive roster status in the canonical editor", async () => {
+  const f = await fixture();
+  await setKeepApart(f.organizer, f.exchangeId, f.ids[1], f.ids[6], "custom");
+  expect((await organizerExchange(f.organizer, f.exchangeId)).people.find(({id}) => id === f.ids[6]))
+    .toMatchObject({participating: false});
+  const rows = await runForFamily(app.db, f.familyId, (tx) => tx.select().from(participants)
+    .where(and(eq(participants.exchangeId, f.exchangeId), eq(participants.personId, f.ids[6]))));
+  expect(rows).toMatchObject([{status: "out"}]);
+  await setKeepApart(f.organizer, f.exchangeId, f.ids[6], f.ids[1], "partner");
+  expect((await organizerExchange(f.organizer, f.exchangeId)).rules).toEqual([
+    expect.objectContaining({reason: "partner"}),
+  ]);
+  const foreign = await fixture();
+  await expect(setKeepApart(f.organizer, f.exchangeId, f.ids[1], foreign.ids[1], "custom"))
+    .rejects.toMatchObject({code: "invalidKeepApart"});
+  await expect(setKeepApart(f.viewers[1], f.exchangeId, f.ids[1], f.ids[6], "custom"))
+    .rejects.toMatchObject({code: "forbidden"});
+  await setKeepApart(f.organizer, f.exchangeId, f.ids[6], f.ids[1], null);
+  expect((await organizerExchange(f.organizer, f.exchangeId)).rules).toEqual([]);
+  await setKeepApart(f.organizer, f.exchangeId, f.ids[1], f.ids[6], "custom");
+  await closeExchange(f.organizer, f.exchangeId);
+  const next = await createExchange(f.organizer, {...details, name: "Next Christmas"});
+  expect((await organizerExchange(f.organizer, next.id)).rules).toEqual([]);
+  const saved = await runForFamily(app.db, f.familyId, (tx) => tx.select().from(keepApart)
+    .where(eq(keepApart.exchangeId, f.exchangeId)));
+  expect(saved).toHaveLength(1);
 });

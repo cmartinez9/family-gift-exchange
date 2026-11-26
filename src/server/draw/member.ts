@@ -1,4 +1,5 @@
-import {and, eq} from "drizzle-orm";
+import {and, eq, ne} from "drizzle-orm";
+import {sessions} from "../auth/schema";
 import type {FamilyTransaction} from "../db/database";
 import {exchanges, participants, people} from "../db/schema";
 import {authorizeSubject, DrawError, type DrawViewer} from "./access";
@@ -74,15 +75,26 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
   });
 }
 
-export async function ownRevealOpenings(viewer: DrawViewer, id: string) {
+export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
   return auditedDraw(viewer.familyId, async (tx) => {
     await authorizeSubject(tx, viewer);
-    const exchange = await loadExchange(tx, viewer.familyId, recordId(id));
+    if (id) await loadExchange(tx, viewer.familyId, recordId(id));
     return tx.select({
+      exchangeId: drawOpenings.exchangeId, exchangeName: exchanges.name,
       version: drawOpenings.version, sessionId: drawOpenings.sessionId, openedAt: drawOpenings.openedAt,
-    }).from(drawOpenings).where(and(
-      eq(drawOpenings.familyId, viewer.familyId), eq(drawOpenings.exchangeId, exchange.id),
+      deviceKind: sessions.deviceKind,
+    }).from(drawOpenings).innerJoin(exchanges, and(
+      eq(exchanges.familyId, drawOpenings.familyId), eq(exchanges.id, drawOpenings.exchangeId),
+    )).leftJoin(sessions, and(
+      eq(sessions.familyId, drawOpenings.familyId), eq(sessions.id, drawOpenings.sessionId),
+    )).where(and(
+      eq(drawOpenings.familyId, viewer.familyId), id ? eq(drawOpenings.exchangeId, recordId(id)) : undefined,
       eq(drawOpenings.giverId, viewer.actingAs), eq(drawOpenings.viewerId, viewer.personId),
+      ne(drawOpenings.sessionId, viewer.sessionId),
     )).orderBy(drawOpenings.openedAt, drawOpenings.sessionId);
   });
+}
+
+export async function repairDisputedReveals(viewer: DrawViewer) {
+  return auditedDraw(viewer.familyId, async (tx) => { await authorizeSubject(tx, viewer); });
 }

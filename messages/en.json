@@ -183,7 +183,10 @@
       "needsNewKey": "This account needs a new private key.",
       "operatorRecovery": "Ask the person who runs this app for a new organizer key.",
       "previewAgain": "Check your code again before continuing."
-    }
+    },
+    "revealActivity": "Your person opened on other devices",
+    "noRevealActivity": "Your person has not been opened from another sign-in.",
+    "revealOpened": "{exchange}: opened on {device}."
   },
   "lists": {
     "account": "My account",
@@ -407,7 +410,7 @@
       "confirmationRequired": "Enter the confirmation exactly as shown.",
       "drawImpossible": "The names couldn’t be drawn with these rules. Check who’s in and who needs to stay apart.",
       "checkTimedOut": "The check took too long. Try again or simplify the keep-apart rules.",
-      "repairImpossible": "There’s no small change that keeps all the draw rules.",
+      "repairImpossible": "No local repair keeps all the draw rules. Use the confirmed redraw to replace the draw.",
       "alreadyReported": "You’ve already reported a problem with your person in this exchange.",
       "revealFirst": "Open your person first.",
       "invalidQuestion": "Write a message between 1 and 500 characters.",
@@ -535,6 +538,7 @@
     "answerButton": "Send answer",
     "answerSent": "Answer sent.",
     "answered": "You’ve answered.",
-    "answerPending": "Waiting for an answer"
+    "answerPending": "Waiting for an answer",
+    "disputedRevealRepaired": "A disputed reveal was repaired. The affected people have new matches."
   }
 }

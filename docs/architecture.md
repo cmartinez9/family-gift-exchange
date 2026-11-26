@@ -36,7 +36,9 @@ For deployments, `DATABASE_URL` should connect as a runtime login allowed to ass
 
 `DRAW_DATABASE_URL` connects as a separate login allowed to assume `fge_draw`. Give that login and the app login only their respective request roles. Keep table ownership and RLS bypass on the migration connection. For disposable local databases, the draw connection can use the local database owner and still explicitly assumes `fge_draw` for requests. Set `ASSIGNMENT_ENCRYPTION_KEY` to a base64-encoded 32-byte secret. Existing assignments require the key they were sealed with.
 
-Draw notifications use the `DrawEvents` contract exported by the draw module. Its publisher queues messages using the supplied transaction so a failed enqueue rolls back the draw or repair. Delivery destinations are private. The public event data contains the event kind, family, exchange, and version. Repair destinations stay out of organizer views and exports.
+Draw notifications use the `DrawEvents` contract exported by the draw module. Its publisher queues messages using the supplied transaction so a failed enqueue rolls back the draw or repair. Delivery destinations are private. The public event data contains the event kind, family, exchange, and version. Repair destinations stay out of organizer views and exports. Both family and exchange keep-apart editors use the draw module’s exchange-scoped operation; rules can include inactive family members without enrolling them.
+
+Members see other sessions that opened their person, including device and time. Draw access consumes sign-in session disputes before returning sealed data and locally reassigns every exposed giver, searching in increasing order of changed givers. Reassignment invalidates the affected opening records for future dispute repair while retaining their history. An organizer sees only a generic disputed-reveal repair notice. If local repair is impossible, the organizer must use the existing confirmed full redraw.
 
 ## Notifications
 

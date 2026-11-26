@@ -80,6 +80,7 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     .orderBy(desc(authEvents.at)).limit(30);
   return {
     familyName: family.name, members, devices, groups, pairs, requests, sent, activity,
+    exchangeId: exchange?.id ?? null,
     canSendKeys: true,
     constraintsOpen: exchange?.status === "open" || exchange?.status === "setup",
   };
@@ -192,29 +193,6 @@ export async function saveHousehold(tx: FamilyTransaction, viewer: Viewer, id: s
     if (exchange?.status === "drawn" || exchange?.status === "locked") return "drawStarted";
     await tx.update(people).set({householdId: null}).where(and(eq(people.familyId, familyId), eq(people.householdId, id)));
     await tx.delete(households).where(and(eq(households.familyId, familyId), eq(households.id, id)));
-  }
-  return null;
-}
-
-export async function changeKeepApart(tx: FamilyTransaction, viewer: Viewer, first: string, second: string, remove: boolean) {
-  const {familyId} = viewer;
-  await lockFamily(tx, familyId);
-  if (!await isManager(tx, viewer)) return "forbidden";
-  if (first === second) return "differentPeople";
-  const exchange = await currentExchange(tx, familyId);
-  if (!exchange || (exchange.status !== "open" && exchange.status !== "setup")) return "drawStarted";
-  const [personA, personB] = [first, second].sort();
-  const values = {familyId, exchangeId: exchange.id, personA, personB};
-  if (remove) {
-    await tx.delete(keepApart).where(and(eq(keepApart.familyId, familyId), eq(keepApart.exchangeId, exchange.id),
-      eq(keepApart.personA, personA), eq(keepApart.personB, personB)));
-  } else {
-    const pair = await tx.select({id: participants.personId}).from(participants).where(and(
-      eq(participants.familyId, familyId), eq(participants.exchangeId, exchange.id), eq(participants.status, "in"),
-      inArray(participants.personId, [personA, personB]),
-    ));
-    if (pair.length !== 2) return "unavailable";
-    await tx.insert(keepApart).values({...values, reason: "custom"}).onConflictDoNothing();
   }
   return null;
 }

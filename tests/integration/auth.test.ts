@@ -12,7 +12,7 @@ import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/cl
 import {
   allowCodeTry, disputeUsedKey, inspectKey, issueKey, lockFamily, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
 } from "../../src/server/auth/access";
-import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, changeKeepApart, removeMember} from "../../src/server/auth/families";
+import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, removeMember} from "../../src/server/auth/families";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {findViewer, parseSession, digest, secret} from "../../src/server/auth/session";
 import {account, actFor, disputeEvent, endSessions, listKeyDisputes, listSessionDisputes} from "../../src/server/auth/security";
@@ -519,7 +519,7 @@ it("rejects an expired viewer even when the request carries its earlier authenti
   await expect(resolve(joined.cookie)).resolves.toMatchObject({personId: f.personId});
 });
 
-it("manages households, pairs, co-organizers and helpers inside the family", async () => {
+it("manages households, co-organizers and helpers inside the family", async () => {
   const f = await fixture();
   const dependent = await f.add("Acorn", f.viewer.personId);
   const co = await f.add("Pinecone");
@@ -528,10 +528,6 @@ it("manages households, pairs, co-organizers and helpers inside the family", asy
   await expect(tx(f.familyId, (t) => saveMember(t, f.viewer, f.personId, {
     name: "Snowflake", language: "en", helperId: null, householdId: group.id,
   }))).resolves.toBeNull();
-  await expect(tx(f.familyId, (t) => changeKeepApart(t, f.viewer, f.personId, co, false))).resolves.toBeNull();
-  const before = await tx(f.familyId, (t) => readiness(t, f.viewer, now));
-  expect(before?.pairs).toHaveLength(1);
-  await expect(tx(f.familyId, (t) => changeKeepApart(t, f.viewer, co, f.personId, true))).resolves.toBeNull();
   await expect(tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co))).resolves.toBeNull();
   const coKey = requireIssuedKey(await tx(f.familyId, (t) => issueKey(t, f.viewer, co, "share", pepper, now)));
   const coSession = (await f.redeem(coKey.token!, makeDevice())).session!;
