@@ -24,7 +24,7 @@ export const exchangeStatus = pgEnum("exchange_status", ["setup", "open", "drawn
 export const participantStatus = pgEnum("participant_status", ["in", "out"]);
 export const keepApartReason = pgEnum("keep_apart_reason", ["partner", "custom"]);
 export const itemKind = pgEnum("item_kind", ["link", "photo", "note"]);
-export const messageChannel = pgEnum("message_channel", ["email", "push"]);
+export const messageChannel = pgEnum("message_channel", ["push"]);
 export const messageStatus = pgEnum("message_status", ["captured", "pending", "sent", "failed"]);
 
 export const families = pgTable("families", {
@@ -65,6 +65,8 @@ export const people = pgTable("people", {
   helperId: uuid("helper_id"),
   householdId: uuid("household_id"),
   role: personRole("role").default("member").notNull(),
+  coOrganizerGrantedAt: instant("co_organizer_granted_at"),
+  needsNewKey: boolean("needs_new_key").default(false).notNull(),
   noClothes: boolean("no_clothes").default(false).notNull(),
   removedAt: instant("removed_at"),
 }, (table) => [

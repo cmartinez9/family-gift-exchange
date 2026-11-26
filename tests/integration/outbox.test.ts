@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {eq} from "drizzle-orm";
+import {eq, sql} from "drizzle-orm";
 import {afterEach, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
 import {families, outbox, people} from "../../src/server/db/schema";
@@ -27,10 +27,12 @@ it.each([
     await tx.insert(families).values({id: familyId, name: "Capture fixture"});
     await tx.insert(people).values({id: personId, familyId, displayName: "Bellbit"});
   });
-  await sendMessage({familyId, personId, language: "es", channel: "email", template: "practice-reminder"});
+  await sendMessage({familyId, personId, language: "es", template: "practice-reminder"});
 
+  const channels = await withFamily(familyId, (tx) => tx.execute(sql`select unnest(enum_range(null::message_channel))::text as channel`));
+  expect(channels.rows).toEqual([{channel: "push"}]);
   const messages = await withFamily(familyId, (tx) => tx.select().from(outbox).execute());
   expect(messages).toMatchObject([
-    {familyId, personId, language: "es", channel: "email", template: "practice-reminder", status, sentAt: null},
+    {familyId, personId, language: "es", channel: "push", template: "practice-reminder", status, sentAt: null},
   ]);
 });

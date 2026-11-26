@@ -15,6 +15,48 @@
       "when": 1795656250760,
       "tag": "0001_family_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795660096244,
+      "tag": "0002_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795660096857,
+      "tag": "0003_auth_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795660096858,
+      "tag": "0004_push_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795664224650,
+      "tag": "0005_session-passkey",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795668554740,
+      "tag": "0006_key-issuing-session",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795670123899,
+      "tag": "0007_family-lockdown",
+      "breakpoints": true
     }
   ]
 }

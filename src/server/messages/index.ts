@@ -4,7 +4,7 @@ import {outbox} from "../db/schema";
 
 type OutboxRow = typeof outbox.$inferSelect;
 
-export type Message = Pick<OutboxRow, "familyId" | "personId" | "channel" | "language"> & {
+export type Message = Pick<OutboxRow, "familyId" | "personId" | "language"> & {
   template: "practice-reminder";
 };
 
@@ -18,7 +18,7 @@ export async function sendMessage(message: Message): Promise<void> {
     await transaction.insert(outbox).values({
       familyId: message.familyId,
       personId: message.personId,
-      channel: message.channel,
+      channel: "push",
       language: message.language,
       template: message.template,
       status: isProduction ? "pending" : "captured",
