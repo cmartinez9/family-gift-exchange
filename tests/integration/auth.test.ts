@@ -618,7 +618,7 @@ it("blocks in-flight claims until member removal commits", async () => {
     await removal;
     if (claim) await Promise.allSettled([claim]);
   }
-  await expect(claim).rejects.toMatchObject({code: "not-found"});
+  await expect(claim).rejects.toMatchObject({code: "forbidden"});
   expect(await tx(f.familyId, (t) => t.select().from(claims).where(and(
     eq(claims.familyId, f.familyId), eq(claims.itemId, item.id),
   )))).toEqual([]);
