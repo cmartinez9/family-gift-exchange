@@ -20,6 +20,8 @@ export async function switchProfile(personId: string): Promise<AuthResult> {
   const viewer = await requireViewer();
   const changed = await withFamily(viewer.familyId, (tx) => actFor(tx, viewer, personId));
   if (!changed) return {error: "forbidden"};
+  // The shared layout shows the helping banner, so it renders again for the new profile.
+  revalidatePath("/", "layout");
   // Helping someone starts where they need you; coming back to yourself returns to your account.
   redirect(`/${await getLocale()}/${personId === viewer.personId ? "account" : "helping"}`);
 }
@@ -28,6 +30,7 @@ export async function signOut(all: boolean): Promise<AuthResult> {
   const viewer = await requireViewer();
   await withFamily(viewer.familyId, (tx) => endSessions(tx, viewer, new Date(), all === true));
   await clearSession();
+  revalidatePath("/", "layout");
   redirect(`/${await getLocale()}/sign-in`);
 }
 
@@ -49,6 +52,7 @@ async function finishReport(viewer: Awaited<ReturnType<typeof requireViewer>>, r
   if (!recorded) return {error: "unavailable"};
   if (recorded === "lockdown") {
     await clearSession();
+    revalidatePath("/", "layout");
     redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
   }
   let repairError: AuthResult["error"];

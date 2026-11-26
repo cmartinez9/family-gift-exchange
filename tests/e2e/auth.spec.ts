@@ -196,6 +196,8 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await page.getByRole("link", {name: "Notifications (1 unread)"}).click();
     await expect(page.getByText("Pino asked for a PIN reset.")).toBeVisible();
     await page.screenshot({path: test.info().outputPath("pin-reset-inbox.png"), fullPage: true});
+    // Notices arrive with a short rise and fade; check contrast once they have settled.
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await page.getByRole("button", {name: "Mark as read"}).click();
     await expect(page.getByRole("button", {name: "Mark as read"})).toHaveCount(0);
