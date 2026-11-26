@@ -77,7 +77,7 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
 }
 
 /** Read the current member's match without creating reveal evidence. */
-export async function myPerson(viewer: DrawViewer, id: string): Promise<{recipientId: string | null} | null> {
+export async function myPerson(viewer: DrawViewer, id: string) {
   try {
     return await auditedDraw(viewer, async (tx, decrypt) => {
       await authorizeSubject(tx, viewer);
@@ -89,7 +89,7 @@ export async function myPerson(viewer: DrawViewer, id: string): Promise<{recipie
       const recipientId = participant.seenVersion === exchange.version
         ? await loadRecipient(tx, viewer, exchange, decrypt, "opened-recipient")
         : null;
-      return {recipientId};
+      return {recipientId, version: exchange.version};
     });
   } catch (error) {
     // The list and Home remain available while the exchange needs recovery.

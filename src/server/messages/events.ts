@@ -9,8 +9,7 @@ import {enqueueMessages, type Message} from "./queue";
 
 type ExchangeEvent = {familyId: string; exchangeId: string};
 type PlansChangedEvent = ExchangeEvent & {personIds: readonly string[]};
-type ClaimedItemChangedEvent = {familyId: string; personId: string};
-type PinResetRequest = {familyId: string; personId: string};
+type PersonEvent = {familyId: string; personId: string};
 
 async function record(
   familyId: string,
@@ -54,29 +53,26 @@ export const drawEvents = {
     notifyExchange(event, "names-drawn", tx, event.personIds),
   plansChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
     notifyExchange(event, "plans-changed", tx, event.personIds),
+  questionAnswered: (event: PersonEvent, tx: FamilyTransaction) => notifyPerson(event, "question-answered", tx),
 };
+
+function notifyPerson(event: PersonEvent, template: "claimed-item-changed" | "question-answered", tx: FamilyTransaction) {
+  return record(event.familyId, tx, async (transaction) => {
+    const recipients = await transaction.select({personId: people.id, language: people.language}).from(people)
+      .where(and(eq(people.familyId, event.familyId), eq(people.id, event.personId), isNull(people.removedAt)));
+    await enqueueMessages(transaction, recipients.map((recipient): Message => ({
+      ...recipient, familyId: event.familyId, template,
+    })));
+  });
+}
 
 export const listEvents = {
   budgetChanged: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "budget-changed", tx),
-
-  claimedItemChanged(event: ClaimedItemChangedEvent, tx: FamilyTransaction) {
-    return record(event.familyId, tx, async (transaction) => {
-      const recipients = await transaction.select({personId: people.id, language: people.language})
-        .from(people)
-        .where(and(
-          eq(people.familyId, event.familyId),
-          eq(people.id, event.personId),
-          isNull(people.removedAt),
-        ));
-      await enqueueMessages(transaction, recipients.map((recipient): Message => ({
-        ...recipient, familyId: event.familyId, template: "claimed-item-changed",
-      })));
-    });
-  },
+  claimedItemChanged: (event: PersonEvent, tx: FamilyTransaction) => notifyPerson(event, "claimed-item-changed", tx),
 };
 
 /** Call from sign-in after recording an accepted reset request. */
-export function requestPinReset(event: PinResetRequest, tx?: FamilyTransaction) {
+export function requestPinReset(event: PersonEvent, tx?: FamilyTransaction) {
   return record(event.familyId, tx, async (transaction) => {
     const [requester] = await transaction.select({name: people.displayName}).from(people)
       .where(and(

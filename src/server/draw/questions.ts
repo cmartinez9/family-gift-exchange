@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {and, eq, isNull} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
+import {drawEvents} from "../messages/events";
 import {authorizeSubject, DrawError, type DrawViewer} from "./access";
 import {questionText, recordId} from "./inputs";
 import {ownParticipant} from "./member";
@@ -110,7 +111,9 @@ export async function answerQuestion(
     }
     if (row.answeredAt) throw new DrawError("alreadyAnswered");
     const sealed = sealText(encryptionKey(), binding(row, "question-answer"), answer).toString("base64");
-    await tx.update(questions).set({answer: sealed, answeredAt: new Date()})
+    const result = await tx.update(questions).set({answer: sealed, answeredAt: new Date()})
       .where(and(scope, isNull(questions.answeredAt)));
+    if (!result.rowCount) throw new DrawError("alreadyAnswered");
+    await drawEvents.questionAnswered({familyId: row.familyId, personId: row.askerId}, tx);
   });
 }

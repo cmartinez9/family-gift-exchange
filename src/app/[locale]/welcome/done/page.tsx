@@ -7,8 +7,10 @@ import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
 import {faceIdOnDevice, listCount, mySizes} from "@/server/auth/account";
 import {withFamily} from "@/server/db/client";
+import {listFamilyWishlists} from "@/server/lists";
 import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
 import {screenTitle} from "../../sign-in/title";
+import {welcomeAssignment} from "../assignment";
 
 function Row({done, title, sub}: {done: boolean; title: string; sub?: string}) {
   return (
@@ -29,7 +31,12 @@ export async function generateMetadata() {
 /** All set (2.10): the step bar knits up, ALL SET! knits in, and what you did is ticked. */
 export default async function WelcomeDonePage() {
   const viewer = await requireViewer();
-  const t = await getTranslations("getIn.done");
+  const [t, lists, assignment] = await Promise.all([
+    getTranslations("getIn.done"), getTranslations("lists"), welcomeAssignment(viewer),
+  ]);
+  const recipient = assignment?.recipientId
+    ? (await listFamilyWishlists(viewer)).find(({id}) => id === assignment.recipientId)
+    : undefined;
   const {sizes, things, face} = await withFamily(viewer.familyId, async (tx) => {
     const mine = await mySizes(tx, viewer.familyId, viewer.actingAs);
     return {
@@ -40,12 +47,13 @@ export default async function WelcomeDonePage() {
   });
   return (
     <Screen actions={<ButtonLink href="/" icon="arrow">{t("home")}</ButtonLink>}>
-      <WelcomeSteps step={4} done allDone={sizes && things > 0} waitingStep={2} />
+      <WelcomeSteps step={4} done allDone={sizes && things > 0} waitingStep={assignment?.recipientId ? undefined : 2} />
       <Greeting heading top={t("top")} bottom={t("bottom")} />
       <div className="px-edge pt-7">
         <Card flush className="px-5 py-2">
           <KnitIn as="ul" className="fge-rows flex flex-col">
             <Row done title={t("backIn")} sub={face ? t("backInFace") : t("backInPin")} />
+            {recipient && <Row done title={lists("givingTo", {name: recipient.name})} />}
             <Row done={sizes} title={sizes ? t("sizes") : t("sizesLater")} />
             <Row done={things > 0} title={things > 0 ? t("list", {count: things}) : t("listLater")} sub={things > 0 ? t("listSub") : undefined} />
           </KnitIn>

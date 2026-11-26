@@ -6,9 +6,11 @@ import {Link} from "@/i18n/navigation";
 import type {RevealState} from "./actions";
 import {button, link, subheading} from "./styles";
 
-export function Reveal({action, practice = false}: {action: () => Promise<RevealState>; practice?: boolean}) {
+export function Reveal({action, practice = false, initial = {}}: {
+  action: () => Promise<RevealState>; practice?: boolean; initial?: RevealState;
+}) {
   const t = useTranslations("draw");
-  const [state, submit, pending] = useActionState(action, {});
+  const [state, submit, pending] = useActionState(action, initial);
   const form = useRef<HTMLFormElement>(null);
   const timer = useRef<number>(undefined);
   const held = useRef(false);

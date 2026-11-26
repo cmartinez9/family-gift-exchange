@@ -5,6 +5,7 @@ import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families, outbox, people} from "../../src/server/db/schema";
+import {openKey} from "../helpers/pin-pad";
 
 const organizer = "Holly";
 const guests = ["Cedar", "Juniper", "Maple", "Spruce"];
@@ -12,8 +13,9 @@ const roster = [organizer, ...guests];
 const pin = "4268";
 const gift = "Winter lantern";
 const question = "¿Azul o verde?";
-const answer = "Verde";
-type TrialNotice = "names-drawn" | "plans-changed" | "budget-changed" | "claimed-item-changed";
+const answer = "Verde esmeralda fosforescente";
+const lastGuest = guests.at(-1)!;
+type TrialNotice = "names-drawn" | "plans-changed" | "budget-changed" | "claimed-item-changed" | "question-answered";
 
 test.use({actionTimeout: 15_000});
 
@@ -24,12 +26,13 @@ function summary(page: Page, label: string) {
 for (const language of ["en", "es"] as const) {
   test(`plays a private gift exchange season in ${language}`, async ({page, browser, browserName}, info) => {
     test.setTimeout(120_000);
-    const {auth, draw, lists, notify} = language === "en" ? en : es;
+    const {auth, draw, getIn, lists, notify} = language === "en" ? en : es;
     const path = (pathname = "") => `/${language}${pathname}`;
     const trialFamily = `Practice ${randomUUID().slice(0, 8)}`;
     const {db, close} = connectDatabase(process.env.DATABASE_URL!);
     const device = devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"];
     const contexts: BrowserContext[] = [];
+    const memberPages = new Map([[organizer, page]]);
     const captured = new Set<string>();
     let familyId: string | undefined;
 
@@ -57,6 +60,25 @@ for (const language of ["en", "es"] as const) {
       await expect(member.getByRole("article", {name: title, exact: true})).toBeVisible();
     }
 
+    async function join(name: string, keyUrl: string) {
+      const context = await browser.newContext({...device, ignoreHTTPSErrors: true, locale: language});
+      contexts.push(context);
+      const member = await context.newPage();
+      await openKey(member, keyUrl, pin, language);
+      await member.getByRole("link", {name: auth.notNow}).click();
+      memberPages.set(name, member);
+      return member;
+    }
+
+    async function visibleRecipient(member: Page) {
+      const reveal = member.getByRole("status").filter({hasText: /.+/});
+      await expect(reveal).toBeVisible();
+      const revealed = await reveal.innerText();
+      const recipient = roster.find((candidate) => revealed === draw.givingTo.replace("{name}", candidate));
+      expect(recipient).toBeDefined();
+      return recipient!;
+    }
+
     try {
       await page.goto(path("/start"));
       await page.getByLabel(auth.organizerInvite).fill(process.env.E2E_ORGANIZER_INVITE_CODE!);
@@ -81,7 +103,7 @@ for (const language of ["en", "es"] as const) {
       }
 
       await page.getByRole("link", {name: auth.sendKeys}).click();
-      const memberPages = new Map([[organizer, page]]);
+      let lastKey = "";
       for (const name of guests) {
         const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name, exact: true})});
         await row.getByRole("button", {name: auth.prepareKey}).click();
@@ -90,17 +112,12 @@ for (const language of ["en", "es"] as const) {
         await row.getByRole("button", {name: auth.markSent}).click();
         await expect(row.getByText(auth.feedback.sent)).toBeVisible();
 
-        const context = await browser.newContext({...device, ignoreHTTPSErrors: true, locale: language});
-        contexts.push(context);
-        const member = await context.newPage();
-        await member.goto(keyUrl);
-        await member.getByRole("button", {name: auth.yesMe.replace("{name}", name)}).click();
-        await member.getByLabel(auth.pin, {exact: true}).fill(pin);
-        await member.getByLabel(auth.confirmPin).fill(pin);
-        await member.getByRole("button", {name: auth.savePin}).click();
-        await member.getByRole("link", {name: auth.notNow}).click();
-        await expect(member.getByRole("heading", {name: auth.hello.replace("{name}", name)})).toBeVisible();
-        memberPages.set(name, member);
+        if (name === lastGuest) {
+          lastKey = keyUrl;
+        } else {
+          const member = await join(name, keyUrl);
+          await expect(member.getByRole("heading", {name: getIn.sizes.title})).toBeVisible();
+        }
       }
       await notices("keys and joins");
       const members = await runForFamily(db, familyId, (tx) => tx.select({
@@ -164,18 +181,27 @@ for (const language of ["en", "es"] as const) {
       await notices("draw", "names-drawn", roster);
 
       const after = new Map<string, string>();
-      for (const name of guests.slice(1)) {
+      const newcomer = await join(lastGuest, lastKey);
+      await expect(newcomer.getByRole("heading", {name: draw.yourPerson})).toBeVisible();
+      for (const candidate of roster) {
+        await expect(newcomer.getByText(draw.givingTo.replace("{name}", candidate), {exact: true})).toHaveCount(0);
+      }
+      await newcomer.getByRole("button", {name: draw.reveal}).click();
+      const newcomerRecipient = await visibleRecipient(newcomer);
+      after.set(lastGuest, newcomerRecipient);
+      await newcomer.getByRole("link", {name: getIn.sizes.title}).click();
+      await expect(newcomer.getByRole("heading", {name: getIn.sizes.title})).toBeVisible();
+      await newcomer.goto(path("/welcome/done"));
+      await expect(newcomer.getByText(lists.givingTo.replace("{name}", newcomerRecipient), {exact: true})).toBeVisible();
+      await addItem(newcomer, ids.get(lastGuest)!, `${lastGuest} puzzle`);
+
+      for (const name of guests.slice(1, -1)) {
         const member = memberPages.get(name)!;
         await member.goto(path());
         await member.getByRole("link", {name: draw.reveal}).click();
         await expect(member).toHaveURL(memberUrl);
         await member.getByRole("button", {name: draw.reveal}).click();
-        const reveal = member.getByRole("region", {name: draw.yourPerson}).getByRole("status");
-        await expect(reveal).toBeVisible();
-        const revealed = await reveal.innerText();
-        const recipient = roster.find((candidate) => revealed === draw.givingTo.replace("{name}", candidate));
-        expect(recipient).toBeDefined();
-        after.set(name, recipient!);
+        after.set(name, await visibleRecipient(member));
       }
       const [giver, recipient] = [...after].find(([, name]) => name !== organizer && name !== guests[0])!;
       const giverPage = memberPages.get(giver)!;
@@ -202,6 +228,7 @@ for (const language of ["en", "es"] as const) {
       await giverPage.getByLabel(draw.askLabel).fill(question);
       await giverPage.getByRole("button", {name: draw.askButton}).click();
       await expect(giverPage.getByText(draw.answerPending)).toBeVisible();
+      await notices("reveal and anonymous question");
       await recipientPage.goto(memberUrl);
       await expect(recipientPage.getByText(question, {exact: true})).toBeVisible();
       await recipientPage.getByLabel(draw.answerLabel).fill(answer);
@@ -210,7 +237,17 @@ for (const language of ["en", "es"] as const) {
       await expect(recipientPage.getByText(answer, {exact: true})).toHaveCount(0);
       await giverPage.reload();
       await expect(giverPage.getByText(answer, {exact: true})).toBeVisible();
-      await notices("reveal and anonymous question");
+      await notices("anonymous answer", "question-answered", [giver]);
+      async function privateNotice(template: "question-answered" | "plans-changed") {
+        await giverPage.goto(path("/notifications"));
+        const message = notify.templates[template];
+        await expect(giverPage.getByText(message.title, {exact: true})).toBeVisible();
+        await expect(giverPage.getByText(message.body, {exact: true})).toBeVisible();
+        for (const secret of [question, answer, ...roster]) {
+          await expect(giverPage.getByText(secret, {exact: true})).toHaveCount(0);
+        }
+      }
+      await privateNotice("question-answered");
 
       await page.goto(manageUrl);
       await summary(page, draw.detailsTitle).click();
@@ -225,6 +262,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByRole("button", {name: draw.dropout.replace("{name}", recipient)}).click();
       await expect(page.getByRole("button", {name: draw.join.replace("{name}", recipient)})).toBeVisible();
       await notices("dropout repair", "plans-changed", [giver]);
+      await privateNotice("plans-changed");
       await giverPage.goto(path("/lists"));
       await expect(giverPage.getByRole("region", {name: givingTo})).toHaveCount(0);
       await giverPage.goto(path());
@@ -238,11 +276,13 @@ for (const language of ["en", "es"] as const) {
         const payload = response.replaceAll('\\"', '"');
         expect(/"(?:pairs?|assignments?|recipient(?:Id|Name|Sealed)|giver(?:Id|Name)|personName|askerId)"\s*:/i.test(payload)).toBe(false);
         expect(payload.includes(question)).toBe(false);
+        expect(payload.includes(answer)).toBe(false);
       }
       await page.goto(path("/notifications"));
       await expect(page.getByText(notify.templates["names-drawn"].title, {exact: true})).toBeVisible();
       await expect(page.getByText(notify.templates["budget-changed"].title, {exact: true})).toBeVisible();
       await expect(page.getByText(notify.templates["plans-changed"].title, {exact: true})).toHaveCount(0);
+      await expect(page.getByText(notify.templates["question-answered"].title, {exact: true})).toHaveCount(0);
       for (const name of roster) await expect(page.getByText(name, {exact: true})).toHaveCount(0);
     } finally {
       try {

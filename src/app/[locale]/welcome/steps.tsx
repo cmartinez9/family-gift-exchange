@@ -46,8 +46,8 @@ function GroupHead({title, id, right}: {title: string; id: string; right?: React
  * Your sizes (2.5, 2.6): tops and bottoms as chips, shoes on a stepper, or "No clothes, please".
  * Each choice saves as it is made; skipping is always fine.
  */
-export function SizesStep({ownerId, initial, profileHref}: {
-  ownerId: string; initial: {noClothes: boolean; sizes: Record<string, string>}; profileHref: string;
+export function SizesStep({ownerId, initial, profileHref, personOpened = false}: {
+  ownerId: string; initial: {noClothes: boolean; sizes: Record<string, string>}; profileHref: string; personOpened?: boolean;
 }) {
   const t = useTranslations("getIn.sizes");
   const ui = useTranslations("ui");
@@ -124,7 +124,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
       <Button icon="arrow" onClick={() => router.push("/welcome/list")}>{t("next")}</Button>
       <TextLink href="/welcome/list" className="self-center">{t("skip")}</TextLink>
     </>}>
-      <WelcomeSteps step={3} waitingStep={2} />
+      <WelcomeSteps step={3} waitingStep={personOpened ? undefined : 2} />
       <PageTitle title={t("title")} lead={t("lead")} />
       <div className="flex flex-col gap-3 px-edge pt-4">
         <Card className="rounded-item px-[18px] py-3.5">
@@ -206,7 +206,7 @@ export function storeFromLink(value: string) {
 type Mode = "words" | "paste" | "photo";
 
 /** Add one thing you'd like (2.7 to 2.9): a few words, a pasted link, or a photo. */
-export function AddStep({ownerId}: {ownerId: string}) {
+export function AddStep({ownerId, personOpened = false}: {ownerId: string; personOpened?: boolean}) {
   const t = useTranslations("getIn.add");
   const lists = useTranslations("lists");
   const back = useTranslations("getIn.hello");
@@ -269,7 +269,8 @@ export function AddStep({ownerId}: {ownerId: string}) {
   );
 
   if (mode === "paste") {
-    return <PasteLink ownerId={ownerId} submit={submit} pending={pending} error={error} onBack={() => setMode("words")} backLabel={back("helperBack")} />;
+    return <PasteLink ownerId={ownerId} personOpened={personOpened} submit={submit} pending={pending} error={error}
+      onBack={() => setMode("words")} backLabel={back("helperBack")} />;
   }
 
   return (
@@ -280,7 +281,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
           <TextButton className="self-center" disabled={preparing || pending} onClick={() => setMode("words")}>{back("helperBack")}</TextButton>
         </>
         : <TextLink href="/welcome/done" className="self-center">{t("later")}</TextLink>}>
-        <WelcomeSteps step={4} waitingStep={2} />
+        <WelcomeSteps step={4} waitingStep={personOpened ? undefined : 2} />
         <PageTitle title={t("title")} lead={t("lead")} />
         {cameraInput}
         {mode === "photo" ? (
@@ -331,8 +332,9 @@ export function AddStep({ownerId}: {ownerId: string}) {
 }
 
 /** Paste a link (2.8, 2.9): the preview loads on its own, then "Really want this" and a note. */
-function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
-  ownerId: string; submit: (data: FormData) => void; pending: boolean; error: ReactNode; onBack: () => void; backLabel: string;
+function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backLabel}: {
+  ownerId: string; personOpened: boolean; submit: (data: FormData) => void; pending: boolean;
+  error: ReactNode; onBack: () => void; backLabel: string;
 }) {
   const t = useTranslations("getIn.paste");
   const add = useTranslations("getIn.add");
@@ -393,7 +395,7 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
         </Button>
         <TextButton className="self-center" onClick={onBack}>{backLabel}</TextButton>
       </>}>
-        <WelcomeSteps step={4} waitingStep={2} />
+        <WelcomeSteps step={4} waitingStep={personOpened ? undefined : 2} />
         <PageTitle title={t("title")} />
         <input type="hidden" name="kind" value="link" />
         {card?.ticket && <input type="hidden" name="draft" value={card.ticket} />}

@@ -422,6 +422,10 @@
       "budget-changed": {
         "title": "The gift budget changed",
         "body": "Open the app to see the new budget."
+      },
+      "question-answered": {
+        "title": "Your question was answered",
+        "body": "Open the exchange to read the answer."
       }
     },
     "privatePush": {

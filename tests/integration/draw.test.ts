@@ -102,7 +102,7 @@ const appRole = `draw_test_app_${suffix}`;
 const drawRole = `draw_test_sealed_${suffix}`;
 const testFamilies = new Set<string>();
 
-async function drawNoticeIds(familyId: string, template: "names-drawn" | "plans-changed") {
+async function drawNoticeIds(familyId: string, template: "names-drawn" | "plans-changed" | "question-answered") {
   const rows = await admin.db.select({personId: outbox.personId, requesterName: outbox.requesterName})
     .from(outbox).where(and(eq(outbox.familyId, familyId), eq(outbox.template, template)));
   expect(rows.every(({requesterName}) => requesterName === null)).toBe(true);
@@ -262,7 +262,7 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   const helperOwner = {...organizer, sessionId: helperSession.id};
   await runForFamily(app.db, familyId, (tx) => actFor(tx, helperOwner, ids[1]));
   const helper = {...helperOwner, actingAs: ids[1]};
-  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: null});
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: null, version: 2});
   expect(await organizerExchange(organizer, exchangeId)).toMatchObject({seenCount: 0, exchange: {status: "drawn"}});
   await expect(revealMyPerson(viewers[1], exchangeId, 2)).rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...viewers[3], actingAs: ids[1]}, exchangeId, 2))
@@ -270,8 +270,8 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   await expect(revealMyPerson({...organizer, actingAs: ids[3]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
   const opened = await revealMyPerson(helper, exchangeId, 2);
-  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: opened.person.id});
-  expect(await myPerson(organizer, exchangeId)).toEqual({recipientId: null});
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: opened.person.id, version: 2});
+  expect(await myPerson(organizer, exchangeId)).toEqual({recipientId: null, version: 2});
   expect(Object.keys(opened).sort()).toEqual(["person", "version"]);
   expect(opened.person.id).not.toBe(ids[0]);
   expect(opened.person.id).not.toBe(ids[1]);
@@ -368,7 +368,10 @@ it("protects anonymous questions and only returns the answer to the asker", asyn
   });
   expect(await listOwnQuestions(bystander, exchangeId)).toEqual({version: 1, incoming: [], outgoing: []});
   await expect(answerQuestion(bystander, exchangeId, id, 1, "Wrong account")).rejects.toMatchObject({code: "notFound"});
+  expect(await drawNoticeIds(familyId, "question-answered")).toEqual([]);
   await answerQuestion(recipient, exchangeId, id, 1, "Moonlight blue");
+  await expect(answerQuestion(recipient, exchangeId, id, 1, "Second answer")).rejects.toMatchObject({code: "alreadyAnswered"});
+  expect(await drawNoticeIds(familyId, "question-answered")).toEqual([asker.personId]);
   expect(await listOwnQuestions(asker, exchangeId)).toEqual({
     version: 1, outgoing: [{id, text: "Favorite color?", answer: "Moonlight blue"}], incoming: [],
   });
