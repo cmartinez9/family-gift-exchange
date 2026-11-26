@@ -11,7 +11,7 @@ const DEVICES = new Set(["iphone", "ipad", "android", "computer", "other"]);
 
 const ICONS: Record<AuthEvent["kind"], IconName> = {
   keyPrepared: "share", keySent: "share", keyUsed: "phone", keyDisputed: "alert", familyLockdown: "lock",
-  newDevice: "phone", pinLocked: "alert", newDevicesLocked: "alert",
+  signIn: "phone", newDevice: "phone", pinLocked: "alert", newDevicesLocked: "alert",
   resetPrepared: "lock", resetPreparedWithoutRequest: "lock", resetSent: "lock", resetUsed: "lock",
 };
 

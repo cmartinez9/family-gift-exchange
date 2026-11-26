@@ -791,6 +791,7 @@
       "wasThatYou": "Was that you?",
       "reported": "You said it wasn't you",
       "kind": {
+        "signIn": "Signed in on {device}",
         "keyPrepared": "Your key was made",
         "keySent": "Your key was sent",
         "keyUsed": "Your key was opened on {device}",

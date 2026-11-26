@@ -12,6 +12,7 @@ import {disputeSession} from "../../src/server/auth/security";
 import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server/draw/schema";
 import {drawSeal, sealText} from "../../src/server/draw/sealing";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
+import {openKey, signInWithPin, skipFaceId} from "../helpers/pin-pad";
 
 // Seed only the starting state: a known, encrypted cycle in a disposable database.
 // Reveals, questions, reporting, recovery, and redraws run against the HTTPS app.
@@ -128,19 +129,15 @@ for (const recovery of ["local repair", "confirmed redraw"] as const) {
       expect(await open(f.devices[0].page, f.member)).toBe("Person B");
       const reporter = await f.device(0);
       await reportOpening(reporter.page);
-      await expect(reporter.page.getByRole("status").filter({hasText: "Everyone was signed out for safety."})).toBeVisible();
+      await expect(reporter.page.getByRole("heading", {name: "The exchange is paused for now", exact: true})).toBeVisible();
       const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", f.familyId], {
         env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL,
           AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: "https://localhost:3100"},
       });
       const page = reporter.page;
-      await page.goto(JSON.parse(stdout).url);
-      await page.getByRole("button", {name: "Yes, I'm Person A", exact: true}).click();
-      await page.getByLabel("4-digit PIN").fill("6285");
-      await page.getByLabel("Type the PIN again").fill("6285");
-      await page.getByRole("button", {name: "Save PIN", exact: true}).click();
-      await page.getByRole("link", {name: "Not now"}).click();
-      await expect(page.getByRole("heading", {name: "Hi, Person A!", exact: true})).toBeVisible();
+      await openKey(page, JSON.parse(stdout).url, "6285");
+      await skipFaceId(page);
+      await expect(page.getByRole("heading", {name: "Person A", exact: true})).toBeVisible();
       if (recovery === "confirmed redraw") {
         await page.goto(f.manage);
         await page.locator("summary").filter({hasText: /^Replace the entire draw$/}).click();
@@ -152,11 +149,8 @@ for (const recovery of ["local repair", "confirmed redraw"] as const) {
       await capture(page, info, "organizer-own-reveal-recovered");
       for (let index = 1; index < 6; index++) {
         const member = f.devices[index].page;
-        await member.goto(`/en/sign-in?family=${f.familyId}`);
-        await member.getByRole("link", {name: f.names[index], exact: true}).click();
-        await member.getByLabel("4-digit PIN").fill("4268");
-        await member.getByRole("button", {name: "Sign in", exact: true}).click();
-        await expect(member.getByRole("heading", {name: `Hi, ${f.names[index]}!`, exact: true})).toBeVisible();
+        await signInWithPin(member, f.familyId, f.names[index], "4268");
+        await expect(member.getByRole("heading", {name: f.names[index], exact: true})).toBeVisible();
         await open(member, f.member);
       }
       await page.goto(`${f.manage}?check=1`);
@@ -270,7 +264,7 @@ test("a draw avoids households, helper pairs, and keep-apart pairs while a helpe
     for (const index of [0, 1, 2, 4, 5]) actual.set(f.names[index], await open(f.devices[index].page, f.member));
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Person D", exact: true}).click();
-    await expect(page.getByText("You're helping Person D.", {exact: true})).toBeVisible();
+    await expect(page.getByText("You're helping Person D", {exact: true})).toBeVisible();
     actual.set("Person D", await open(page, f.member));
     await capture(page, info, "helper-own-dependent-reveal");
     expect(new Set(actual.values()).size).toBe(6);

@@ -791,6 +791,7 @@
       "wasThatYou": "¿Fuiste tú?",
       "reported": "Dijiste que no fuiste tú",
       "kind": {
+        "signIn": "Se inició sesión en {device}",
         "keyPrepared": "Se preparó tu llave",
         "keySent": "Se mandó tu llave",
         "keyUsed": "Tu llave se abrió en {device}",

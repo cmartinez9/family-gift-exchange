@@ -20,6 +20,7 @@ vi.mock("@/server/auth/request", () => ({currentDeviceKind: async () => "iphone"
 vi.mock("@/server/auth/access", () => ({lockFamily: vi.fn()}));
 vi.mock("@/server/auth/session", () => ({revalidateViewer: vi.fn(), uuidPattern: /^[a-z]+$/}));
 vi.mock("@/server/db/client", () => ({withFamily: (_: string, run: () => unknown) => run()}));
+vi.mock("@/server/draw", () => ({ownRevealOpenings: async () => []}));
 vi.mock("@/server/lists/claims", () => ({getGettingList: async () => []}));
 vi.mock("@/server/messages/inbox", () => ({
   listNotifications: server.listNotifications, getUnreadCount: server.getUnreadCount, markNotificationRead: server.markNotificationRead,
