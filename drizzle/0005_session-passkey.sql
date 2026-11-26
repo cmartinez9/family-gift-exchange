@@ -1,0 +1,2 @@
+ALTER TABLE "sessions" ADD COLUMN "passkey_id" text;--> statement-breakpoint
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_passkey_fk" FOREIGN KEY ("family_id","passkey_id") REFERENCES "public"."passkeys"("family_id","id") ON DELETE no action ON UPDATE no action;

@@ -4,9 +4,10 @@ import {promisify} from "node:util";
 import {and, eq, sql} from "drizzle-orm";
 import {afterEach, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
+import type {FamilyTransaction} from "../../src/server/db/database";
 import {families, households, people} from "../../src/server/db/schema";
 import {
-  allowCodeTry, disputeUsedKey, inspectKey, issueKey, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
+  allowCodeTry, disputeUsedKey, inspectKey, issueKey, lockFamily, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
 } from "../../src/server/auth/access";
 import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, changeKeepApart, removeMember} from "../../src/server/auth/families";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessionDisputes, sessions} from "../../src/server/auth/schema";
@@ -138,10 +139,11 @@ it("notifies other sessions of a new device, allows disputes, and signs out ever
   const thirdDevice = makeDevice();
   await expect(f.login(pin, thirdDevice)).resolves.toEqual({error: "newDevicesLocked"});
   const [own] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, first.id)));
-  await expect(f.login(pin, {...thirdDevice, hash: own.deviceHash})).resolves.toHaveProperty("session");
+  const renewed = (await f.login(pin, {...thirdDevice, hash: own.deviceHash})).session!;
   const fourth = (await f.login(pin, makeDevice())).session!;
-  await tx(f.familyId, (t) => endSessions(t, firstViewer, now, true));
-  for (const session of [first, second, fourth]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  const current = (await resolve(renewed.cookie))!;
+  await tx(f.familyId, (t) => endSessions(t, current, now, true));
+  for (const session of [first, second, renewed, fourth]) await expect(resolve(session.cookie)).resolves.toBeNull();
 });
 
 it("gets reset requests onto the board and replaces the old PIN only on activation", async () => {
@@ -285,6 +287,78 @@ it("issues an organizer recovery link through the operator command for families 
   await expect(tx(f.familyId, (t) => readiness(t, viewer, now))).resolves.toMatchObject({familyName: "Frostfall"});
 });
 
+it("rejects queued recovery and revocation requests authenticated before organizer recovery", async () => {
+  const f = await fixture();
+  const reset = await tx(f.familyId, (t) => issueKey(t, f.viewer, f.viewer.personId, "reset", pepper, now));
+  const ready = Promise.withResolvers<{session: {id: string; cookie: string}; eventId: string}>();
+  const commit = Promise.withResolvers<void>();
+  const recovery = tx(f.familyId, async (t) => {
+    await lockFamily(t, f.familyId);
+    const result = await redeemKey(t, {
+      familyId: f.familyId, value: reset.token!, typed: false, pin: newPin, confirmation: newPin,
+      pepper, device: makeDevice(), currentViewer: null, now,
+    });
+    expect(result).toHaveProperty("session");
+    const [event] = await t.select().from(authEvents).where(and(
+      eq(authEvents.familyId, f.familyId), eq(authEvents.sessionId, result.session!.id), eq(authEvents.kind, "resetUsed"),
+    ));
+    ready.resolve({session: result.session!, eventId: event.id});
+    await commit.promise;
+    return result.session!;
+  });
+  void recovery.catch(ready.reject);
+  const queued: {result: Promise<unknown>; pid: Promise<number>}[] = [];
+  try {
+    const {eventId} = await ready.promise;
+    const mutations: ((t: FamilyTransaction) => Promise<unknown>)[] = [
+      (t) => issueKey(t, f.viewer, f.viewer.personId, "reset", pepper, now),
+      (t) => disputeEvent(t, f.viewer, eventId, now),
+      (t) => endSessions(t, f.viewer, now, true),
+    ];
+    for (const mutation of mutations) {
+      const pid = Promise.withResolvers<number>();
+      const result = tx(f.familyId, async (t) => {
+        const connection = await t.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        pid.resolve(connection.rows[0].pid);
+        return mutation(t);
+      });
+      queued.push({result, pid: pid.promise});
+    }
+    const pids = await Promise.all(queued.map(({pid}) => pid));
+    await vi.waitFor(async () => {
+      const blocked = await tx(f.familyId, (t) => t.execute<{waiting: boolean}>(sql`
+        select bool_and(cardinality(pg_blocking_pids(pid)) > 0) as waiting
+        from unnest(array[${sql.join(pids.map((pid) => sql`${pid}`), sql`, `)}]::integer[]) as pid
+      `));
+      expect(blocked.rows[0].waiting).toBe(true);
+    }, {timeout: 2000, interval: 10});
+  } finally {
+    commit.resolve();
+    await recovery;
+    await Promise.allSettled(queued.map(({result}) => result));
+  }
+  await expect(Promise.all(queued.map(({result}) => result))).resolves.toEqual([{error: "forbidden"}, false, false]);
+  const recovered = await recovery;
+  await expect(resolve(f.organizer.cookie)).resolves.toBeNull();
+  await expect(resolve(recovered.cookie)).resolves.toMatchObject({personId: f.viewer.personId, isOrganizer: true});
+  const disputes = await tx(f.familyId, (t) => listSessionDisputes(t, f.familyId, f.viewer.personId));
+  expect(disputes).toEqual([]);
+  const keys = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.personId, f.viewer.personId)));
+  expect(keys).toHaveLength(1);
+});
+
+it("rejects an expired viewer even when the request carries its earlier authentication time", async () => {
+  const f = await fixture();
+  const joined = (await f.redeem((await f.issue()).token!, makeDevice())).session!;
+  await tx(f.familyId, (t) => t.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
+    .where(eq(sessions.id, f.viewer.sessionId)));
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(eq(authEvents.sessionId, joined.id)));
+  await expect(tx(f.familyId, (t) => issueKey(t, f.viewer, f.personId, "reset", pepper, now))).resolves.toEqual({error: "forbidden"});
+  await expect(tx(f.familyId, (t) => endSessions(t, f.viewer, now, true))).resolves.toBe(false);
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe(false);
+  await expect(resolve(joined.cookie)).resolves.toMatchObject({personId: f.personId});
+});
+
 it("manages households, pairs, co-organizers and helpers inside the family", async () => {
   const f = await fixture();
   const dependent = await f.add("Acorn", f.viewer.personId);
@@ -308,6 +382,8 @@ it("manages households, pairs, co-organizers and helpers inside the family", asy
   await expect(tx(f.familyId, (t) => issueKey(t, f.viewer, dependent, "share", pepper, now))).resolves.toEqual({error: "unavailable"});
   await expect(tx(f.familyId, (t) => actFor(t, f.viewer, f.personId))).resolves.toBe(false);
   await expect(tx(f.familyId, (t) => actFor(t, f.viewer, dependent))).resolves.toBe(true);
+  await expect(f.issue()).resolves.toEqual({error: "forbidden"});
+  await expect(tx(f.familyId, (t) => actFor(t, f.viewer, f.viewer.personId))).resolves.toBe(true);
   await expect(tx(f.familyId, (t) => removeMember(t, f.viewer, f.personId, now))).resolves.toBeNull();
   await expect(f.issue()).resolves.toEqual({error: "unavailable"});
 });

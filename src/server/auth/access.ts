@@ -4,7 +4,7 @@ import type {FamilyTransaction} from "../db/database";
 import {families, people, participants} from "../db/schema";
 import type {Viewer} from "./index";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
-import {createSession, digest, secret, seasonSeconds, uuidPattern} from "./session";
+import {createSession, digest, revalidateViewer, secret, seasonSeconds, uuidPattern} from "./session";
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
 
 export type DeviceKind = "iphone" | "ipad" | "android" | "computer" | "other";
@@ -37,9 +37,8 @@ export async function activePerson(tx: FamilyTransaction, familyId: string, pers
 }
 
 export async function isManager(tx: FamilyTransaction, viewer: Viewer) {
-  if (!viewer.isOrganizer || viewer.actingAs !== viewer.personId) return false;
-  const person = await activePerson(tx, viewer.familyId, viewer.personId);
-  return person?.role === "organizer" || person?.role === "co_organizer";
+  const current = await revalidateViewer(tx, viewer);
+  return Boolean(current?.isOrganizer && current.actingAs === current.personId);
 }
 
 const credentialFor = (familyId: string, personId: string) =>
@@ -186,13 +185,15 @@ export async function disputeUsedKey(
   return {success: "keyDisputed"} as const;
 }
 
-export async function signInDevice(tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date) {
+export async function signInDevice(
+  tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date, passkeyId: string | null = null,
+) {
   const remembered = await isTrustedDevice(tx, familyId, personId, device.hash, now);
   await tx.update(sessions).set({revokedAt: now}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, device.hash),
     isNull(sessions.revokedAt),
   ));
-  const session = await createSession(tx, familyId, personId, device.hash, device.kind, now);
+  const session = await createSession(tx, familyId, personId, device.hash, device.kind, now, passkeyId);
   if (!remembered) await tx.insert(authEvents).values({
     familyId, personId, sessionId: session.id, kind: "newDevice", deviceKind: device.kind, at: now,
   });
@@ -298,15 +299,16 @@ export async function signInWithPin(
 export async function requestPinReset(
   tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date,
 ) {
-  if (!await lockFamily(tx, familyId)) return;
+  if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
   const person = await activePerson(tx, familyId, personId);
-  if (!person || person.helperId || !await credential(tx, familyId, personId)) return;
+  if (!person || person.helperId || !await credential(tx, familyId, personId)) return {error: "unavailable"} as const;
   const [recent] = await tx.select({total: count()}).from(pinResetRequests).where(and(
     eq(pinResetRequests.familyId, familyId), eq(pinResetRequests.personId, personId),
     gt(pinResetRequests.requestedAt, new Date(now.getTime() - day)),
   ));
-  if (recent.total >= 3) return;
+  if (recent.total >= 3) return {error: "tryLater"} as const;
   await tx.insert(pinResetRequests).values({familyId, personId, deviceKind: device.kind, requestedAt: now});
+  return {success: "resetRequested"} as const;
 }
 
 async function answerResetRequests(tx: FamilyTransaction, familyId: string, personId: string, now: Date) {

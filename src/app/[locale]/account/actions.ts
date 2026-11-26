@@ -6,7 +6,8 @@ import {redirect} from "next/navigation";
 import {requireViewer} from "@/server/auth";
 import {clearSession} from "@/server/auth/request";
 import {actFor, disputeEvent, endSessions} from "@/server/auth/security";
-import {uuidPattern} from "@/server/auth/session";
+import {revalidateViewer, uuidPattern} from "@/server/auth/session";
+import {lockFamily} from "@/server/auth/access";
 import {people} from "@/server/db/schema";
 import {withFamily} from "@/server/db/client";
 import type {AuthResult} from "../sign-in/actions";
@@ -36,8 +37,13 @@ export async function reportEvent(eventId: string): Promise<AuthResult> {
 
 export async function setLanguage(language: string) {
   if (language !== "en" && language !== "es") return;
-  const {familyId, personId} = await requireViewer();
-  await withFamily(familyId, (tx) => tx.update(people).set({language})
-    .where(and(eq(people.familyId, familyId), eq(people.id, personId), isNull(people.removedAt))).execute());
+  const viewer = await requireViewer();
+  const {familyId, personId} = viewer;
+  await withFamily(familyId, async (tx) => {
+    await lockFamily(tx, familyId);
+    if (!await revalidateViewer(tx, viewer)) return;
+    await tx.update(people).set({language})
+      .where(and(eq(people.familyId, familyId), eq(people.id, personId), isNull(people.removedAt)));
+  });
   redirect(`/${language}/account`);
 }

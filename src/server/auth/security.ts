@@ -1,9 +1,10 @@
-import {and, desc, eq, isNull, ne} from "drizzle-orm";
+import {and, desc, eq, isNull, ne, or} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
 import type {Viewer} from "./index";
 import {authEvents, passkeys, personalKeys, pinCredentials, sessionDisputes, sessions} from "./schema";
+import {revalidateViewer} from "./session";
 
 export async function account(tx: FamilyTransaction, viewer: Viewer) {
   const {familyId, personId} = viewer;
@@ -24,6 +25,7 @@ export async function account(tx: FamilyTransaction, viewer: Viewer) {
 export async function actFor(tx: FamilyTransaction, viewer: Viewer, actingAs: string) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
+  if (!await revalidateViewer(tx, viewer)) return false;
   if (actingAs !== personId) {
     const person = await activePerson(tx, familyId, actingAs);
     if (person?.helperId !== personId) return false;
@@ -37,14 +39,17 @@ export async function actFor(tx: FamilyTransaction, viewer: Viewer, actingAs: st
 export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Date, all: boolean) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
+  if (!await revalidateViewer(tx, viewer)) return false;
   await tx.update(sessions).set(all ? {revokedAt: now, trusted: false} : {revokedAt: now}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), all ? undefined : eq(sessions.id, sessionId),
   ));
+  return true;
 }
 
 export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventId: string, now: Date) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
+  if (!await revalidateViewer(tx, viewer)) return false;
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
   if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed") return false;
@@ -61,16 +66,18 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
   if (!disputedSessionId) return true;
-  const [target] = await tx.select({hash: sessions.deviceHash}).from(sessions).where(and(
+  const [target] = await tx.select({hash: sessions.deviceHash, passkeyId: sessions.passkeyId}).from(sessions).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, disputedSessionId),
   ));
   if (!target) return true;
   await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId),
-    eq(sessions.deviceHash, target.hash), ne(sessions.id, sessionId),
+    or(eq(sessions.deviceHash, target.hash), target.passkeyId ? eq(sessions.passkeyId, target.passkeyId) : undefined),
+    ne(sessions.id, sessionId),
   ));
   await tx.update(passkeys).set({revokedAt: now}).where(and(
-    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId), eq(passkeys.deviceHash, target.hash),
+    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId),
+    target.passkeyId ? eq(passkeys.id, target.passkeyId) : undefined,
   ));
   await tx.update(pinCredentials).set({newDevicesLocked: true}).where(and(
     eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId),

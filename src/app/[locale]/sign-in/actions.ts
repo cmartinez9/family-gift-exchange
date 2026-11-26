@@ -84,8 +84,7 @@ export async function enterPin(familyId: string, personId: string, _: AuthResult
 export async function forgotPin(familyId: string, personId: string): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || !uuidPattern.test(personId)) return {error: "unavailable"};
   const device = await requestDevice();
-  await withFamily(familyId, (tx) => requestPinReset(tx, familyId, personId, device, new Date()));
-  return {success: "resetRequested"};
+  return withFamily(familyId, (tx) => requestPinReset(tx, familyId, personId, device, new Date()));
 }
 
 export async function reportUsedKey(familyId: string, value: string, typed: boolean): Promise<AuthResult> {

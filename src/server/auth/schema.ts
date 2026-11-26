@@ -8,6 +8,7 @@ export const sessions = pgTable("sessions", {
   actingAs: uuid("acting_as").notNull(),
   deviceHash: text("device_hash").notNull(),
   deviceKind: text("device_kind").notNull(),
+  passkeyId: text("passkey_id"),
   tokenHash: text("token_hash").notNull(),
   createdAt: instant("created_at").defaultNow().notNull(),
   expiresAt: instant("expires_at").notNull(),
@@ -16,6 +17,11 @@ export const sessions = pgTable("sessions", {
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
   index("sessions_person_idx").on(table.familyId, table.personId),
+  foreignKey({
+    name: "sessions_passkey_fk",
+    columns: [table.familyId, table.passkeyId],
+    foreignColumns: [passkeys.familyId, passkeys.id],
+  }),
   foreignKey({
     name: "sessions_person_fk",
     columns: [table.familyId, table.personId],

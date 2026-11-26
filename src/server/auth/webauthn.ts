@@ -8,10 +8,10 @@ import {
 import {withFamily} from "../db/client";
 import {activePerson, clearAttempts, lockFamily, signInDevice, type Device} from "./access";
 import type {Viewer} from "./index";
-import {authLimits, passkeys, pinCredentials, sessions} from "./schema";
+import {authLimits, passkeys, pinCredentials} from "./schema";
 import {appOrigin, privateCookie} from "./request";
 import {authenticatorSecret, clearedAttempts, hashPin, keyedHash, pinProblem} from "./pin";
-import {digest, equalDigests, uuidPattern} from "./session";
+import {digest, equalDigests, revalidateViewer, uuidPattern} from "./session";
 
 const challengeCookie = "__Host-fge-ceremony";
 const changePinCookie = "__Host-fge-change-pin";
@@ -86,13 +86,10 @@ export async function registrationFinish(viewer: Viewer, device: Device, respons
   });
   if (!result.verified) return false;
   const {credential} = result.registrationInfo;
-  const {familyId, personId, sessionId} = viewer;
+  const {familyId, personId} = viewer;
   return withFamily(familyId, async (tx) => {
     await lockFamily(tx, familyId);
-    const [session] = await tx.select({id: sessions.id}).from(sessions).where(and(
-      eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, sessionId), isNull(sessions.revokedAt),
-    ));
-    if (!session) return false;
+    if (!await revalidateViewer(tx, viewer)) return false;
     const [inserted] = await tx.insert(passkeys).values({
       familyId, personId, deviceHash: device.hash, id: credential.id,
       publicKey: Buffer.from(credential.publicKey).toString("base64url"), counter: String(credential.counter),
@@ -138,7 +135,7 @@ export async function authenticationFinish(device: Device, response: Authenticat
     await tx.update(passkeys).set({counter: String(result.authenticationInfo.newCounter)})
       .where(and(eq(passkeys.familyId, familyId), eq(passkeys.id, stored.id)));
     await clearAttempts(tx, familyId, personId);
-    return signInDevice(tx, familyId, personId, device, now);
+    return signInDevice(tx, familyId, personId, device, now, stored.id);
   });
   if (!session) return null;
   (await cookies()).set(changePinCookie, pack(session.id, "verified", device, "change-pin"), {
@@ -155,10 +152,7 @@ export async function changePinAfterFaceId(viewer: Viewer, device: Device, pin: 
   const {familyId, personId, sessionId} = viewer;
   return withFamily(familyId, async (tx) => {
     await lockFamily(tx, familyId);
-    const [current] = await tx.select({id: sessions.id}).from(sessions).where(and(
-      eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, sessionId), isNull(sessions.revokedAt),
-    ));
-    if (!current) return "faceAgain";
+    if (!await revalidateViewer(tx, viewer)) return "faceAgain";
     const now = new Date();
     const [use] = await tx.insert(authLimits).values({
       familyId, bucket: `pin-change:${sessionId}`, windowStartedAt: now, count: 1,

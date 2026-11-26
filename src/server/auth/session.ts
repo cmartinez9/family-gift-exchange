@@ -34,8 +34,7 @@ export function parseSession(value: string | undefined) {
   return {familyId, id, token};
 }
 
-export async function findViewer(tx: FamilyTransaction, session: NonNullable<ReturnType<typeof parseSession>>): Promise<Viewer | null> {
-  const {familyId, id, token} = session;
+async function sessionIdentity(tx: FamilyTransaction, familyId: string, id: string) {
   const target = alias(people, "acting_person");
   const [row] = await tx.select({
     personId: people.id,
@@ -48,7 +47,10 @@ export async function findViewer(tx: FamilyTransaction, session: NonNullable<Ret
     .leftJoin(target, and(eq(target.familyId, sessions.familyId), eq(target.id, sessions.actingAs), isNull(target.removedAt)))
     .where(and(eq(sessions.familyId, familyId), eq(sessions.id, id), isNull(sessions.revokedAt),
       gt(sessions.expiresAt, new Date()), isNull(people.removedAt), isNull(people.helperId)));
-  if (!row || !matchesHash(token, row.tokenHash)) return null;
+  return row;
+}
+
+function viewerIdentity(row: NonNullable<Awaited<ReturnType<typeof sessionIdentity>>>, familyId: string, id: string): Viewer {
   return {
     personId: row.personId,
     familyId,
@@ -58,6 +60,18 @@ export async function findViewer(tx: FamilyTransaction, session: NonNullable<Ret
   };
 }
 
+export async function findViewer(tx: FamilyTransaction, session: NonNullable<ReturnType<typeof parseSession>>): Promise<Viewer | null> {
+  const {familyId, id, token} = session;
+  const row = await sessionIdentity(tx, familyId, id);
+  return row && matchesHash(token, row.tokenHash) ? viewerIdentity(row, familyId, id) : null;
+}
+
+export async function revalidateViewer(tx: FamilyTransaction, viewer: Viewer): Promise<Viewer | null> {
+  const {familyId, sessionId, personId} = viewer;
+  const row = await sessionIdentity(tx, familyId, sessionId);
+  return row?.personId === personId ? viewerIdentity(row, familyId, sessionId) : null;
+}
+
 export async function createSession(
   tx: FamilyTransaction,
   familyId: string,
@@ -65,11 +79,12 @@ export async function createSession(
   deviceHash: string,
   deviceKind: string,
   now: Date,
+  passkeyId: string | null = null,
 ) {
   const id = randomUUID();
   const token = secret();
   await tx.insert(sessions).values({
-    familyId, id, personId, actingAs: personId, deviceHash, deviceKind,
+    familyId, id, personId, actingAs: personId, deviceHash, deviceKind, passkeyId,
     tokenHash: digest(token), createdAt: now, expiresAt: new Date(now.getTime() + seasonSeconds * 1000),
   });
   return {id, cookie: `${familyId}.${id}.${token}`};
