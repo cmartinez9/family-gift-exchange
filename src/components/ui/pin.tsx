@@ -72,10 +72,15 @@ export function Keypad({onDigit, onDelete, deleteLabel, left, disabled = false}:
 /**
  * The slots and the keypad together, controlled. Typing on a hardware keyboard works too.
  * `name` adds a hidden input so the PIN goes with a form.
+ * `middle` sits between the slots and the keypad (the hint, or the gold card that names a refusal);
+ * `fill` lets the pad take the rest of the screen so the keypad sits at the bottom, over the home indicator.
+ * `shown` overrides how many slots look filled: a refused PIN is cleared at once, so fast typing is never
+ * eaten, while its four slots keep the gold ring until the next key.
  */
-export function PinPad({value, onChange, onComplete, slotsLabel, deleteLabel, bad = false, shakeKey, name, left, disabled}: {
+export function PinPad({value, onChange, onComplete, slotsLabel, deleteLabel, bad = false, shakeKey, name, left, disabled, middle, fill = false, shown}: {
   value: string; onChange: (value: string) => void; onComplete?: (pin: string) => void; slotsLabel: string; deleteLabel: string;
-  bad?: boolean; shakeKey?: number; name?: string; left?: ReactNode; disabled?: boolean;
+  bad?: boolean; shakeKey?: number; name?: string; left?: ReactNode; disabled?: boolean; middle?: ReactNode; fill?: boolean;
+  shown?: number;
 }) {
   const latest = useRef({value, onChange, onComplete, disabled});
   const pressRef = useRef<(digit: string) => void>(() => {});
@@ -104,9 +109,11 @@ export function PinPad({value, onChange, onComplete, slotsLabel, deleteLabel, ba
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", fill && "flex-1")}>
       {name && <input type="hidden" name={name} value={value} />}
-      <PinSlots filled={value.length} bad={bad} shakeKey={shakeKey} label={slotsLabel} />
+      <PinSlots filled={shown ?? value.length} bad={bad} shakeKey={shakeKey} label={slotsLabel} />
+      {middle}
+      {fill && <div aria-hidden="true" className="min-h-4 flex-1" />}
       <Keypad onDigit={(digit) => pressRef.current(digit)} onDelete={() => onChange(value.slice(0, -1))}
         deleteLabel={deleteLabel} left={left} disabled={disabled} />
     </div>

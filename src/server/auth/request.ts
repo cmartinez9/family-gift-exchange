@@ -32,6 +32,17 @@ export function identifyDevice(agent: string): DeviceKind {
   return "other";
 }
 
+/** This browser's device hash, read only: pages may not set the cookie, so a new browser has none yet. */
+export async function currentDeviceHash() {
+  const id = (await cookies()).get(deviceCookie)?.value;
+  return id && /^[A-Za-z0-9_-]{43}$/.test(id) ? digest(id) : null;
+}
+
+/** The kind of phone this request comes from, for "On this iPhone". */
+export async function currentDeviceKind(): Promise<DeviceKind> {
+  return identifyDevice((await headers()).get("user-agent") ?? "");
+}
+
 export async function requestDevice(): Promise<Device> {
   const jar = await cookies();
   const request = await headers();

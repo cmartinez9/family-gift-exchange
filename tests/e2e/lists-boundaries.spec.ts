@@ -4,6 +4,7 @@ import {and, eq} from "drizzle-orm";
 import en from "../../messages/en.json" with {type: "json"};
 import {connectDatabase, runForFamily, type FamilyTransaction} from "../../src/server/db/database";
 import {claims, families, items, people} from "../../src/server/db/schema";
+import {openKey, skipFaceId} from "../helpers/pin-pad";
 
 const pin = "4268";
 const {auth, lists} = en;
@@ -51,13 +52,8 @@ async function joinMember(page: Page, browser: Browser, name: string) {
     isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
   });
   const member = await context.newPage();
-  await member.goto(url);
-  await member.getByRole("button", {name: `Yes, I'm ${name}`}).click();
-  await member.getByLabel(auth.pin, {exact: true}).fill(pin);
-  await member.getByLabel(auth.confirmPin).fill(pin);
-  await member.getByRole("button", {name: auth.savePin}).click();
-  await expect(member.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
-  await member.getByRole("link", {name: auth.notNow}).click();
+  await openKey(member, url, pin);
+  await skipFaceId(member);
   return {context, page: member};
 }
 

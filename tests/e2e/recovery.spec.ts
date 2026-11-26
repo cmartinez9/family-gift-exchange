@@ -5,6 +5,7 @@ import {devices, expect, test, type Page, type TestInfo} from "@playwright/test"
 import {eq} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
+import {openKey, signInWithPin, signOut, skipFaceId, typePin} from "../helpers/pin-pad";
 
 const pin = "4268";
 const replacementPin = "6285";
@@ -54,21 +55,22 @@ async function prepareKey(page: Page, name: string, reset = false) {
 }
 
 async function redeem(page: Page, url: string, name: string, chosenPin = pin) {
-  await page.goto(url);
-  await page.getByRole("button", {name: `Yes, I'm ${name}`, exact: true}).click();
-  await page.getByLabel("4-digit PIN").fill(chosenPin);
-  await page.getByLabel("Type the PIN again").fill(chosenPin);
-  await page.getByRole("button", {name: "Save PIN", exact: true}).click();
-  await expect(page.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
-  await page.getByRole("link", {name: "Not now"}).click();
-  await expect(page.getByRole("heading", {name: `Hi, ${name}!`, exact: true})).toBeVisible();
+  await openKey(page, url, chosenPin);
+  await skipFaceId(page);
+  await page.goto("/en/account");
+  await expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
 }
 
-async function login(page: Page, familyId: string, name: string, chosenPin = pin) {
-  await page.goto(`/en/sign-in?family=${familyId}`);
-  await page.getByRole("link", {name, exact: true}).click();
-  await page.getByLabel("4-digit PIN").fill(chosenPin);
-  await page.getByRole("button", {name: "Sign in", exact: true}).click();
+const login = (page: Page, familyId: string, name: string, chosenPin = pin) => signInWithPin(page, familyId, name, chosenPin);
+const wrongPin = (page: Page) => page.getByRole("alert").filter({hasText: "That PIN didn't match"});
+const needsKey = (page: Page) => page.getByRole("alert").filter({hasText: "This name needs a new key"});
+const signedInAs = (page: Page, name: string) => expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
+
+/** Opens the notice about a phone that signed in as you, and says it wasn't you. */
+async function notMe(page: Page, device: RegExp = /signed in as you/) {
+  await page.goto("/en/account/notices");
+  await page.getByRole("link", {name: device}).first().click();
+  await page.getByRole("button", {name: "That wasn't me"}).click();
 }
 
 async function capture(page: Page, info: TestInfo, name: string) {
@@ -102,14 +104,11 @@ test("co-organizer dispute locks down the family and old PIN stays invalid after
     await expect(appointment.getByRole("status")).toHaveText("Saved.");
 
     await login(intruderPage, familyId, "Co-organizer");
-    await expect(intruderPage.getByRole("heading", {name: "Hi, Co-organizer!"})).toBeVisible();
+    await signedInAs(intruderPage, "Co-organizer");
     await intruderPage.goto("/en/family/keys");
     const takeoverKey = await prepareKey(intruderPage, "Organizer", true);
-    await coPage.reload();
-    const disputed = coPage.getByRole("listitem").filter({hasText: "A new device signed in."})
-      .filter({has: coPage.getByRole("button", {name: "That wasn't me"})});
-    await disputed.getByRole("button", {name: "That wasn't me"}).click();
-    await expect(coPage.getByRole("main").getByRole("status")).toHaveText("Everyone was signed out for safety.");
+    await notMe(coPage);
+    await expect(coPage.getByRole("heading", {name: "The exchange is paused for now"})).toBeVisible();
     await capture(coPage, info, "family-lockdown-notice");
     for (const signedIn of [page, memberPage, intruderPage]) {
       await signedIn.goto("/en/account");
@@ -117,16 +116,17 @@ test("co-organizer dispute locks down the family and old PIN stays invalid after
     }
     for (const key of [pendingKey, takeoverKey]) {
       await intruderPage.goto(key);
-      await expect(intruderPage.getByText("This entry isn't available. Check the link or ask the organizer for help.")).toBeVisible();
-      await expect(intruderPage.getByRole("button", {name: /^Yes, I'm/})).toHaveCount(0);
+      await expect(intruderPage.getByRole("heading", {name: "This key doesn't open"})).toBeVisible();
+      await expect(intruderPage.getByRole("button", {name: "Yes, it's my phone"})).toHaveCount(0);
     }
-    await intruderPage.goto(`/en/sign-in?family=${familyId}`);
+    await intruderPage.goto(`/en/sign-in?family=${familyId}&all=1`);
     await intruderPage.getByRole("link", {name: "Co-organizer", exact: true}).click();
-    await expect(intruderPage.locator("p[role=alert]")).toHaveText("This account needs a new private key.");
-    await expect(intruderPage.getByLabel("4-digit PIN")).toHaveCount(0);
+    await expect(needsKey(intruderPage)).toBeVisible();
+    await expect(intruderPage.getByRole("img", {name: /digits typed/})).toHaveCount(0);
     await login(memberPage, familyId, "Safe member");
-    await expect(memberPage.getByRole("heading", {name: "Hi, Safe member!"})).toBeVisible();
-    await expect(memberPage.getByText("Everyone was signed out for safety.", {exact: true})).toHaveCount(1);
+    await signedInAs(memberPage, "Safe member");
+    await memberPage.goto("/en/account/notices");
+    await expect(memberPage.getByText("Everyone was signed out for safety", {exact: true})).toHaveCount(1);
     await capture(memberPage, info, "unaffected-member-recovery");
 
     const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", familyId], {
@@ -139,14 +139,13 @@ test("co-organizer dispute locks down the family and old PIN stays invalid after
     await expect(coPage.getByRole("link", {name: "Manage my family"})).toBeVisible();
     await capture(coPage, info, "co-organizer-recovered");
     await login(intruderPage, familyId, "Co-organizer", pin);
-    await expect(intruderPage.locator("p[role=alert]")).toHaveText("That PIN didn't match. Try again.");
-    await coPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(coPage).toHaveURL(/\/en\/sign-in$/);
+    await expect(wrongPin(intruderPage)).toBeVisible();
+    await signOut(coPage);
     await login(coPage, familyId, "Co-organizer", replacementPin);
-    await expect(coPage.getByRole("heading", {name: "Hi, Co-organizer!"})).toBeVisible();
+    await signedInAs(coPage, "Co-organizer");
     // Recovery on the trusted phone must not make the compromised PIN usable again.
     await login(intruderPage, familyId, "Co-organizer", pin);
-    await expect(intruderPage.locator("p[role=alert]")).toHaveText("That PIN didn't match. Try again.");
+    await expect(wrongPin(intruderPage)).toBeVisible();
     await capture(intruderPage, info, "old-pin-rejected-after-recovery");
   } finally {
     await Promise.allSettled([co.close(), member.close(), intruder.close()]);
@@ -170,24 +169,24 @@ test("five wrong PIN guesses lock the name, notify its owner, and permit organiz
     await redeem(ownerPage, key, "Rosa");
     for (let guess = 0; guess < 5; guess++) {
       await login(strangerPage, familyId, "Rosa", "6544");
-      await expect(strangerPage.locator("p[role=alert]")).toHaveText(guess < 4 ? "That PIN didn't match. Try again." : "Too many wrong PINs. Wait 15 minutes or try Face ID.");
+      if (guess < 4) await expect(wrongPin(strangerPage)).toBeVisible();
+      else await expect(strangerPage.getByRole("heading", {name: "Let's take a break"})).toBeVisible();
     }
     await capture(strangerPage, info, "pin-guessing-locked");
     await login(strangerPage, familyId, "Rosa", pin);
-    await expect(strangerPage.locator("p[role=alert]")).toHaveText("Too many wrong PINs. Wait 15 minutes or try Face ID.");
-    await ownerPage.reload();
-    await expect(ownerPage.getByText("Too many wrong PINs. PIN sign-in was locked for 15 minutes.")).toBeVisible();
+    await expect(strangerPage.getByRole("heading", {name: "Let's take a break"})).toBeVisible();
+    await ownerPage.goto("/en/account/notices");
+    await expect(ownerPage.getByText("Too many wrong PINs", {exact: true})).toBeVisible();
     await capture(ownerPage, info, "owner-lockout-activity");
-    await strangerPage.locator("summary").filter({hasText: "Forgot my PIN"}).click();
-    await strangerPage.getByRole("button", {name: "Ask the organizer for a new key"}).click();
-    await expect(strangerPage.getByRole("main").getByRole("status")).toContainText("The organizer has been asked.");
+    await strangerPage.getByRole("button", {name: "Ask Organizer for a new PIN"}).click();
+    await expect(strangerPage.getByRole("main").getByRole("status")).toContainText("Organizer has been asked");
     await page.reload();
     const replacement = await prepareKey(page, "Rosa", true);
     await redeem(strangerPage, replacement, "Rosa", replacementPin);
     await ownerPage.reload();
     await expect(ownerPage).toHaveURL(/\/en\/sign-in$/);
     await login(ownerPage, familyId, "Rosa", pin);
-    await expect(ownerPage.locator("p[role=alert]")).toHaveText("That PIN didn't match. Try again.");
+    await expect(wrongPin(ownerPage)).toBeVisible();
   } finally {
     await Promise.allSettled([owner.close(), stranger.close()]);
     await removeFamily(familyId);
@@ -203,13 +202,13 @@ test("assigned helper manages a person without a phone and cannot use organizer 
     await expect(page.getByRole("heading", {name: "Grandma", exact: true})).toHaveCount(0);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Grandma", exact: true}).click();
-    await expect(page.getByText("You're helping Grandma.")).toBeVisible();
+    await expect(page.getByText("You're helping Grandma", {exact: true})).toBeVisible();
     await expect(page.getByRole("link", {name: "Manage my family"})).toHaveCount(0);
     await capture(page, info, "helper-profile");
     await page.goto("/en/family/keys");
     await expect(page.getByRole("button", {name: "Prepare message"})).toHaveCount(0);
     await page.goto("/en/account");
-    await page.getByRole("button", {name: "Go back to my account"}).click();
+    await page.getByRole("button", {name: "Back to me"}).click();
     await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();
   } finally {
     await removeFamily(familyId);
@@ -245,23 +244,24 @@ test("editing a pending printed-code preview cannot redeem another name, includi
     await guestPage.getByRole("button", {name: "Continue with my code"}).click();
     await guestPage.getByLabel("6-character key code").fill(secondCode);
     await expect(guestPage.getByRole("button", {name: "Continue with my code"})).toBeEnabled({timeout: 15_000});
-    await expect(guestPage.getByRole("button", {name: "Yes, I'm First"})).toHaveCount(0);
+    await expect(guestPage.getByRole("button", {name: "No, I'm helping First"})).toHaveCount(0);
     await cdp.send("Network.emulateNetworkConditions", {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1});
     await guestPage.getByRole("button", {name: "Continue with my code"}).click();
-    await guestPage.getByRole("button", {name: "Yes, I'm Second"}).click();
-    await guestPage.getByLabel("4-digit PIN").fill(pin);
-    await guestPage.getByLabel("Type the PIN again").fill(pin);
+    await expect(guestPage.getByRole("button", {name: "No, I'm helping Second"})).toBeVisible();
+    await guestPage.getByRole("button", {name: "Yes, it's my phone"}).click();
+    await typePin(guestPage, pin);
+    await expect(guestPage.getByRole("heading", {name: "Type it once more"})).toBeVisible();
     await capture(guestPage, info, "preview-bound-to-second-person");
     const previewAt = Date.now();
     if (waitMs > 0) await guestPage.waitForTimeout(waitMs);
-    await guestPage.getByRole("button", {name: "Save PIN", exact: true}).click();
+    await typePin(guestPage, pin);
     await expect(guestPage.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
-    await guestPage.getByRole("link", {name: "Not now"}).click();
-    await expect(guestPage.getByRole("heading", {name: "Hi, Second!"})).toBeVisible();
+    await skipFaceId(guestPage);
+    await guestPage.goto("/en/account");
+    await signedInAs(guestPage, "Second");
     await capture(guestPage, info, "slow-preview-redeemed-second-person");
     await info.attach("preview-elapsed", {body: JSON.stringify({minimumWaitMs: waitMs, actualElapsedMs: Date.now() - previewAt}), contentType: "application/json"});
-    await guestPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(guestPage).toHaveURL(/\/en\/sign-in$/);
+    await signOut(guestPage);
     // The discarded preview must not consume First's personal key.
     await redeem(guestPage, firstUrl, "First");
   } finally {
@@ -300,7 +300,7 @@ for (const chain of ["unredeemed key", "PIN successor", "new co-organizer appoin
       }
       if (chain !== "new co-organizer appointment") await appoint(page);
       await login(intruderPage, familyId, "Organizer");
-      await expect(intruderPage.getByRole("heading", {name: "Hi, Organizer!"})).toBeVisible();
+      await signedInAs(intruderPage, "Organizer");
       let takeoverKey: string;
       if (chain === "new co-organizer appointment") {
         await appoint(intruderPage);
@@ -311,40 +311,36 @@ for (const chain of ["unredeemed key", "PIN successor", "new co-organizer appoin
         takeoverKey = await prepareKey(intruderPage, "Delegate", true);
         if (chain === "PIN successor") {
           await redeem(successorPage, takeoverKey, "Delegate", replacementPin);
-          await successorPage.getByRole("button", {name: "Switch person or sign out"}).click();
-          await expect(successorPage).toHaveURL(/\/en\/sign-in$/);
+          await signOut(successorPage);
           await login(successorPage, familyId, "Delegate", replacementPin);
-          await expect(successorPage.getByRole("heading", {name: "Hi, Delegate!"})).toBeVisible();
+          await signedInAs(successorPage, "Delegate");
           await successorPage.goto("/en/family/keys");
           takeoverKey = await prepareKey(successorPage, "Organizer", true);
         }
       }
-      await page.goto("/en/account");
-      const event = page.getByRole("listitem").filter({hasText: "A new device signed in."})
-        .filter({has: page.getByRole("button", {name: "That wasn't me"})});
-      await event.getByRole("button", {name: "That wasn't me"}).click();
-      await expect(page.getByRole("main").getByRole("status")).toHaveText("Everyone was signed out for safety.");
+      await notMe(page);
+      await expect(page.getByRole("heading", {name: "The exchange is paused for now"})).toBeVisible();
       await capture(page, info, "organizer-lockdown");
       for (const other of [coPage, safePage, intruderPage, successorPage]) {
         await other.goto("/en/account");
         await expect(other).toHaveURL(/\/en\/sign-in$/);
       }
       await intruderPage.goto(takeoverKey);
-      await expect(intruderPage.getByText("This entry isn't available. Check the link or ask the organizer for help.")).toBeVisible();
-      await intruderPage.goto(`/en/sign-in?family=${familyId}`);
+      await expect(intruderPage.getByRole("heading", {name: "This key doesn't open"})).toBeVisible();
+      await intruderPage.goto(`/en/sign-in?family=${familyId}&all=1`);
       await intruderPage.getByRole("link", {name: "Organizer", exact: true}).click();
-      await expect(intruderPage.locator("p[role=alert]")).toHaveText("This account needs a new private key.");
+      await expect(needsKey(intruderPage)).toBeVisible();
       await login(safePage, familyId, "Safe member");
-      await expect(safePage.getByRole("heading", {name: "Hi, Safe member!"})).toBeVisible();
+      await signedInAs(safePage, "Safe member");
       if (chain === "new co-organizer appointment") {
         await login(coPage, familyId, "Delegate");
-        await expect(coPage.getByRole("heading", {name: "Hi, Delegate!"})).toBeVisible();
+        await signedInAs(coPage, "Delegate");
         await expect(coPage.getByRole("link", {name: "Manage my family"})).toHaveCount(0);
         await capture(coPage, info, "malicious-appointment-revoked");
       } else if (chain === "PIN successor") {
-        await successorPage.goto(`/en/sign-in?family=${familyId}`);
+        await successorPage.goto(`/en/sign-in?family=${familyId}&all=1`);
         await successorPage.getByRole("link", {name: "Delegate", exact: true}).click();
-        await expect(successorPage.locator("p[role=alert]")).toHaveText("This account needs a new private key.");
+        await expect(needsKey(successorPage)).toBeVisible();
       }
       const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", familyId], {
         env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_URL, AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: new URL(page.url()).origin},
@@ -353,7 +349,7 @@ for (const chain of ["unredeemed key", "PIN successor", "new co-organizer appoin
       await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();
       await capture(page, info, "operator-restored-organizer");
       await login(intruderPage, familyId, "Organizer", pin);
-      await expect(intruderPage.locator("p[role=alert]")).toHaveText("That PIN didn't match. Try again.");
+      await expect(wrongPin(intruderPage)).toBeVisible();
     } finally {
       await Promise.allSettled([co.close(), safe.close(), intruder.close(), successor.close()]);
       await removeFamily(familyId);
@@ -387,37 +383,32 @@ test("member dispute revokes the authenticating passkey and later PIN sessions w
     const a = await authenticator(originalPage);
     await redeem(originalPage, key, "Rosa");
     await originalPage.goto("/en/face-id");
-    await originalPage.getByRole("button", {name: "Use Face ID", exact: true}).click();
-    await expect(originalPage.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
+    await originalPage.getByRole("button", {name: "Yes, use Face ID", exact: true}).click();
+    await signedInAs(originalPage, "Rosa");
     const first = (await a.cdp.send("WebAuthn.getCredentials", {authenticatorId: a.authenticatorId})).credentials[0];
     await originalPage.goto("/en/face-id");
-    await originalPage.getByRole("button", {name: "Use Face ID", exact: true}).click();
-    await expect(originalPage.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
+    await originalPage.getByRole("button", {name: "Yes, use Face ID", exact: true}).click();
+    await signedInAs(originalPage, "Rosa");
     const second = (await a.cdp.send("WebAuthn.getCredentials", {authenticatorId: a.authenticatorId})).credentials.find((c) => c.credentialId !== first.credentialId)!;
     await a.cdp.send("WebAuthn.removeCredential", {authenticatorId: a.authenticatorId, credentialId: second.credentialId});
     // A resident authenticator replaces the earlier credential for the same user; restore it for this login.
     await a.cdp.send("WebAuthn.addCredential", {authenticatorId: a.authenticatorId, credential: first});
     // Establish an earlier login with the same passkey on its enrollment browser.
-    await originalPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(originalPage).toHaveURL(/\/en\/sign-in$/);
+    await signOut(originalPage);
     await originalPage.getByRole("button", {name: "Sign in with Face ID"}).click();
-    await expect(originalPage.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
+    await signedInAs(originalPage, "Rosa");
     for (const [index, on] of [reportedPage, successorPage].entries()) {
       const target = await authenticator(on);
       await target.cdp.send("WebAuthn.addCredential", {authenticatorId: target.authenticatorId, credential: {...first, signCount: 100 * (index + 1)}});
       await on.goto("/en");
       await on.getByRole("button", {name: "Sign in with Face ID"}).click();
-      await expect(on.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
+      await signedInAs(on, "Rosa");
     }
-    await successorPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(successorPage).toHaveURL(/\/en\/sign-in$/);
+    await signOut(successorPage);
     await login(successorPage, familyId, "Rosa");
-    await expect(successorPage.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
-    await originalPage.reload();
+    await signedInAs(successorPage, "Rosa");
     // Identify the reported remote phone separately from the earlier enrollment browser.
-    const event = originalPage.getByRole("listitem").filter({hasText: "A new device signed in."})
-      .filter({hasText: "iPhone"}).filter({has: originalPage.getByRole("button", {name: "That wasn't me"})});
-    await event.getByRole("button", {name: "That wasn't me"}).click();
+    await notMe(originalPage, /An iPhone signed in as you/);
     await expect(originalPage.getByRole("main").getByRole("status")).toContainText("was signed out");
     for (const on of [reportedPage, successorPage]) {
       await on.reload();
@@ -428,10 +419,9 @@ test("member dispute revokes the authenticating passkey and later PIN sessions w
     await capture(reportedPage, info, "implicated-passkey-rejected");
     await a.cdp.send("WebAuthn.removeCredential", {authenticatorId: a.authenticatorId, credentialId: first.credentialId});
     await a.cdp.send("WebAuthn.addCredential", {authenticatorId: a.authenticatorId, credential: second});
-    await originalPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(originalPage).toHaveURL(/\/en\/sign-in$/);
+    await signOut(originalPage);
     await originalPage.getByRole("button", {name: "Sign in with Face ID"}).click();
-    await expect(originalPage.getByRole("heading", {name: "Hi, Rosa!"})).toBeVisible();
+    await signedInAs(originalPage, "Rosa");
     await capture(originalPage, info, "unrelated-older-passkey-preserved");
   } finally {
     await Promise.allSettled([original.close(), reported.close(), successor.close()]);
@@ -457,11 +447,9 @@ test("family creation rejects an invalid organizer invitation before creating a 
 test("PIN sign-in keeps both return links inside the phone viewport", async ({page}, info) => {
   const familyId = await createFamily(page);
   try {
-    await page.goto("/en/account");
-    await page.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(page).toHaveURL(/\/en\/sign-in$/);
+    await signOut(page);
     await login(page, familyId, "Organizer", "6544");
-    await expect(page.locator("p[role=alert]")).toHaveText("That PIN didn't match. Try again.");
+    await expect(wrongPin(page)).toBeVisible();
     await capture(page, info, "phone-pin-signin-layout");
     const dimensions = await page.evaluate(() => ({
       viewportWidth: document.documentElement.clientWidth,

@@ -27,20 +27,21 @@ export function Chip({pressed = false, onPressedChange, className, children, onC
 
 /**
  * One choice from a row of chips (sizes). Real radio buttons underneath, so arrow keys and forms work.
+ * `round` lays short labels out as one row of 48px discs spread across the card (XS to 2XL).
  */
-export function ChoiceChips({legend, name, options, value, onChange, className, legendClassName}: {
+export function ChoiceChips({legend, name, options, value, onChange, className, legendClassName, round = false}: {
   legend: string; name: string; options: ReadonlyArray<{value: string; label: string}>; value?: string | null;
-  onChange?: (value: string) => void; className?: string; legendClassName?: string;
+  onChange?: (value: string) => void; className?: string; legendClassName?: string; round?: boolean;
 }) {
   const id = useId();
   return (
     <fieldset className={cn("flex min-w-0 flex-col gap-2", className)}>
       <legend className={cn("mb-2 text-body font-extrabold", legendClassName)}>{legend}</legend>
-      <div className="flex flex-wrap gap-1.5">
+      <div className={cn("flex flex-wrap", round ? "justify-between gap-y-1.5" : "gap-1.5")}>
         {options.map((option) => {
           const checked = value === option.value;
           return (
-            <label key={option.value} className={cn(CHIP, "flex-auto has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-3 has-[:focus-visible]:outline-[var(--focus,var(--color-ink))]", checked ? ON : OFF)}>
+            <label key={option.value} className={cn(CHIP, round ? "size-12 flex-none px-0" : "flex-auto", "has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-3 has-[:focus-visible]:outline-[var(--focus,var(--color-ink))]", checked ? ON : OFF)}>
               <input type="radio" className="sr-only" name={name} id={`${id}-${option.value}`} value={option.value} checked={checked}
                 onChange={() => {
                   haptic("tick");

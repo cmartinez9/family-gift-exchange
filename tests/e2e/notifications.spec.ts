@@ -8,6 +8,7 @@ import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {claims, exchanges, families, items, outbox, people} from "../../src/server/db/schema";
 import {tomorrowInExchangeCalendar} from "../../src/server/messages/calendar";
+import {openKey, skipFaceId} from "../helpers/pin-pad";
 
 const execute = promisify(execFile);
 const pin = "4268";
@@ -22,7 +23,7 @@ async function capture(page: Page, name: string) {
 for (const language of ["en", "es"] as const) {
   test(`ordinary wishlist and budget mutations notify privately, and reminders and helper inboxes work in ${language}`, async ({page, browser, browserName, request}) => {
     test.setTimeout(120_000);
-    const {auth, lists, notify} = language === "en" ? en : es;
+    const {auth, lists, notify, getIn} = language === "en" ? en : es;
     const {db, close} = connectDatabase(process.env.DATABASE_URL!);
     const guest = await browser.newContext({
       ...devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"], ignoreHTTPSErrors: true,
@@ -57,13 +58,8 @@ for (const language of ["en", "es"] as const) {
       const url = (await message.innerText()).split(" ").at(-1)!;
       const buyer = await guest.newPage();
       const markAsRead = buyer.getByRole("button", {name: notify.inbox.markRead, exact: true});
-      await buyer.goto(url);
-      await buyer.getByRole("button", {name: language === "en" ? "Yes, I'm Noel" : "Sí, soy Noel", exact: true}).click();
-      await buyer.getByLabel(auth.pin, {exact: true}).fill(pin);
-      await buyer.getByLabel(auth.confirmPin).fill(pin);
-      await buyer.getByRole("button", {name: auth.savePin}).click();
-      await expect(buyer.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
-      await buyer.getByRole("link", {name: auth.notNow}).click();
+      await openKey(buyer, url, pin, language);
+      await skipFaceId(buyer, language);
 
       const roster = await scoped((tx) => tx.select().from(people));
       const ownerId = roster.find(({displayName}) => displayName === "Holly")!.id;
@@ -122,7 +118,7 @@ for (const language of ["en", "es"] as const) {
       await markAsRead.first().click();
       await expect(markAsRead).toHaveCount(1);
       await buyer.goto(`/${language}/account`);
-      await expect(buyer.getByRole("link", {name: language === "en" ? "Notifications (1 unread)" : "Notificaciones (1 sin leer)"})).toBeVisible();
+      await expect(buyer.getByRole("link", {name: new RegExp(`^${getIn.you.notices}.*${language === "en" ? "1 new" : "1 nuevo"}`)})).toBeVisible();
       await buyer.goto(`/${language}/notifications`);
       await markAsRead.click();
       await expect(markAsRead).toHaveCount(0);
@@ -184,7 +180,7 @@ for (const language of ["en", "es"] as const) {
 
       await buyer.goto(`/${language}/account`);
       await buyer.getByRole("button", {name: auth.helpAs.replace("{name}", "Cedar"), exact: true}).click();
-      await expect(buyer.getByText(auth.actingFor.replace("{name}", "Cedar"), {exact: true})).toBeVisible();
+      await expect(buyer.getByText(getIn.you.helping.replace("{name}", "Cedar"), {exact: true})).toBeVisible();
       await buyer.goto(`/${language}/notifications`);
       await expect(buyer.getByRole("heading", {name: notify.templates["names-drawn"].title, exact: true})).toBeVisible();
       await expect(buyer.getByRole("heading", {name: notify.templates["claimed-item-changed"].title, exact: true})).toHaveCount(0);

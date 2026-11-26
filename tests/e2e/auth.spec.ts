@@ -5,6 +5,7 @@ import {eq} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {pushSubscriptions} from "../../src/server/messages/schema";
+import {settled, signInWithPin, signOut, typePin} from "../helpers/pin-pad";
 
 const pin = "4268";
 
@@ -33,11 +34,6 @@ async function removeFamily(familyId: string) {
   }
 }
 
-async function enterPin(page: Page, name: string, value: string) {
-  await page.getByRole("link", {name, exact: true}).click();
-  await page.getByLabel("4-digit PIN").fill(value);
-  await page.getByRole("button", {name: "Sign in", exact: true}).click();
-}
 
 test("sets up the family, joins by key, switches devices, disputes a session and signs out everywhere", async ({page, browser, browserName}) => {
   const familyName = `Frostfall ${randomUUID().slice(0, 6)}`;
@@ -54,7 +50,6 @@ test("sets up the family, joins by key, switches devices, disputes a session and
     await expect(page.getByRole("heading", {name: "Snowbit"})).toBeVisible();
 
     await page.getByRole("link", {name: "Send keys"}).click();
-    const address = await page.getByLabel("Family sign-in address").inputValue();
     await page.getByRole("button", {name: "Prepare message"}).click();
     const message = page.getByText("Hi Snowbit! This is your private key", {exact: false});
     await expect(message).toBeVisible();
@@ -63,51 +58,50 @@ test("sets up the family, joins by key, switches devices, disputes a session and
     await page.getByRole("button", {name: "Mark as sent"}).click();
     await expect(page.getByText("Marked as sent.", {exact: true})).toBeVisible();
     await page.goto(url);
-    await expect(page.getByText("This link is for Snowbit. This phone is signed in as Northstar.")).toBeVisible();
+    await expect(page.getByRole("heading", {name: "This key is Snowbit's"})).toBeVisible();
+    await expect(page.getByText("This phone is signed in as Northstar, so it can't open Snowbit's key. Nothing was changed.")).toBeVisible();
 
     const memberPage = await member.newPage();
     await memberPage.goto(url);
-    await memberPage.getByRole("button", {name: "I'm helping Snowbit"}).click();
-    await expect(memberPage.getByLabel("4-digit PIN")).toHaveCount(0);
+    await memberPage.getByRole("button", {name: "No, I'm helping Snowbit"}).click();
+    await expect(memberPage.getByRole("img", {name: /digits typed/})).toHaveCount(0);
     await memberPage.getByRole("button", {name: "Go back"}).click();
-    await memberPage.getByRole("button", {name: "Yes, I'm Snowbit"}).click();
-    await memberPage.getByLabel("4-digit PIN").fill("1962");
-    await memberPage.getByLabel("Type the PIN again").fill("1962");
-    await memberPage.getByRole("button", {name: "Save PIN"}).click();
-    await expect(memberPage.getByRole("alert").filter({hasText: "looks like a date or year"})).toBeVisible();
-    await memberPage.getByLabel("4-digit PIN").fill(pin);
-    await memberPage.getByLabel("Type the PIN again").fill(pin);
-    await memberPage.getByRole("button", {name: "Save PIN"}).click();
+    await memberPage.getByRole("button", {name: "Yes, it's my phone"}).click();
+    await typePin(memberPage, "1962");
+    await expect(memberPage.getByRole("alert").filter({hasText: "1962 looks like a year"})).toBeVisible();
+    await typePin(memberPage, pin);
+    await expect(memberPage.getByRole("heading", {name: "Type it once more"})).toBeVisible();
+    await typePin(memberPage, pin);
     await expect(memberPage.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
     await memberPage.getByRole("link", {name: "Not now"}).click();
-    await expect(memberPage.getByText("Your key was used.")).toBeVisible();
-    await expect(memberPage).toHaveTitle("Family Gift Exchange");
+    await expect(memberPage.getByRole("heading", {name: "Your sizes"})).toBeVisible();
+    await memberPage.goto("/en/account/notices");
+    await expect(memberPage.getByText(/^Your key was opened on/)).toBeVisible();
+    await expect(memberPage).toHaveTitle(/Family Gift Exchange$/);
+    await settled(memberPage);
     expect((await new AxeBuilder({page: memberPage}).analyze()).violations).toEqual([]);
 
     const otherPage = await other.newPage();
     await otherPage.goto(url);
-    await expect(otherPage.getByText(/This key was used on/)).toBeVisible();
-    await otherPage.goto(address);
-    await enterPin(otherPage, "Snowbit", pin);
-    await expect(otherPage.getByRole("heading", {name: "Hi, Snowbit!"})).toBeVisible();
+    await expect(otherPage.getByRole("heading", {name: "This key was already opened"})).toBeVisible();
+    await signInWithPin(otherPage, familyId, "Snowbit", pin);
+    await expect(otherPage.getByRole("heading", {name: "Snowbit", exact: true})).toBeVisible();
     await memberPage.reload();
-    const otherDevice = memberPage.getByRole("listitem").filter({hasText: "A new device signed in."})
-      .filter({has: memberPage.getByRole("button", {name: "That wasn't me"})});
-    await otherDevice.getByRole("button", {name: "That wasn't me"}).click();
+    await memberPage.getByRole("link", {name: /signed in as you/}).click();
+    await memberPage.getByRole("button", {name: "That wasn't me"}).click();
     await expect(memberPage.getByRole("status").filter({hasText: "was signed out"})).toBeVisible();
     await otherPage.reload();
     await expect(otherPage).toHaveURL(/\/en\/sign-in$/);
 
     // A known device can unlock new-device PIN sign-in after a dispute.
-    await memberPage.getByRole("button", {name: "Switch person or sign out"}).click();
-    await expect(memberPage).toHaveURL(/\/en\/sign-in$/);
-    await enterPin(memberPage, "Snowbit", pin);
-    await expect(memberPage.getByRole("heading", {name: "Hi, Snowbit!"})).toBeVisible();
-    await otherPage.goto(address);
-    await enterPin(otherPage, "Snowbit", pin);
-    await expect(otherPage.getByRole("heading", {name: "Hi, Snowbit!"})).toBeVisible();
-    await memberPage.locator("summary").filter({hasText: /^Sign out everywhere$/}).click();
+    await signOut(memberPage);
+    await signInWithPin(memberPage, familyId, "Snowbit", pin);
+    await expect(memberPage.getByRole("heading", {name: "Snowbit", exact: true})).toBeVisible();
+    await signInWithPin(otherPage, familyId, "Snowbit", pin);
+    await expect(otherPage.getByRole("heading", {name: "Snowbit", exact: true})).toBeVisible();
+    await memberPage.goto("/en/account/phones");
     await memberPage.getByRole("button", {name: "Sign out everywhere"}).click();
+    await memberPage.getByRole("dialog").getByRole("button", {name: "Sign out everywhere"}).click();
     await expect(memberPage).toHaveURL(/\/en\/sign-in$/);
     await otherPage.reload();
     await expect(otherPage).toHaveURL(/\/en\/sign-in$/);
@@ -130,16 +124,16 @@ test("registers a discoverable credential and signs in from the bare app address
   });
   const familyId = await startFamily(page, `Icicle ${randomUUID().slice(0, 6)}`);
   try {
-    await page.getByRole("button", {name: "Use Face ID"}).click();
+    await page.getByRole("button", {name: "Yes, use Face ID"}).click();
     await expect(page.getByRole("heading", {name: "Who's ready"})).toBeVisible();
     await page.context().clearCookies();
     await page.goto("/en");
     await page.getByRole("button", {name: "Sign in with Face ID"}).click();
-    await expect(page.getByRole("heading", {name: "Hi, Northstar!"})).toBeVisible();
-    await page.getByText("Make a new PIN", {exact: true}).click();
-    await page.getByLabel("4-digit PIN").fill("6285");
-    await page.getByLabel("Type the PIN again").fill("6285");
-    await page.getByRole("button", {name: "Save PIN"}).click();
+    await expect(page.getByRole("heading", {name: "Northstar", exact: true})).toBeVisible();
+    await page.getByRole("link", {name: "Choose 4 new digits"}).click();
+    await typePin(page, "6285");
+    await expect(page.getByRole("heading", {name: "Type it once more"})).toBeVisible();
+    await typePin(page, "6285");
     await expect(page.getByRole("status").filter({hasText: "Your new PIN is ready."})).toBeVisible();
   } finally {
     await cdp.detach();
@@ -178,24 +172,24 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     signIn.pathname = "/es/sign-in";
     const guestPage = await guest.newPage();
     await guestPage.goto(signIn.href);
-    await guestPage.getByRole("link", {name: "Tengo un código de 6 caracteres"}).click();
+    await guestPage.getByRole("link", {name: "¿Otra persona? Usa tu propia llave"}).click();
     await guestPage.getByLabel("Código de 6 caracteres").fill(code);
     await guestPage.getByRole("button", {name: "Continuar con mi código"}).click();
-    await guestPage.getByRole("button", {name: "Sí, soy Pino"}).click();
-    await guestPage.getByLabel("PIN de 4 dígitos").fill(pin);
-    await guestPage.getByLabel("Vuelve a escribir el PIN").fill(pin);
-    await guestPage.getByRole("button", {name: "Guardar PIN"}).click();
-    await expect(guestPage.getByRole("heading", {name: "¿Quieres usar Face ID la próxima vez?"})).toBeVisible();
+    await guestPage.getByRole("button", {name: "Sí, es mi teléfono"}).click();
+    await typePin(guestPage, pin);
+    await expect(guestPage.getByRole("heading", {name: "Escríbelo otra vez"})).toBeVisible();
+    await typePin(guestPage, pin);
     await guestPage.getByRole("link", {name: "Ahora no"}).click();
-    await expect(guestPage.getByRole("heading", {name: "¡Hola, Pino!"})).toBeVisible();
+    await expect(guestPage.getByRole("heading", {name: "Tus tallas"})).toBeVisible();
     expect((await guestPage.goto("/es/family/group-chat"))?.status()).toBe(404);
     await guestPage.goto("/es/account");
-    await guestPage.getByRole("button", {name: "Cambiar de persona o cerrar sesión"}).click();
-    await expect(guestPage).toHaveURL(/\/es\/sign-in$/);
-    await guestPage.getByRole("link", {name: "Pino", exact: true}).click();
-    await guestPage.locator("summary").filter({hasText: "Olvidé mi PIN"}).click();
-    await guestPage.getByRole("button", {name: "Pedirle una llave nueva al organizador"}).click();
-    await expect(guestPage.getByRole("status").filter({hasText: "Ya le avisamos al organizador"})).toBeVisible();
+    await expect(guestPage.getByRole("heading", {name: "Pino", exact: true})).toBeVisible();
+    await signOut(guestPage, "es");
+    // this phone has only been Pino: welcome back, then the PIN
+    await guestPage.getByRole("link", {name: "Usar mi PIN"}).click();
+    await guestPage.getByRole("button", {name: "¿Lo olvidaste?"}).click();
+    await guestPage.getByRole("button", {name: "Pedirle una llave nueva a Northstar"}).click();
+    await expect(guestPage.getByRole("status").filter({hasText: "Ya le avisamos a Northstar"})).toBeVisible();
     await page.getByRole("link", {name: "Go back"}).click();
     const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "Pino"})});
     await expect(row.getByText(/Asked for a new key on/)).toBeVisible();
