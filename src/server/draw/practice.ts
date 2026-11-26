@@ -135,7 +135,7 @@ export async function practiceSeason(viewer: DrawViewer) {
         giver: names.get(giver) ?? "", recipient: names.get(recipient) ?? "",
       })),
     };
-  });
+  }, false);
 }
 
 export async function practiceMemberView(viewer: DrawViewer, personId: string) {

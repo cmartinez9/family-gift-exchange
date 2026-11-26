@@ -204,6 +204,38 @@ it("chooses the smallest private repair for A B C D E F with organizer E and a d
   }
 });
 
+it.each([false, true])("replaces an organizer's exposed own recipient without hiding it from its owner (redraw: %s)", (fullRedraw) => {
+  const ids = ["A", "B", "C", "D", "E", "F"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const next = repairDraw(drawRules(people, []), previous, ["A"], undefined, {
+    observers: ["A"], seenGivers: ["A"], questionGivers: ["A", "F"], fullRedraw,
+  })!;
+  expect(next).not.toBeNull();
+  expect(validate(people, [], next)).toBe(true);
+  expect(next.get("A")).not.toBe("B");
+  if (!fullRedraw) expect(ids.filter((id) => next.get(id) !== previous.get(id))).toHaveLength(2);
+});
+
+it("protects each exposed match from other organizers while allowing its own organizer to read it", () => {
+  const ids = ["A", "B", "C", "D", "E", "F"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const next = repairDraw(drawRules(people, []), previous, ["A", "B"], undefined, {
+    observers: ["A", "E"], seenGivers: [], questionGivers: [],
+  })!;
+  expect(next).not.toBeNull();
+  expect(validate(people, [], next)).toBe(true);
+  const changed = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const all = possibleDraws(ids).filter((pairs) => pairs.get("A") !== "B" && pairs.get("B") !== "C"
+    && changed(pairs) === changed(next) && modelOneLoop(pairs) === modelOneLoop(next));
+  for (const [giver, observers] of [["A", ["E"]], ["B", ["A", "E"]]] as const) {
+    expect(next.get(giver)).not.toBe(previous.get(giver));
+    const alternatives = all.filter((pairs) => observers.every((observer) => pairs.get(observer) === next.get(observer)));
+    expect(new Set(alternatives.map((pairs) => pairs.get(giver))).size).toBeGreaterThan(1);
+  }
+});
+
 it("does not publish a private repair when organizer observations determine the new match", () => {
   const ids = ["A", "B", "C", "D"];
   const people = ids.map((id) => ({id, householdId: null, helperId: null}));

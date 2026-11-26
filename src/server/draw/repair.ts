@@ -25,34 +25,52 @@ export function repairDraw(
   const used = new Set<string>();
   const observers = [...new Set(privacy?.observers)].sort();
   const questionGivers = [...new Set(privacy?.questionGivers)].sort();
-  const groups = new Map<string, {pairs: Pairs[]; recipients: Map<string, Set<string>>}>();
-  let selected: Pairs | undefined;
+  const owner = (id: string) => people[indices.get(id)!].helperId ?? id;
+  const views = [...new Set([...required].map(owner))].flatMap((authorized) => {
+    const unauthorized = observers.filter((id) => owner(id) !== authorized);
+    if (!unauthorized.length) return [];
+    return [{
+      observers: unauthorized,
+      givers: [...required].filter((id) => owner(id) === authorized),
+      questionGivers: questionGivers.filter((id) => unauthorized.includes(id) || unauthorized.includes(previous.get(id)!)),
+    }];
+  });
+  const candidates: {pairs: Pairs; observations: string[]}[] = [];
 
   function accept(changed: number) {
     if (!validPairs(rules, next)) return false;
-    if (!privacy || !required.size) return true;
+    if (!privacy || !views.length) return true;
     const seenCount = privacy.fullRedraw ? 0 : privacy.seenGivers.filter((id) =>
       next.has(id) && next.get(id) === previous.get(id)).length;
-    const retainedQuestions = privacy.fullRedraw ? [] : questionGivers.map((id) =>
-      next.has(id) && next.get(id) === previous.get(id));
-    const observation = JSON.stringify([
-      privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id)), seenCount, retainedQuestions,
-      inspectDraw(rules, next, []).oneLoop,
-    ]);
-    const group = groups.get(observation) ?? {
-      pairs: [], recipients: new Map([...required].map((id) => [id, new Set<string>()])),
-    };
-    let novel = false;
-    for (const [id, recipients] of group.recipients) {
-      const recipient = next.get(id)!;
-      if (!recipients.has(recipient)) novel = true;
-      recipients.add(recipient);
+    const oneLoop = inspectDraw(rules, next, []).oneLoop;
+    candidates.push({pairs: new Map(next), observations: views.map((view) => JSON.stringify([
+      privacy.fullRedraw ? null : changed, view.observers.map((id) => next.get(id)), seenCount,
+      privacy.fullRedraw ? [] : view.questionGivers.map((id) => next.has(id) && next.get(id) === previous.get(id)),
+      oneLoop,
+    ]))});
+    return false;
+  }
+
+  function choosePrivateRepair(): Pairs | null {
+    let remaining = candidates;
+    while (remaining.length) {
+      checkTime?.();
+      const groups = views.map((view, index) => {
+        const observations = new Map<string, Map<string, Set<string>>>();
+        for (const candidate of remaining) {
+          const key = candidate.observations[index];
+          const recipients = observations.get(key) ?? new Map(view.givers.map((id) => [id, new Set<string>()]));
+          for (const [id, possible] of recipients) possible.add(candidate.pairs.get(id)!);
+          observations.set(key, recipients);
+        }
+        return observations;
+      });
+      const safe = remaining.filter((candidate) => groups.every((group, index) =>
+        [...group.get(candidate.observations[index])!.values()].every((recipients) => recipients.size > 1)));
+      if (safe.length === remaining.length) return shuffled(safe)[0].pairs;
+      remaining = safe;
     }
-    if (novel) group.pairs.push(new Map(next));
-    groups.set(observation, group);
-    if ([...group.recipients.values()].some((recipients) => recipients.size < 2)) return false;
-    selected = shuffled(group.pairs)[0];
-    return true;
+    return null;
   }
 
   function search(changed: number, limit: number): boolean {
@@ -85,7 +103,10 @@ export function repairDraw(
   }
 
   for (let count = privacy?.fullRedraw ? people.length : required.size; count <= people.length; count++) {
-    if (search(0, count)) return selected ?? new Map(next);
+    candidates.length = 0;
+    if (search(0, count)) return new Map(next);
+    const selected = choosePrivateRepair();
+    if (selected) return selected;
   }
   return null;
 }

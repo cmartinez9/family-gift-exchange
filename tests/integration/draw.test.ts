@@ -11,7 +11,9 @@ import {
   previewAsMember, repairDisputedReveals, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
   type DrawEvents, type DrawViewer, type ExchangeDetails,
 } from "../../src/server/draw";
-import {issueKey, redeemKey, signInDevice, signInWithPin, type Device} from "../../src/server/auth/access";
+import {issueKey, issueOrganizerKey, redeemKey, signInDevice, signInWithPin, type Device} from "../../src/server/auth/access";
+import {hashPin} from "../../src/server/auth/pin";
+import {pinCredentials} from "../../src/server/auth/schema";
 import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionDisputes} from "../../src/server/auth/security";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
@@ -22,6 +24,7 @@ import * as member from "../../src/server/draw/member";
 import * as solver from "../../src/server/draw/solver";
 import MemberExchangePage from "../../src/app/[locale]/exchanges/[exchangeId]/page";
 import ManagePage from "../../src/app/[locale]/exchanges/[exchangeId]/manage/page";
+import PracticePage from "../../src/app/[locale]/exchanges/practice/page";
 import {drawPage} from "../../src/app/[locale]/exchanges/components";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
@@ -423,6 +426,42 @@ it("gates a full synthetic practice season to its owner", async () => {
   });
 });
 
+it("loads and starts isolated practice while the real family has an unresolved repair", async () => {
+  const f = await fixture({count: 4, active: 4});
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  await revealMyPerson(f.viewers[1], f.exchangeId, 1);
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const reporter = {...f.viewers[1], sessionId: session.id};
+  await expect(runForFamily(app.db, f.familyId, (tx) => disputeSession(tx, reporter, f.viewers[1].sessionId, new Date())))
+    .resolves.toBe(true);
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "repairImpossible"});
+  signedIn.viewer = f.organizer;
+  const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(renderToStaticMarkup);
+  expect(await practiceSeason(f.organizer)).toBeNull();
+  expect(await page()).toContain("Start practice");
+  await startPractice(f.organizer, "en");
+  const [mapping] = await admin.db.select().from(practiceFamilies).where(eq(practiceFamilies.familyId, f.familyId));
+  testFamilies.add(mapping.practiceFamilyId);
+  expect((await practiceSeason(f.organizer))!.exchange).toMatchObject({status: "open", version: 0});
+  expect(await page()).toContain("Draw names");
+  await practiceCommand(f.organizer, {kind: "draw", expectedVersion: 0});
+  const drawn = (await practiceSeason(f.organizer))!;
+  expect(drawn.exchange.version).toBe(1);
+  expect(drawn.pairs).toHaveLength(6);
+  expect(await page()).toContain(drawn.pairs[0].giver);
+  const log = await runForFamily(app.db, f.familyId, (tx) => tx.select().from(audit)
+    .where(and(eq(audit.familyId, f.familyId), eq(audit.action, "draw.decrypt.practice"))));
+  expect(log.length).toBeGreaterThan(0);
+  await expect(practiceSeason(reporter)).rejects.toMatchObject({code: "forbidden"});
+  expect(await practiceSeason(f.coOrganizer)).toBeNull();
+  await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "repairImpossible"});
+  expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.version).toBe(1);
+});
+
 it("lets only one concurrent draw request advance the expected version", async () => {
   const {organizer, coOrganizer, exchangeId} = await fixture();
   const results = await Promise.allSettled([
@@ -583,6 +622,53 @@ it("keeps B's repaired recipient ambiguous to organizer E in the A B C D E F dra
     && pairs.get(f.ids[1]) !== f.ids[2]);
   expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
   verifyNoPairing(await organizerExchange(f.organizer, f.exchangeId));
+});
+
+it.each(["local repair", "confirmed redraw"])("restores a six-person draw after an organizer disputes their own reveal and recovers with a %s", async (recovery) => {
+  const f = await fixture({count: 6, coOrganizerIndex: null});
+  const pepper = secret();
+  const pin = "4268";
+  const pinHash = await hashPin(pepper, pin);
+  const joinedAt = new Date(Date.now() - 3_600_000);
+  await runForFamily(app.db, f.familyId, (tx) => tx.insert(pinCredentials).values(f.ids.map((personId) => ({
+    familyId: f.familyId, personId, pinHash, joinedAt, changedAt: joinedAt,
+  }))));
+  const previous = cycle(f.ids);
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  expect((await revealMyPerson(f.organizer, f.exchangeId, 1)).person.id).toBe(f.ids[1]);
+  const device = (): Device => ({hash: digest(secret()), kind: "ipad", network: null});
+  const reporter = await runForFamily(app.db, f.familyId, (tx) => signInWithPin(
+    tx, f.familyId, f.ids[0], pin, pepper, device(), new Date(),
+  ));
+  signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(reporter.session!.cookie)!));
+  await expect(reportSession(f.organizer.sessionId)).rejects.toThrow(`redirect:/en/sign-in?family=${f.familyId}&safety=1`);
+  const disputes = await runForFamily(app.db, f.familyId, (tx) => listSessionDisputes(tx, f.familyId, f.ids[0]));
+  expect(disputes.map(({sessionId}) => sessionId)).toContain(f.organizer.sessionId);
+  const key = requireIssuedKey(await runForFamily(app.db, f.familyId, (tx) => issueOrganizerKey(tx, f.familyId, pepper, new Date())));
+  const session = await runForFamily(app.db, f.familyId, (tx) => redeemKey(tx, {
+    familyId: f.familyId, value: key.token, typed: false, pin: "8642", confirmation: "8642", pepper,
+    device: device(), currentViewer: null, now: new Date(),
+  }));
+  const organizer = (await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.session!.cookie)!)))!;
+  expect(organizer).toMatchObject({personId: f.ids[0], isOrganizer: true});
+  if (recovery === "confirmed redraw") {
+    await expect(runDraw(organizer, f.exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "confirmationRequired"});
+    await runDraw(organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"});
+  }
+  expect(await memberDrawStatus(organizer, f.exchangeId)).toMatchObject({status: "ready", exchange: {version: 2}});
+  const actual = new Map([[f.ids[0], (await revealMyPerson(organizer, f.exchangeId, 2)).person.id]]);
+  expect(actual.get(f.ids[0])).not.toBe(previous.get(f.ids[0]));
+  for (const personId of f.ids.slice(1)) {
+    const login = await runForFamily(app.db, f.familyId, (tx) => signInWithPin(tx, f.familyId, personId, pin, pepper, device(), new Date()));
+    const viewer = (await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(login.session!.cookie)!)))!;
+    expect(await memberDrawStatus(viewer, f.exchangeId)).toMatchObject({status: "ready", exchange: {version: 2}});
+    actual.set(personId, (await revealMyPerson(viewer, f.exchangeId, 2)).person.id);
+    await expect(listOwnQuestions(viewer, f.exchangeId)).resolves.toMatchObject({version: 2});
+  }
+  expect(new Set(actual.values()).size).toBe(6);
+  if (recovery === "local repair") expect(f.ids.filter((id) => actual.get(id) !== previous.get(id))).toHaveLength(2);
+  expect((await organizerExchange(organizer, f.exchangeId)).exchange.disputedRevealRepairedAt).toBeInstanceOf(Date);
 });
 
 it("retains an unchanged recipient's opening across a full redraw until its session is disputed", async () => {
