@@ -14,6 +14,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
   const viewer = await requireViewer();
   const t = await getTranslations("auth");
   const lists = await getTranslations("lists");
+  const draw = await getTranslations("draw");
   const format = await getFormatter();
   const {name, helpers, activity} = await withFamily(viewer.familyId, (tx) => account(tx, viewer));
   const actingFor = helpers.find(({id}) => id === viewer.actingAs);
@@ -36,6 +37,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           ))}
         </section>
       )}
+      <Link className={linkClass} href="/exchanges" prefetch={false}>{draw("title")}</Link>
       {viewer.isOrganizer && !actingFor && <Link className={linkClass} href="/family">{t("manageFamily")}</Link>}
       {search.face === "1" && (
         <details className="space-y-3">

@@ -1,19 +1,13 @@
 import "server-only";
 import {and, eq, isNull, sql} from "drizzle-orm";
 import {connectDatabase, type FamilyTransaction} from "../db/database";
-import {people} from "../db/schema";
+import type {Viewer} from "../auth";
+import {families, people} from "../db/schema";
 
-// Structurally matches auth's Viewer contract while sign-in is being developed.
-export type DrawViewer = {
-  personId: string;
-  familyId: string;
-  sessionId: string;
-  isOrganizer: boolean;
-  actingAs: string;
-};
+export type DrawViewer = Viewer;
 
 export type DrawErrorCode =
-  | "forbidden" | "notFound" | "closed" | "invalidDetails" | "invalidParticipants"
+  | "forbidden" | "notFound" | "closed" | "exchangeAlreadyOpen" | "invalidDetails" | "invalidParticipants"
   | "invalidKeepApart" | "drawLocked" | "confirmationRequired" | "drawImpossible"
   | "checkTimedOut" | "repairImpossible" | "alreadyReported" | "revealFirst"
   | "invalidQuestion" | "alreadyAnswered" | "drawChanged";
@@ -34,6 +28,7 @@ export async function scopeDrawFamily(tx: FamilyTransaction, familyId: string) {
 export function withDrawFamily<T>(
   familyId: string,
   action: (transaction: FamilyTransaction) => Promise<T>,
+  familyLock: "share" | "update" = "share",
 ): Promise<T> {
   if (!connection) {
     const databaseUrl = process.env.DRAW_DATABASE_URL;
@@ -43,6 +38,8 @@ export function withDrawFamily<T>(
   return connection.db.transaction(async (transaction) => {
     await transaction.execute(sql`SET LOCAL ROLE fge_draw`);
     await scopeDrawFamily(transaction, familyId);
+    // Family management takes the same family row before changing people or exchanges.
+    await transaction.select({id: families.id}).from(families).where(eq(families.id, familyId)).for(familyLock);
     return action(transaction);
   });
 }

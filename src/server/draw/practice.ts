@@ -152,12 +152,21 @@ export type PracticeCommand =
   | {kind: "draw"; expectedVersion: number; confirmation?: string}
   | {kind: "close"}
   | {kind: "participation"; personId: string; status: "in" | "out"; expectedVersion: number}
-  | {kind: "reveal" | "report"; as: string; expectedVersion: number}
+  | {kind: "reveal"; as: string; expectedVersion: number}
+  | {kind: "report"; as: string; expectedVersion: number}
   | {kind: "ask"; as: string; expectedVersion: number; text: string}
   | {kind: "answer"; as: string; expectedVersion: number; questionId: string; text: string};
 
-export async function practiceCommand(owner: DrawViewer, command: PracticeCommand) {
+export function practiceCommand(
+  owner: DrawViewer, command: Extract<PracticeCommand, {kind: "reveal"}>, expectedExchange?: string,
+): ReturnType<typeof revealMyPerson>;
+export function practiceCommand(
+  owner: DrawViewer, command: Extract<PracticeCommand, {kind: "participation"}>, expectedExchange?: string,
+): ReturnType<typeof changeParticipation>;
+export function practiceCommand(owner: DrawViewer, command: PracticeCommand, expectedExchange?: string): Promise<unknown>;
+export async function practiceCommand(owner: DrawViewer, command: PracticeCommand, expectedExchange?: string) {
   const {viewer, exchangeId} = await practiceContext(owner, "as" in command ? command.as : undefined);
+  if (expectedExchange && exchangeId !== expectedExchange) throw new DrawError("drawChanged");
   switch (command.kind) {
     case "draw":
       return runDraw(viewer, exchangeId, command);

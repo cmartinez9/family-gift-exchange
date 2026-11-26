@@ -1,4 +1,4 @@
-import {and, desc, eq, inArray} from "drizzle-orm";
+import {and, desc, eq, inArray, ne, sql} from "drizzle-orm";
 import {exchanges, keepApart, participants, people} from "../db/schema";
 import type {FamilyTransaction} from "../db/database";
 import {
@@ -16,11 +16,14 @@ export async function createExchange(viewer: DrawViewer, details: ExchangeDetail
   requireOrganizer(viewer);
   return withDrawFamily(viewer.familyId, async (tx) => {
     await lockOrganizer(tx, viewer);
+    const [open] = await tx.select({id: exchanges.id}).from(exchanges)
+      .where(and(eq(exchanges.familyId, viewer.familyId), ne(exchanges.status, "closed"))).limit(1);
+    if (open) throw new DrawError("exchangeAlreadyOpen");
     const [exchange] = await tx.insert(exchanges)
       .values({familyId: viewer.familyId, ...exchangeDetails(details), status: "open"})
       .returning({id: exchanges.id});
     return exchange;
-  });
+  }, "update");
 }
 
 export async function editExchange(
@@ -33,7 +36,9 @@ export async function editExchange(
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
     const details = exchangeDetails(input);
-    await tx.update(exchanges).set(details).where(exchangeScope(familyId, exchange.id));
+    await tx.update(exchanges).set({
+      ...details, status: exchange.status === "setup" ? "open" : exchange.status,
+    }).where(exchangeScope(familyId, exchange.id));
     if (exchange.version && details.budgetAmount !== exchange.budgetAmount) {
       const active = (await currentParticipants(tx, familyId, exchange.id)).filter(({status}) => status === "in");
       await publishDraw(events, tx, {
@@ -63,7 +68,7 @@ export async function listExchanges(viewer: DrawViewer) {
   return withDrawFamily(viewer.familyId, async (tx) => {
     await authorizeSubject(tx, viewer);
     return tx.select(exchangeFields).from(exchanges).where(eq(exchanges.familyId, viewer.familyId))
-      .orderBy(desc(exchanges.giftDay), exchanges.name);
+      .orderBy(sql`(${exchanges.status} = 'closed')`, desc(exchanges.giftDay), exchanges.name);
   });
 }
 

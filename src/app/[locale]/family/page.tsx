@@ -58,12 +58,14 @@ export default async function FamilyPage() {
   if (!board) notFound();
   const t = await getTranslations("auth");
   const lists = await getTranslations("lists");
+  const draw = await getTranslations("draw");
   const format = await getFormatter();
   const chat = await getTranslations("notify.groupChat");
   const visibleMembers = new Map(board.members.map(({id, name}) => [id, name]));
   const coOrganizer = board.members.find(({role}) => role === "co_organizer");
   return (
     <main className={sectionClass}>
+      <Link className={linkClass} href="/exchanges" prefetch={false}>{draw("title")}</Link>
       <h1 className="text-2xl font-semibold">{board.familyName}</h1>
       <nav className="flex flex-wrap gap-4" aria-label={t("manageFamily")}>
         <Link href="/account" className={linkClass}>{t("openAccount")}</Link>
