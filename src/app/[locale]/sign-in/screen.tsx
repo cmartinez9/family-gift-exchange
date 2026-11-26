@@ -15,6 +15,7 @@ import {currentDeviceHash, rememberedFamily} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
 import {Bullet, CodeEntry, FaceIdLink, FaceIdTile, FindFamily, Greeting, SignInWithPin} from "./get-in";
+import {RefreshSession} from "./controls";
 import {linkClass} from "./styles";
 
 type Search = {family?: string; person?: string; join?: string; safety?: string; all?: string};
@@ -48,6 +49,7 @@ export async function SignInScreen({search = {}}: {search?: Search}) {
   const pinHref = family ? `/sign-in?family=${family.familyId}` : "/sign-in";
   return (
     <section className="flex flex-col items-center gap-2">
+      <RefreshSession />
       <FaceIdTile />
       <TextLink href={pinHref}>{t("usePin")}</TextLink>
     </section>
@@ -65,6 +67,10 @@ export async function SignInFlow({search = {}}: {search?: Search}) {
       </Screen>
     );
   }
+  return <><RefreshSession /><UnauthenticatedSignIn search={search} /></>;
+}
+
+async function UnauthenticatedSignIn({search}: {search: Search}) {
   const family = await loadFamily(search);
   if (search.safety === "1") return <Paused familyId={family?.familyId ?? null} organizer={family?.organizer ?? ""} />;
   if (!family) return <FindFamily />;

@@ -66,6 +66,7 @@ async function family(browser: Browser) {
     contexts.push(context);
     await context.addCookies([
       {name: "__Host-fge-session", value: session.cookie, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
+      {name: "__Host-fge-family", value: familyId, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
       {name: "__Host-fge-device", value: token, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
     ]);
     return context.newPage();
@@ -110,7 +111,7 @@ async function shot(page: Page, name: string, {axe = true} = {}) {
   await page.screenshot({path: join(folder, `${name}.png`)});
 }
 
-for (const exit of ["navigation", "Done"] as const) {
+for (const exit of ["navigation", "Done", "home"] as const) {
   test(`clears helping mode after remote session revocation and ${exit}`, async ({browser}) => {
     const f = await family(browser);
     try {
@@ -120,6 +121,10 @@ for (const exit of ["navigation", "Done"] as const) {
       await helping.getByRole("button", {name: "Help Tito", exact: true}).click();
       await expect(helping).toHaveURL(/\/en\/helping$/);
       await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
+      if (exit === "home") {
+        await helping.goto(`/en/key/${await f.martaKey()}`);
+        await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
+      }
 
       await otherDevice.goto("/en/account");
       await otherDevice.locator("summary").filter({hasText: /^Sign out everywhere$/}).click();
@@ -127,9 +132,11 @@ for (const exit of ["navigation", "Done"] as const) {
       await expect(otherDevice).toHaveURL(/\/en\/sign-in$/);
 
       if (exit === "navigation") await helping.getByRole("link", {name: "Later", exact: true}).click();
-      else await helping.getByRole("button", {name: "Done", exact: true}).click();
-      await expect(helping).toHaveURL(/\/en\/sign-in$/);
-      await expect(helping.getByRole("heading", {name: "Sign in", exact: true})).toBeVisible();
+      else if (exit === "Done") await helping.getByRole("button", {name: "Done", exact: true}).click();
+      else await helping.getByRole("link", {name: "Go back", exact: true}).click();
+      await expect(helping).toHaveURL(exit === "home" ? /\/en$/ : /\/en\/sign-in$/);
+      if (exit === "home") await expect(helping.getByRole("link", {name: "Rosa", exact: true})).toBeVisible();
+      else await expect(helping.getByRole("heading", {name: "Sign in", exact: true})).toBeVisible();
       await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
     } finally {
       await f.close();
