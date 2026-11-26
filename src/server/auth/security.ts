@@ -88,6 +88,10 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
   if (!target) return true;
+  await tx.update(personalKeys).set({revokedAt: now}).where(and(
+    eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), eq(personalKeys.issuedBy, personId),
+    eq(personalKeys.kind, "reset"), isNull(personalKeys.usedAt), isNull(personalKeys.revokedAt),
+  ));
   await tx.update(passkeys).set({revokedAt: now}).where(and(
     eq(passkeys.familyId, familyId), eq(passkeys.personId, personId),
     inArray(passkeys.id, [...credentialIds]),

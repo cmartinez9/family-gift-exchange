@@ -105,11 +105,9 @@ export async function issueKey(
 
 export async function issueOrganizerKey(tx: FamilyTransaction, familyId: string, pepper: string, now: Date) {
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
-  const managers = await tx.select().from(people).where(and(
-    eq(people.familyId, familyId), isNull(people.removedAt), ne(people.role, "member"),
+  const [organizer] = await tx.select().from(people).where(and(
+    eq(people.familyId, familyId), isNull(people.removedAt), eq(people.role, "organizer"),
   ));
-  if (managers.some(({role}) => role === "co_organizer")) return {error: "coOrganizerAvailable"} as const;
-  const organizer = managers.find(({role}) => role === "organizer");
   if (!organizer || organizer.helperId) return {error: "unavailable"} as const;
   return prepareKey(tx, familyId, organizer, organizer.id, "reset", pepper, now);
 }

@@ -38,6 +38,6 @@ See [Architecture](docs/architecture.md) for module ownership, database access, 
 
 ## Organizer recovery
 
-A co-organizer can prepare and share a new key for the organizer from Send keys. If the family has no co-organizer, an operator can run `pnpm admin:organizer-key <family-id>` with `DATABASE_ADMIN_URL`, `AUTH_SECRET`, and `AUTH_ORIGIN` set for that deployment. The command prints a private recovery link; give it directly to the organizer. It refuses families with an active co-organizer.
+A co-organizer can prepare and share a new key for the organizer from Send keys. An operator can also run `pnpm admin:organizer-key <family-id>` with `DATABASE_ADMIN_URL`, `AUTH_SECRET`, and `AUTH_ORIGIN` set for that deployment. The command prints a private recovery link; give it directly to the organizer.
 
 Opening or sharing a replacement key leaves reset requests open. Redeeming it closes the requests, replaces the PIN, signs out all other sessions for that name, and revokes its existing passkeys. The person can then enroll Face ID again. Reporting a used key records the time and reporting device in account and organizer activity without granting access or changing any session. Phase 2 can read these records through `listKeyDisputes`.
