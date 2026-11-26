@@ -1,10 +1,10 @@
 import "server-only";
 import {and, eq, isNull} from "drizzle-orm";
+import type {Viewer} from "../auth";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 
-/** The fields lists uses from Phase 1's trusted Viewer contract. */
-export type ListViewer = {familyId: string; personId: string; actingAs: string};
+export type ListViewer = Pick<Viewer, "familyId" | "personId" | "actingAs">;
 
 export class ListError extends Error {
   constructor(readonly code:

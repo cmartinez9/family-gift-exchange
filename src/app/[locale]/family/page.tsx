@@ -56,6 +56,7 @@ export default async function FamilyPage() {
   const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
   if (!board) notFound();
   const t = await getTranslations("auth");
+  const lists = await getTranslations("lists");
   const format = await getFormatter();
   const visibleMembers = new Map(board.members.map(({id, name}) => [id, name]));
   const coOrganizer = board.members.find(({role}) => role === "co_organizer");
@@ -64,6 +65,7 @@ export default async function FamilyPage() {
       <h1 className="text-2xl font-semibold">{board.familyName}</h1>
       <nav className="flex flex-wrap gap-4" aria-label={t("manageFamily")}>
         <Link href="/account" className={linkClass}>{t("openAccount")}</Link>
+        <Link href="/lists" className={linkClass}>{lists("familyLists")}</Link>
         {board.canSendKeys && <Link href="/family/keys" className={linkClass}>{t("sendKeys")}</Link>}
       </nav>
       <section className="space-y-3">

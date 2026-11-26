@@ -130,7 +130,7 @@ test("co-organizer dispute locks down the family and old PIN stays invalid after
     await capture(memberPage, info, "unaffected-member-recovery");
 
     const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", familyId], {
-      env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_URL, AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: "https://localhost:3100"},
+      env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_URL, AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: new URL(page.url()).origin},
     });
     await redeem(page, JSON.parse(stdout).url, "Organizer", replacementPin);
     await page.goto("/en/family/keys");
@@ -347,7 +347,7 @@ for (const chain of ["unredeemed key", "PIN successor", "new co-organizer appoin
         await expect(successorPage.locator("p[role=alert]")).toHaveText("This account needs a new private key.");
       }
       const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", familyId], {
-        env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_URL, AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: "https://localhost:3100"},
+        env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_URL, AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: new URL(page.url()).origin},
       });
       await redeem(page, JSON.parse(stdout).url, "Organizer", replacementPin);
       await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();

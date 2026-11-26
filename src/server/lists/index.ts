@@ -45,7 +45,6 @@ export async function listFamilyWishlists(viewer: ListViewer) {
 type ItemView = ReturnType<typeof projectItem> & {claim?: ClaimMark};
 
 export async function getWishlist(viewer: ListViewer, ownerId: string) {
-  // TODO(phase 2): the signed-in route can add the badge using the authorized "my person" call.
   return withFamily(viewer.familyId, async (tx) => {
     await requireListActor(tx, viewer);
     const owner = await requireListPerson(tx, viewer.familyId, ownerId);
