@@ -31,6 +31,7 @@ import {Sheet} from "@/components/ui/sheet";
 import {StepBar} from "@/components/ui/step-bar";
 import {TabBar, TabBarHost, type TabKey} from "@/components/ui/tab-bar";
 import {ToastHost, toast} from "@/components/ui/toast";
+import {pinProblem} from "@/lib/pin-policy";
 import {ProductStandIn} from "./stand-ins";
 
 const COLORS: ReadonlyArray<[string, string, string]> = [
@@ -92,14 +93,6 @@ function Demo({title, children}: {title: string; children: ReactNode}) {
   );
 }
 
-function refusal(pin: string): [string, string] | null {
-  if (/^(19|20)\d\d$/.test(pin)) return [`${pin} looks like a year`, "Family can guess those. Try 4 other numbers."];
-  const a = Number(pin.slice(0, 2)), b = Number(pin.slice(2));
-  if ((a >= 1 && a <= 12 && b >= 1 && b <= 31) || (b >= 1 && b <= 12 && a >= 1 && a <= 31)) return [`${pin} looks like a date`, "A birthday is easy to guess. Try 4 other numbers."];
-  if (/^(\d)\1{3}$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) return ["That one is easy to guess", "Try 4 numbers that are not in a row."];
-  return null;
-}
-
 function PinDemo() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<[string, string] | null>(null);
@@ -120,10 +113,12 @@ function PinDemo() {
         }}
         onComplete={(next) => {
           window.setTimeout(() => {
-            const why = refusal(next);
+            const why = pinProblem(next, next);
             if (why) {
               haptic("error");
-              setError(why);
+              setError(why === "pinDate"
+                ? [`${next} looks like a date or year`, "Family can guess those. Try 4 other numbers."]
+                : ["That one is easy to guess", "Try 4 numbers that don't repeat or run in order."]);
               setBad(true);
               setShake((count) => count + 1);
               setPin("");

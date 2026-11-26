@@ -1,68 +1,83 @@
+// @vitest-environment jsdom
 import {readFileSync} from "node:fs";
-import {expect, it} from "vitest";
+import {createRequire} from "node:module";
+import {dirname, resolve} from "node:path";
+import {fileURLToPath} from "node:url";
+import {compile} from "tailwindcss";
+import {afterAll, beforeAll, expect, it} from "vitest";
 import design from "../../design/design.json" with {type: "json"};
 
-// Every token design/design.json defines must be declared in src/styles/tokens.css, with its value.
-const css = readFileSync(new URL("../../src/styles/tokens.css", import.meta.url), "utf8");
-const markdown = readFileSync(new URL("../../design/DESIGN.md", import.meta.url), "utf8");
+const require = createRequire(import.meta.url);
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const eslintRequire = createRequire(require.resolve("eslint"));
+const eslintrcRequire = createRequire(eslintRequire.resolve("@eslint/eslintrc"));
+const {load} = eslintrcRequire("js-yaml") as {load(input: string): unknown};
+const lines = readFileSync(resolve(testDirectory, "../../design/DESIGN.md"), "utf8").split(/\r?\n/);
+if (lines.shift() !== "---" || !lines.includes("---")) throw new Error("Missing design front matter");
+const front = load(lines.slice(0, lines.indexOf("---")).join("\n")) as Record<string, unknown>;
+
+function tokenSection(name: string): Record<string, string> {
+  const section = front[name];
+  if (!section || typeof section !== "object" || Array.isArray(section)) throw new Error(`Invalid ${name} tokens`);
+  const entries = Object.entries(section);
+  if (!entries.length || entries.some(([, value]) => typeof value !== "string")) throw new Error(`Invalid ${name} values`);
+  return Object.fromEntries(entries);
+}
 
 const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
-const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const normalize = (value: string | number) => String(value).trim().toLowerCase().replace(/\s+/g, " ");
+const groups: Record<string, Record<string, string | number | undefined>> = {
+  colours: Object.fromEntries(Object.entries(design.extensions.colorMeta).map(([name, meta]) => [`--color-${name}`, meta.canonical])),
+  "yarn-block cards": design.extensions.cardTokens,
+  typography: Object.fromEntries(Object.entries(design.extensions.typographyMeta).flatMap(([role, type]) => [
+    [`--text-${role}`, type.fontSize],
+    [`--text-${role}--line-height`, type.lineHeight],
+    [`--text-${role}--font-weight`, type.fontWeight],
+    ...(type.letterSpacing === "0" ? [] : [[`--text-${role}--letter-spacing`, type.letterSpacing]]),
+  ])),
+  font: {"--font-sans": '"Test Rubik", Rubik, system-ui, sans-serif'},
+  spacing: Object.fromEntries(Object.entries(design.extensions.spacing).map(([name, value]) => [`--space-${kebab(name)}`, value])),
+  motion: Object.fromEntries(design.extensions.motion.map(({name, value}) => [`--motion-${name}`, value.startsWith("cubic-bezier") ? value : undefined])),
+  radii: Object.fromEntries(Object.entries(tokenSection("rounded")).map(([name, value]) => [`--radius-${name}`, value])),
+  "front-matter colours": Object.fromEntries(Object.entries(tokenSection("colors")).map(([name, value]) => [name.startsWith("card-") ? `--${name}` : `--color-${name}`, value])),
+};
 
-function declared(property: string): string[] {
-  const pattern = new RegExp(`${property.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\s*:\\s*([^;]+);`, "g");
-  return [...css.matchAll(pattern)].map((match) => normalize(match[1]));
-}
+let style: HTMLStyleElement;
+let tokens: CSSStyleDeclaration;
 
-function expectToken(property: string, value?: string | number) {
-  const values = declared(property);
-  expect(values, `${property} is declared`).not.toHaveLength(0);
-  if (value !== undefined) expect(values, `${property} is ${value}`).toContain(normalize(String(value)));
-}
-
-it("declares every colour", () => {
-  for (const [name, meta] of Object.entries(design.extensions.colorMeta)) expectToken(`--color-${name}`, meta.canonical);
+beforeAll(async () => {
+  const path = resolve(testDirectory, "../../src/styles/tokens.css");
+  const properties = new Set(Object.values(groups).flatMap((group) => Object.keys(group)));
+  const consumer = [...properties].map((property, index) => `--observed-${index}: var(${property});`).join("\n");
+  const compiler = await compile(`${readFileSync(path, "utf8")}\n.token-consumer {${consumer}}`, {
+    base: dirname(path),
+    loadStylesheet: async (id, base) => {
+      const path = id === "tailwindcss" ? require.resolve("tailwindcss/index.css") : resolve(base, id);
+      return {path, base: dirname(path), content: readFileSync(path, "utf8")};
+    },
+  });
+  style = document.createElement("style");
+  style.textContent = compiler.build([]);
+  document.documentElement.style.setProperty("--font-rubik", '"Test Rubik"');
+  document.head.append(style);
+  tokens = getComputedStyle(document.documentElement);
 });
 
-it("declares the yarn-block card tokens", () => {
-  for (const [name, value] of Object.entries(design.extensions.cardTokens)) expectToken(name, value);
+afterAll(() => {
+  style?.remove();
+  document.documentElement.style.removeProperty("--font-rubik");
 });
 
-it("declares the type scale, with sizes, line heights, weights and letter spacing", () => {
-  for (const [role, type] of Object.entries(design.extensions.typographyMeta)) {
-    expectToken(`--text-${role}`, type.fontSize);
-    expectToken(`--text-${role}--line-height`, type.lineHeight);
-    expectToken(`--text-${role}--font-weight`, type.fontWeight);
-    if (type.letterSpacing !== "0") expectToken(`--text-${role}--letter-spacing`, type.letterSpacing);
+it.each(Object.entries(groups))("exposes the %s tokens to stylesheet consumers", (_name, expected) => {
+  for (const [property, value] of Object.entries(expected)) {
+    const actual = tokens.getPropertyValue(property);
+    expect(actual.trim(), `${property} is available`).not.toBe("");
+    if (value !== undefined) expect(normalize(actual), property).toBe(normalize(value));
   }
-  expect(css).toMatch(/--font-sans:\s*var\(--font-rubik\), Rubik, system-ui, sans-serif;/);
 });
 
-it("declares the spacing", () => {
-  for (const [name, value] of Object.entries(design.extensions.spacing)) expectToken(`--space-${kebab(name)}`, value);
-});
-
-it("declares a token for every named motion, and the easings match", () => {
-  for (const motion of design.extensions.motion) {
-    expectToken(`--motion-${motion.name}`);
-    if (motion.value.startsWith("cubic-bezier")) expectToken(`--motion-${motion.name}`, motion.value);
-  }
-});
-
-it("has no shadow tokens, as the design has none", () => {
+it("emits no shadow tokens, as the design has none", () => {
   expect(design.extensions.shadows).toEqual([]);
-  expect(css).not.toMatch(/--shadow-/);
-});
-
-it("declares every radius and colour from DESIGN.md", () => {
-  const front = markdown.split("---")[1];
-  const section = (name: string) => {
-    const block = front.split(new RegExp(`^${name}:$`, "m"))[1].split(/^\S/m)[0];
-    return [...block.matchAll(/^ {2}([\w-]+): "([^"]+)"$/gm)].map((match) => [match[1], match[2]] as const);
-  };
-  for (const [name, value] of section("rounded")) expectToken(`--radius-${name}`, value);
-  for (const [name, value] of section("colors")) {
-    if (name.startsWith("card-")) expectToken(`--${name}`, value);
-    else expectToken(`--color-${name}`, value);
-  }
+  const properties = Array.from({length: tokens.length}, (_, index) => tokens.item(index));
+  expect(properties.filter((property) => property.startsWith("--shadow-"))).toEqual([]);
 });

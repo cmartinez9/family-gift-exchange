@@ -144,8 +144,10 @@ test.describe("the design gallery", () => {
     await open(page);
     const pin = page.locator("#pin");
     for (const digit of "1958") await pin.getByRole("button", {name: digit, exact: true}).click();
-    await expect(pin.getByRole("alert")).toContainText("1958 looks like a year");
+    await expect(pin.getByRole("alert")).toContainText("1958 looks like a date or year");
     for (const digit of "2580") await pin.getByRole("button", {name: digit, exact: true}).click();
+    await expect(pin.getByRole("alert")).toContainText("That one is easy to guess");
+    for (const digit of "4268") await pin.getByRole("button", {name: digit, exact: true}).click();
     await expect(pin.getByText("PIN made")).toBeVisible();
   });
 
