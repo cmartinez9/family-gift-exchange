@@ -147,6 +147,40 @@ for (const exit of ["navigation", "Done", "home"] as const) {
   });
 }
 
+test("refreshes shared helping context when a tab regains focus or visibility", async ({browser}) => {
+  const f = await family(browser);
+  try {
+    const helping = await f.signedIn("Rosa");
+    await helping.goto("/en/account");
+    await helping.getByRole("button", {name: "Help Tito", exact: true}).click();
+    await expect(helping).toHaveURL(/\/en\/helping$/);
+    await helping.goto("/en/account");
+    await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
+    const other = await helping.context().newPage();
+    await other.goto("/en/account");
+    await other.bringToFront();
+    await other.getByRole("button", {name: "Done", exact: true}).click();
+    await expect(other).toHaveURL(/\/en\/account$/);
+
+    await helping.bringToFront();
+    await helping.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
+    await helping.getByRole("link", {name: "Notifications (2 unread)", exact: true}).click();
+    await expect(helping.getByRole("heading", {name: "Notices", exact: true})).toBeVisible();
+    await expect(helping.locator('[data-notice="unread"]')).toHaveCount(2);
+
+    await other.bringToFront();
+    await other.getByRole("button", {name: "Help Tito", exact: true}).click();
+    await expect(other).toHaveURL(/\/en\/helping$/);
+    await helping.bringToFront();
+    await helping.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
+    await expect(helping.locator("[data-notice]")).toHaveCount(0);
+  } finally {
+    await f.close();
+  }
+});
+
 test("rejects stale claim actions after another tab switches the acting profile", async ({browser}) => {
   test.setTimeout(60_000);
   const f = await family(browser);
@@ -206,7 +240,7 @@ test("rejects stale claim actions after another tab switches the acting profile"
 test("the notice badge reaches zero after reading the newest 100 while an older unread notice stays stored", async ({browser}) => {
   test.setTimeout(120_000);
   const f = await family(browser);
-  const database = connectDatabase(process.env.DATABASE_ADMIN_URL!);
+  const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
   try {
     await database.db.delete(outbox).where(eq(outbox.familyId, f.familyId));
     const ids = Array.from({length: 101}, () => randomUUID()).toSorted().reverse();
@@ -244,7 +278,7 @@ for (const locale of ["en", "es"] as const) {
   for (const value of ["50", "75"]) {
     test(`rejects a stale ${value} budget after closing the exchange in ${locale}`, async ({browser}) => {
       const f = await family(browser);
-      const database = connectDatabase(process.env.DATABASE_ADMIN_URL!);
+      const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
       try {
         const organizer = await f.signedIn("Christian");
         const closing = await organizer.context().newPage();
@@ -261,8 +295,7 @@ for (const locale of ["en", "es"] as const) {
         await closing.getByRole("button", {name: "Close Christmas 2026", exact: true}).click();
         await expect(closing.getByRole("heading", {name: "That's a wrap", exact: true})).toBeVisible();
         await organizer.locator('form').filter({has: organizer.locator('input[name="budget"]')}).getByRole("button").click();
-        await expect(organizer.getByRole("main").getByRole("alert")).toHaveText(locale === "en"
-          ? "You can’t make this change." : "No puedes hacer este cambio.");
+        await expect(organizer.getByRole("main").getByRole("alert")).toHaveText((locale === "en" ? en : es).lists.feedback.closed);
         const [closed] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
         expect(closed).toMatchObject({status: "closed", budgetAmount: "50.00"});
         const notices = await database.db.select().from(outbox).where(eq(outbox.familyId, f.familyId));
