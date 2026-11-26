@@ -394,5 +394,33 @@
       "unsupported": "Open the app from your home screen to turn on notifications.",
       "unavailable": "Device notifications are unavailable right now."
     }
+  },
+  "draw": {
+    "errors": {
+      "forbidden": "You don’t have access to this exchange.",
+      "notFound": "We couldn’t find that exchange or person.",
+      "closed": "This exchange is closed.",
+      "invalidDetails": "Check the name, dates, time, place and budget.",
+      "invalidParticipants": "Choose people who are still in your family.",
+      "invalidKeepApart": "Choose two different people to keep apart.",
+      "drawLocked": "The draw is sealed. Use the draw controls to make changes.",
+      "confirmationRequired": "Enter the confirmation exactly as shown.",
+      "drawImpossible": "The names couldn’t be drawn with these rules. Check who’s in and who needs to stay apart.",
+      "checkTimedOut": "The check took too long. Try again or simplify the keep-apart rules.",
+      "repairImpossible": "There’s no small change that keeps all the draw rules.",
+      "alreadyReported": "You’ve already reported a problem with your person in this exchange.",
+      "revealFirst": "Open your person first.",
+      "invalidQuestion": "Write a message between 1 and 500 characters.",
+      "alreadyAnswered": "This question has already been answered.",
+      "drawChanged": "The draw changed. Refresh the page to get the latest version.",
+      "unavailable": "Something went wrong. Try again in a moment."
+    },
+    "blockers": {
+      "tooFew": "At least four people need to take part.",
+      "householdTooLarge": "No more than half the group can be in one household.",
+      "tooFewChoices": "Everyone needs at least two people they’re allowed to draw.",
+      "conflictingRules": "These rules leave no way for everyone to give and receive once. Review the households, helpers and keep-apart pairs."
+    },
+    "hiddenInPreview": "Hidden in preview"
   }
 }

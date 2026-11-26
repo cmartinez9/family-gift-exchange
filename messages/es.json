@@ -394,5 +394,33 @@
       "unsupported": "Abre la aplicación desde tu pantalla de inicio para activar las notificaciones.",
       "unavailable": "Las notificaciones en el dispositivo no están disponibles en este momento."
     }
+  },
+  "draw": {
+    "errors": {
+      "forbidden": "No tienes acceso a este intercambio.",
+      "notFound": "No encontramos ese intercambio o a esa persona.",
+      "closed": "Este intercambio está cerrado.",
+      "invalidDetails": "Revisa el nombre, las fechas, la hora, el lugar y el presupuesto.",
+      "invalidParticipants": "Elige a quienes todavía forman parte de tu familia.",
+      "invalidKeepApart": "Elige a dos personas distintas para que no se saquen entre sí.",
+      "drawLocked": "El sorteo está sellado. Usa las opciones del sorteo para hacer cambios.",
+      "confirmationRequired": "Escribe la confirmación tal como aparece.",
+      "drawImpossible": "No pudimos hacer el sorteo con estas reglas. Revisa quién participa y quiénes no deben sacarse entre sí.",
+      "checkTimedOut": "La revisión tomó demasiado tiempo. Inténtalo de nuevo o simplifica las reglas.",
+      "repairImpossible": "No hay un cambio pequeño que respete todas las reglas del sorteo.",
+      "alreadyReported": "Ya reportaste un problema con tu persona en este intercambio.",
+      "revealFirst": "Primero descubre quién es tu persona.",
+      "invalidQuestion": "Escribe un mensaje de entre 1 y 500 caracteres.",
+      "alreadyAnswered": "Esta pregunta ya tiene respuesta.",
+      "drawChanged": "El sorteo cambió. Actualiza la página para ver la versión más reciente.",
+      "unavailable": "Algo salió mal. Inténtalo de nuevo en un momento."
+    },
+    "blockers": {
+      "tooFew": "Deben participar por lo menos cuatro personas.",
+      "householdTooLarge": "Un mismo hogar no puede tener más de la mitad del grupo.",
+      "tooFewChoices": "Cada persona necesita por lo menos dos personas a quienes pueda sacar.",
+      "conflictingRules": "Con estas reglas, no todos pueden dar y recibir un regalo. Revisa los hogares, quién ayuda a quién y las parejas que no deben sacarse entre sí."
+    },
+    "hiddenInPreview": "Oculto en la vista previa"
   }
 }

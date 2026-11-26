@@ -47,6 +47,8 @@ cp .env.example .env.local
 
 Set `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/family_gift_exchange` in `.env.local` for this local database. Generate separate random values for `AUTH_SECRET` and `ORGANIZER_INVITE_CODE` (for example, run `openssl rand -hex 32` separately for each). Keep the auth secret stable across deployments. Give the organizer invitation code only to people the app owner invites to create a family.
 
+For draw development, set `DRAW_DATABASE_URL` to the same disposable local database and generate an `ASSIGNMENT_ENCRYPTION_KEY` with `openssl rand -base64 32`. Keep that key for as long as you need to open the draws it sealed.
+
 ```sh
 pnpm db:migrate
 pnpm db:seed
