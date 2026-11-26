@@ -1,5 +1,7 @@
 import {randomBytes, randomUUID} from "node:crypto";
-import {renderToStaticMarkup} from "react-dom/server";
+import {createElement} from "react";
+import {renderToReadableStream, renderToStaticMarkup} from "react-dom/server";
+import {NextIntlClientProvider} from "next-intl";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
@@ -18,6 +20,7 @@ import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionD
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {readiness, removeMember} from "../../src/server/auth/families";
+import {addListItem, getWishlist} from "../../src/server/lists";
 import {renderServerTree} from "../helpers/render-server";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
@@ -29,6 +32,7 @@ import PracticePage from "../../src/app/[locale]/exchanges/practice/page";
 import {drawPage} from "../../src/app/[locale]/exchanges/components";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
+import {reveal as revealAction} from "../../src/app/[locale]/exchanges/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
@@ -72,6 +76,7 @@ vi.mock("next/navigation", () => ({
   redirect: (url: string) => { throw new Error(`redirect:${url}`); },
   notFound: () => { throw new Error("notFound"); },
 }));
+vi.mock("next/cache", () => ({revalidatePath: vi.fn()}));
 vi.mock("@/server/auth", async (original) => ({
   ...await original<typeof import("../../src/server/auth")>(),
   requireViewer: async () => signedIn.viewer!,
@@ -125,6 +130,15 @@ afterEach(() => {
 
 function cycle(ids: readonly string[]) {
   return new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+}
+
+async function renderAccountPage() {
+  const messages = signedIn.locale === "es" ? (await import("../../messages/es.json")).default
+    : (await import("../../messages/en.json")).default;
+  const stream = await renderToReadableStream(createElement(NextIntlClientProvider, {
+    locale: signedIn.locale, messages, children: await AccountPage({searchParams: Promise.resolve({})}),
+  }));
+  return new Response(stream).text();
 }
 
 const details: ExchangeDetails = {
@@ -499,6 +513,28 @@ it("detects ciphertext substitution without exposing either person", async () =>
   expect(await memberDrawStatus(viewers[0], exchangeId)).toMatchObject({status: "ready", seen: false});
 });
 
+it("carries the exact wishlist identity through a reveal when two relatives are named Alex", async () => {
+  const f = await fixture({count: 6, coOrganizerIndex: null});
+  await runForFamily(app.db, f.familyId, async (tx) => {
+    for (const id of f.ids.slice(1, 3)) {
+      await tx.update(people).set({displayName: "Alex"}).where(and(eq(people.familyId, f.familyId), eq(people.id, id)));
+    }
+  });
+  await addListItem(f.viewers[1], f.ids[1], {kind: "note", title: "Alex's telescope"});
+  await addListItem(f.viewers[2], f.ids[2], {kind: "note", title: "Alex's knitting book"});
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  for (const [index, title] of [[0, "Alex's telescope"], [1, "Alex's knitting book"]] as const) {
+    const viewer = f.viewers[index];
+    signedIn.viewer = viewer;
+    const result = await revealAction({id: f.exchangeId, subject: viewer.actingAs, version: 1});
+    expect(result).toEqual({personName: "Alex", personId: f.ids[index + 1]});
+    const list = await getWishlist(viewer, result.personId!);
+    expect(list.owner).toMatchObject({id: result.personId, name: "Alex"});
+    expect(list.items.map((item) => item.title)).toEqual([title]);
+  }
+});
+
 it("shows an organizer's replacement-key reveal and repairs it after the member disputes the session", async () => {
   const f = await fixture();
   const pepper = secret();
@@ -783,7 +819,7 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   expect(await ownRevealOpenings(owner)).toEqual([expect.objectContaining({sessionId: f.viewers[1].sessionId, disputed: true})]);
   for (const viewer of [f.organizer, owner, f.coOrganizer, f.viewers[3]]) {
     signedIn.viewer = viewer;
-    const html = renderToStaticMarkup(await AccountPage({searchParams: Promise.resolve({})}));
+    const html = await renderAccountPage();
     expect(html).toContain("Sign-in activity");
     expect(html).toContain("Switch person or sign out");
     expect(html).toContain('href="/exchanges"');
@@ -807,7 +843,7 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/account");
   signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
   expect(signedIn.viewer).toMatchObject({actingAs: f.ids[4]});
-  const html = renderToStaticMarkup(await AccountPage({searchParams: Promise.resolve({})}));
+  const html = await renderAccountPage();
   expect(html).toContain(`helping ${names[4]}.`);
   await expect(signOut(false)).rejects.toThrow("redirect:/en/sign-in");
   expect(signedIn.clearSession).toHaveBeenCalledOnce();

@@ -525,6 +525,7 @@
     "reveal": "Descubrir a tu persona",
     "revealHelp": "Mantén presionado o toca para abrir.",
     "givingTo": "Le vas a regalar a {name}.",
+    "viewWishlist": "Ver la lista de {name}",
     "report": "¿Hay algún problema?",
     "reportHelp": "Buscaremos el cambio más pequeño que te dé un nombre diferente.",
     "reportButton": "Intentar cambiar a mi persona",

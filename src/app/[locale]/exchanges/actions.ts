@@ -11,7 +11,7 @@ import {
 } from "@/server/draw";
 
 export type FormState = {error?: string; feedback?: string};
-export type RevealState = {error?: string; personName?: string};
+export type RevealState = {error?: string; personName?: string; personId?: string};
 
 async function drawAction<T>(operation: () => Promise<T>): Promise<T | {error: string}> {
   const t = await getTranslations("draw");
@@ -175,7 +175,7 @@ export async function reveal(context: MemberContext): Promise<RevealState> {
       ? await practiceCommand(viewer, {kind: "reveal", as: context.subject, expectedVersion: context.version}, context.id)
       : await revealMyPerson(viewer, context.id, context.version);
     await refreshDrawPages();
-    return {personName: person.displayName};
+    return {personName: person.displayName, personId: person.id};
   });
 }
 

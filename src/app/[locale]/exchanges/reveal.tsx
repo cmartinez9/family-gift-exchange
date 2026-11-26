@@ -2,10 +2,11 @@
 
 import {useTranslations} from "next-intl";
 import {useActionState, useEffect, useRef} from "react";
+import {Link} from "@/i18n/navigation";
 import type {RevealState} from "./actions";
-import {button, subheading} from "./styles";
+import {button, link, subheading} from "./styles";
 
-export function Reveal({action}: {action: () => Promise<RevealState>}) {
+export function Reveal({action, practice = false}: {action: () => Promise<RevealState>; practice?: boolean}) {
   const t = useTranslations("draw");
   const [state, submit, pending] = useActionState(action, {});
   const form = useRef<HTMLFormElement>(null);
@@ -18,7 +19,14 @@ export function Reveal({action}: {action: () => Promise<RevealState>}) {
   }
 
   useEffect(() => clearHold, []);
-  if (state.personName) return <p className={subheading} role="status">{t("givingTo", {name: state.personName})}</p>;
+  if (state.personName) return (
+    <div className="space-y-3">
+      <p className={subheading} role="status">{t("givingTo", {name: state.personName})}</p>
+      {state.personId && !practice && <Link className={link} href={`/lists/${state.personId}`} prefetch={false}>
+        {t("viewWishlist", {name: state.personName})}
+      </Link>}
+    </div>
+  );
 
   return (
     <form ref={form} action={submit} className="space-y-3">

@@ -2,7 +2,7 @@ import "server-only";
 import {and, eq, isNull, notInArray, sql} from "drizzle-orm";
 import {withFamily} from "../../db/client";
 import type {FamilyTransaction} from "../../db/database";
-import {claims, families, items, people} from "../../db/schema";
+import {claims, items, people} from "../../db/schema";
 import {
   hidesClaims, ListError, requireListActor, requireListPerson, type ListViewer,
 } from "../access";
@@ -41,8 +41,6 @@ async function withClaimableItem<T>(
   viewer: ListViewer, itemId: string, action: (tx: FamilyTransaction) => Promise<T>,
 ) {
   return withFamily(viewer.familyId, async (tx) => {
-    await tx.select({id: families.id}).from(families)
-      .where(eq(families.id, viewer.familyId)).for("key share");
     await requireListActor(tx, viewer);
     const item = await requireListItem(tx, viewer.familyId, itemId, true);
     await requireListPerson(tx, viewer.familyId, item.ownerId);

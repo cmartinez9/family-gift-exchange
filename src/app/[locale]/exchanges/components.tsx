@@ -95,7 +95,7 @@ export async function MemberReveal({context, state}: {context: MemberContext; st
       <h2 id="your-person" className={subheading}>{t("yourPerson")}</h2>
       {state.status === "ready" ? (
         <>
-          <Reveal key={`${context.subject}/${context.version}`} action={reveal.bind(null, context)} />
+          <Reveal key={`${context.subject}/${context.version}`} action={reveal.bind(null, context)} practice={context.practice} />
           {state.canReport && (
             <details>
               <summary className={link}>{t("report")}</summary>

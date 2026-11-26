@@ -525,6 +525,7 @@
     "reveal": "Open your person",
     "revealHelp": "Press and hold, or tap to open.",
     "givingTo": "You’re giving to {name}.",
+    "viewWishlist": "Open {name}'s wishlist",
     "report": "Something wrong?",
     "reportHelp": "We’ll look for the smallest change that gives you a different person.",
     "reportButton": "Try to fix my match",
