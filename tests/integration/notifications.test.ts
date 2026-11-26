@@ -4,6 +4,9 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {sessions} from "../../src/server/auth/schema";
 import {withFamily} from "../../src/server/db/client";
 import {claims, exchanges, families, items, outbox, participants, people} from "../../src/server/db/schema";
+import {addListItem, editListItem, moveListItem, removeListItem, setExchangeBudget, type ListEvents} from "../../src/server/lists";
+import {claimItem, getGettingList} from "../../src/server/lists/claims";
+import {listEvents} from "../../src/server/lists/list-events";
 import {notify, sendMessage} from "../../src/server/messages";
 import {deliverPendingPushForFamily} from "../../src/server/messages/delivery";
 import {listCapturedMessages} from "../../src/server/messages/dev-outbox";
@@ -89,8 +92,11 @@ afterEach(async () => {
 it("captures every event in both recipient languages and confines sensitive events to their intended recipients", async () => {
   await notify.drawEvents.namesDrawn(event);
   await notify.drawEvents.plansChanged({...event, personIds: members.map(({id}) => id).concat(outOfExchange.id, outsider.id)});
-  await notify.listEvents.budgetChanged(event);
-  for (const itemId of itemIds) await notify.listEvents.itemChanged({...event, itemId});
+  await setExchangeBudget({...device(organizers[0].id), isOrganizer: true}, exchangeId, "50");
+  for (const [index, itemId] of itemIds.entries()) {
+    const owner = device(members[1 - index].id);
+    await editListItem(owner, owner.personId, itemId, {note: "Any color"});
+  }
   await notify.requestPinReset({familyId, personId: outOfExchange.id});
   await withFamily(familyId, (tx) => tx.update(exchanges).set({status: "setup"}).where(eq(exchanges.id, exchangeId)));
   await runDailyReminders(now);
@@ -124,6 +130,106 @@ it("captures every event in both recipient languages and confines sensitive even
   const rows = await withFamily(familyId, (tx) => tx.select().from(outbox));
   for (const itemId of itemIds) expect(JSON.stringify(rows)).not.toContain(itemId);
   expect(rows).toHaveLength(messages.length);
+});
+
+it("notifies only ordinary claimers of edits and removals with generic localized inbox and push content", async () => {
+  vi.stubEnv("VERCEL_ENV", "production");
+  const expectedContent = [
+    {title: "A gift idea changed", body: "An item you’re getting changed. Check your list of gifts you’re getting."},
+    {title: "Cambió una idea de regalo", body: "Cambió uno de los regalos que vas a comprar. Revisa tu lista de regalos que vas a dar."},
+  ];
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  const privateValues: string[] = [exchangeId, ...organizers.map(({displayName}) => displayName),
+    ...members.flatMap(({id, displayName}) => [id, displayName])];
+  const subscriptions: ReturnType<typeof browserSubscription>[] = [];
+
+  for (const [index, member] of members.entries()) {
+    const buyer = await signedInDevice(member.id);
+    const subscription = browserSubscription();
+    subscriptions.push(subscription);
+    await subscribePush(buyer, subscription);
+    const owner = device(members[1 - index].id);
+    const ownerNotices = await listNotifications(owner);
+    const item = await addListItem(owner, owner.personId, {kind: "note", title: `Private gift idea ${index}`});
+    await editListItem(owner, owner.personId, item.id, {note: "Before claiming"});
+    await claimItem(buyer, item.id);
+    const [claim] = await withFamily(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)));
+    expect(claim.exchangeId).toBeNull();
+    privateValues.push(item.id, item.title, claim.id);
+    await editListItem(owner, owner.personId, item.id, {note: "Before claiming"});
+    await moveListItem(owner, owner.personId, item.id, "up");
+    expect(await listNotifications(buyer)).toEqual([]);
+    await editListItem(owner, owner.personId, item.id, {note: "After claiming"});
+    await removeListItem(owner, owner.personId, item.id);
+    expect(await listNotifications(owner)).toEqual(ownerNotices);
+    expect((await getGettingList(buyer)).some(({itemId}) => itemId === item.id)).toBe(false);
+    expect(await withFamily(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id))))
+      .toEqual([]);
+  }
+
+  const rows = await withFamily(familyId, (tx) => tx.select().from(outbox));
+  expect(rows).toHaveLength(4);
+  for (const [index, member] of members.entries()) {
+    expect(rows.filter(({personId}) => personId === member.id)).toMatchObject(Array.from({length: 2}, () => ({
+      familyId, personId: member.id, language: member.language, channel: "push", template: "claimed-item-changed",
+      status: "pending", requesterName: null, dedupeKey: null,
+    })));
+    const notices = await listNotifications(device(member.id));
+    expect(notices).toMatchObject(Array.from({length: 2}, () => ({...expectedContent[index], language: member.language})));
+    for (const value of privateValues) expect(JSON.stringify(notices)).not.toContain(value);
+  }
+  expect(await listNotifications(device(organizers[0].id))).toEqual([]);
+  expect(await listNotifications(device(outsider.id, otherFamilyId))).toEqual([]);
+
+  await deliverPendingPushForFamily(familyId, sender);
+  expect(sender).toHaveBeenCalledTimes(4);
+  for (const [index, member] of members.entries()) {
+    const calls = sender.mock.calls.filter(([subscription]) => subscription.endpoint === subscriptions[index].endpoint);
+    expect(calls).toHaveLength(2);
+    for (const [, payload] of calls) {
+      expect(payload).toEqual({...expectedContent[index], url: `/${member.language}/notifications`, tag: expect.any(String)});
+      for (const value of privateValues) expect(JSON.stringify(payload)).not.toContain(value);
+    }
+  }
+});
+
+it("rolls back default callback messages with the item savepoint and budget transaction", async () => {
+  const owner = device(members[1].id);
+  const seen: (typeof outbox.$inferSelect)[][] = [];
+  const rollbackEvents: ListEvents = {
+    async claimedItemChanged(tx, event) {
+      await listEvents.claimedItemChanged(tx, event);
+      seen.push(await tx.select().from(outbox));
+      throw new Error("rollback");
+    },
+    async budgetChanged(tx, event) {
+      await listEvents.budgetChanged(tx, event);
+      seen.push(await tx.select().from(outbox));
+      throw new Error("rollback");
+    },
+  };
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    await expect(editListItem(owner, owner.personId, itemIds[0], {note: "Saved despite queue failure"}, {events: rollbackEvents}))
+      .resolves.toMatchObject({note: "Saved despite queue failure"});
+    expect(warning).toHaveBeenCalledOnce();
+  } finally {
+    warning.mockRestore();
+  }
+  await expect(setExchangeBudget({...device(organizers[0].id), isOrganizer: true}, exchangeId, "75", rollbackEvents))
+    .rejects.toThrow("rollback");
+  expect(seen[0]).toMatchObject([{personId: members[0].id, language: "en", template: "claimed-item-changed"}]);
+  expect(seen[1].map(({personId}) => personId).toSorted())
+    .toEqual([...organizers, ...members, dependent].map(({id}) => id).toSorted());
+  expect(seen[1].every(({template}) => template === "budget-changed")).toBe(true);
+  const state = await withFamily(familyId, async (tx) => ({
+    messages: await tx.select().from(outbox),
+    exchanges: await tx.select().from(exchanges),
+    items: await tx.select().from(items).where(eq(items.id, itemIds[0])),
+  }));
+  expect(state.messages).toEqual([]);
+  expect(state.exchanges).toMatchObject([{budgetAmount: null}]);
+  expect(state.items).toMatchObject([{note: "Saved despite queue failure"}]);
 });
 
 it("rolls back event notifications with the corresponding family mutation", async () => {

@@ -1,5 +1,6 @@
 import "server-only";
 import type {FamilyTransaction} from "../db/database";
+import {listEvents as messageEvents} from "../messages/events";
 
 type ItemEvent = {
   familyId: string;
@@ -15,8 +16,7 @@ export interface ListEvents {
   budgetChanged(tx: FamilyTransaction, event: {familyId: string; exchangeId: string}): Promise<void>;
 }
 
-// TODO(phase 4): wire these handlers to the message queue.
 export const listEvents: ListEvents = {
-  async claimedItemChanged() {},
-  async budgetChanged() {},
+  claimedItemChanged: (tx, {familyId, personId}) => messageEvents.claimedItemChanged({familyId, personId}, tx),
+  budgetChanged: (tx, event) => messageEvents.budgetChanged(event, tx),
 };

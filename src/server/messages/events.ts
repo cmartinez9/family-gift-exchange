@@ -2,13 +2,13 @@ import "server-only";
 import {and, eq, inArray, isNull, ne} from "drizzle-orm";
 import {withFamily} from "../db/client";
 import type {FamilyTransaction} from "../db/database";
-import {claims, items, participants, people} from "../db/schema";
+import {participants, people} from "../db/schema";
 import {schedulePushDelivery} from "./delivery";
 import {enqueueMessages, type Message} from "./queue";
 
 type ExchangeEvent = {familyId: string; exchangeId: string};
 type PlansChangedEvent = ExchangeEvent & {personIds: readonly string[]};
-type ItemChangedEvent = ExchangeEvent & {itemId: string};
+type ClaimedItemChangedEvent = {familyId: string; personId: string};
 type PinResetRequest = {familyId: string; personId: string};
 
 async function record(
@@ -57,18 +57,13 @@ export const drawEvents = {
 export const listEvents = {
   budgetChanged: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "budget-changed", tx),
 
-  // Call with the list mutation's transaction while the original claim still exists.
-  itemChanged(event: ItemChangedEvent, tx?: FamilyTransaction) {
+  claimedItemChanged(event: ClaimedItemChangedEvent, tx: FamilyTransaction) {
     return record(event.familyId, tx, async (transaction) => {
       const recipients = await transaction.select({personId: people.id, language: people.language})
-        .from(claims)
-        .innerJoin(items, and(eq(items.familyId, claims.familyId), eq(items.id, claims.itemId)))
-        .innerJoin(people, and(eq(people.familyId, claims.familyId), eq(people.id, claims.claimerId)))
+        .from(people)
         .where(and(
-          eq(claims.familyId, event.familyId),
-          eq(claims.exchangeId, event.exchangeId),
-          eq(claims.itemId, event.itemId),
-          ne(claims.claimerId, items.ownerId),
+          eq(people.familyId, event.familyId),
+          eq(people.id, event.personId),
           isNull(people.removedAt),
         ));
       await enqueueMessages(transaction, recipients.map((recipient): Message => ({
