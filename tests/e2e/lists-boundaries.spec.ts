@@ -207,7 +207,7 @@ test("lets a switched helper edit a relative's list while other members can only
     await page.getByRole("link", {name: lists.editProfile}).click();
     await page.getByLabel(lists.size.shoes, {exact: true}).fill("2Y");
     await page.getByLabel(lists.size.shoes, {exact: true}).blur();
-    await expect(page.getByRole("status")).toHaveText(lists.saved);
+    await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
     await page.getByRole("link", {name: lists.backToList}).click();
     await member.page.goto(path!);
     const card = member.page.getByRole("article", {name: "Wooden train", exact: true});

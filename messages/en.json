@@ -3,6 +3,17 @@
     "title": "Family Gift Exchange",
     "language": "Language"
   },
+  "ui": {
+    "tabs": {
+      "label": "Main",
+      "home": "Home",
+      "list": "My list",
+      "family": "Family"
+    },
+    "undo": "Undo",
+    "close": "Close",
+    "back": "Back to"
+  },
   "devMessages": {
     "title": "Captured messages",
     "empty": "No messages have been captured.",

@@ -12,6 +12,14 @@
 
 Use named exports for domain modules and default exports where framework or tool conventions require them. Use kebab-case for file and directory names, camelCase for TypeScript fields, and snake_case for SQL. Keep domain helpers beside their entry points. Place translated routes under `src/app/[locale]`, translation messages in `messages/{en,es}.json`, and theme variables in `src/styles/tokens.css`.
 
+## Design system
+
+The design is "Sweater Weather". [`design/DESIGN.md`](../design/DESIGN.md) is the product rulebook. [`design/design.json`](../design/design.json) owns the exported color, typography, card, spacing, and motion tokens; the rulebook's `rounded` front matter owns the radii. `src/styles/tokens.css` exposes these to Tailwind. [`tests/unit/design-tokens.test.ts`](../tests/unit/design-tokens.test.ts) compiles the stylesheet and checks effective custom properties, including the rulebook's front-matter colors and radii.
+
+This phase supplies the reusable components and motion primitives in `src/components/ui`, global tokens, self-hosted Rubik, and the [development gallery](../README.md#run-locally). Live sign-in, wishlist, and family flows retain their existing page UI; adopting the components belongs to later work in each area. The rulebook's full flows, including the draw and key-opening ceremonies, describe the product direction rather than completed screens.
+
+Build screens with `Screen` for the ground, tab roots, pushed pages, and bottom actions. Links declare navigation motion with `AppLink`'s `transition` (`push`, `back`, or `tab`). The shared layout mounts `AppChrome` once for the toast and tab-bar host; the bar stays hidden until a page renders `Screen` with `tab`. The gallery's PIN demo and authentication share the pure `pinProblem` rule in [`src/lib/pin-policy.ts`](../src/lib/pin-policy.ts). Rubik is bundled in `src/styles/fonts` under the SIL Open Font License.
+
 ## Requests and data access
 
 Keep reads in Server Components and use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
@@ -33,4 +41,5 @@ The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`: `production` que
 - Put pure tests in `tests/unit`. Use fast-check for invariants that need many generated inputs.
 - Put database behavior in `tests/integration`. Apply real migrations, use `withFamily` for runtime queries, and use isolated synthetic fixtures. Test permission failures through the actual transaction.
 - Put user workflows in `tests/e2e`. Use mobile Chromium and WebKit, separated browser contexts for different people, and axe for accessibility.
+- `tests/e2e/design.spec.ts` checks gallery interactions, accessibility, reduced motion, and narrow-viewport overflow. See [Test](../README.md#test) for the two Playwright servers and port overrides.
 - `pnpm check:i18n` compares translation leaf keys in both directions. Update both catalogs with every new user-facing key.

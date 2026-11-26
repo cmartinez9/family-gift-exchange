@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-26T07:08:16.461Z",
+  "title": "Design System: Family Gift Exchange v2, Sweater Weather (final)",
+  "extensions": {
+    "colorMeta": {
+      "sweater-red": {
+        "role": "primary",
+        "displayName": "Sweater Red",
+        "canonical": "#C8202F",
+        "use": "The ground on almost every screen."
+      },
+      "pine": {
+        "role": "secondary",
+        "displayName": "Pine",
+        "canonical": "#12573A",
+        "use": "Yours, or only you can see it: the pass, your claims, the ground of private screens."
+      },
+      "gold": {
+        "role": "tertiary",
+        "displayName": "Gold",
+        "canonical": "#EDB43E",
+        "use": "The one thing to do now. At most one gold surface per screen."
+      },
+      "yarn-white": {
+        "role": "neutral",
+        "displayName": "Yarn White",
+        "canonical": "#FFF8EF",
+        "use": "Information cards, sheets, stitched lettering."
+      },
+      "oat-rose": {
+        "role": "neutral",
+        "displayName": "Oat Rose",
+        "canonical": "#EADBD7",
+        "use": "Taken by someone else."
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1B1416",
+        "use": "Text on light cards, in-card buttons, the tab bar, selection, ticks, toasts, the mode banner."
+      },
+      "snow-white": {
+        "role": "neutral",
+        "displayName": "Snow White",
+        "canonical": "#FFFFFF",
+        "use": "The big button on the ground, the active tab, text on red and pine."
+      },
+      "muted-ink": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#5F5456",
+        "use": "Secondary text on yarn white and rose."
+      },
+      "gold-ink": {
+        "role": "neutral",
+        "displayName": "Gold Ink",
+        "canonical": "#4A3512",
+        "use": "Secondary text on gold."
+      },
+      "pale-pine": {
+        "role": "neutral",
+        "displayName": "Pale Pine",
+        "canonical": "#D3E6DC",
+        "use": "Secondary text on pine."
+      },
+      "pin-slot-red": {
+        "role": "neutral",
+        "displayName": "Pin Slot Red",
+        "canonical": "#9C1525",
+        "use": "Empty PIN slots."
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "canonical": "#A61B29",
+        "use": "Only inside a confirm sheet for an action that cannot be undone."
+      },
+      "card-track": {
+        "role": "neutral",
+        "displayName": "Track",
+        "canonical": "#F2E7D5",
+        "use": "Notes, fields, chips and avatars inside a yarn-white card."
+      },
+      "card-track-next": {
+        "role": "neutral",
+        "displayName": "Track on gold",
+        "canonical": "#DBA533",
+        "use": "Tracks inside a gold card."
+      },
+      "card-track-mine": {
+        "role": "neutral",
+        "displayName": "Track on pine",
+        "canonical": "#2A6A4E",
+        "use": "Tracks inside a pine card."
+      },
+      "card-track-taken": {
+        "role": "neutral",
+        "displayName": "Track on rose",
+        "canonical": "#E0CFCA",
+        "use": "Tracks inside a rose card."
+      }
+    },
+    "cardTokens": {
+      "--card-info": "#FFF8EF",
+      "--card-next": "#EDB43E",
+      "--card-mine": "#12573A",
+      "--card-taken": "#EADBD7",
+      "--card-track": "#F2E7D5",
+      "--card-track-next": "#DBA533",
+      "--card-track-mine": "#2A6A4E",
+      "--card-track-taken": "#E0CFCA",
+      "--card-radius": "32px",
+      "--card-radius-item": "28px"
+    },
+    "typographyMeta": {
+      "title": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "36px",
+        "fontWeight": 800,
+        "lineHeight": "38px",
+        "letterSpacing": "-0.02em",
+        "use": "One per screen."
+      },
+      "sheet-title": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "28px",
+        "fontWeight": 800,
+        "lineHeight": "32px",
+        "letterSpacing": "-0.01em",
+        "use": "The title of a sheet."
+      },
+      "section": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "22px",
+        "fontWeight": 800,
+        "lineHeight": "27px",
+        "letterSpacing": "0",
+        "use": "A heading on the ground or inside a big card."
+      },
+      "card-title": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "20px",
+        "fontWeight": 800,
+        "lineHeight": "26px",
+        "letterSpacing": "0",
+        "use": "The main line of a card."
+      },
+      "item-title": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "20px",
+        "fontWeight": 700,
+        "lineHeight": "26px",
+        "letterSpacing": "0",
+        "use": "The name of a gift."
+      },
+      "button": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "20px",
+        "fontWeight": 700,
+        "lineHeight": "26px",
+        "letterSpacing": "0",
+        "use": "Big pills on the ground."
+      },
+      "lead": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "19px",
+        "fontWeight": 400,
+        "lineHeight": "27px",
+        "letterSpacing": "0",
+        "use": "The sentence under a title."
+      },
+      "row-title": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "19px",
+        "fontWeight": 700,
+        "lineHeight": "27px",
+        "letterSpacing": "0",
+        "use": "A row in a grouped card."
+      },
+      "body": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "18px",
+        "fontWeight": 500,
+        "lineHeight": "25px",
+        "letterSpacing": "0",
+        "use": "Every other sentence; 600 to 700 for status and small buttons."
+      },
+      "tab": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "17px",
+        "fontWeight": 500,
+        "lineHeight": "22px",
+        "letterSpacing": "0",
+        "use": "Tab labels (700 when active)."
+      },
+      "label": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "13px",
+        "fontWeight": 800,
+        "lineHeight": "16px",
+        "letterSpacing": "0.06em",
+        "use": "Uppercase. Only Home's season label and list counts."
+      },
+      "keypad": {
+        "fontFamily": "Rubik, system-ui, sans-serif",
+        "fontSize": "30px",
+        "fontWeight": 500,
+        "lineHeight": "32px",
+        "letterSpacing": "0",
+        "use": "PIN digits."
+      }
+    },
+    "spacing": {
+      "base": "4px",
+      "edge": "20px",
+      "inGroup": "8px",
+      "betweenCards": "12px",
+      "betweenGroups": "24px",
+      "cardPadding": "20px",
+      "itemPadding": "16px",
+      "bottomAction": "34px",
+      "tabBarClearance": "98px"
+    },
+    "stitchedAlphabet": {
+      "grid": "6 x 9 knit chart, 1 empty column between letters",
+      "glyphs": "0-9 A B C D E H I K L M N O R S T W Y !",
+      "cellSizes": {
+        "homeCountdown": "10.5px",
+        "greeting": "10px",
+        "revealedName": "11.5px",
+        "personPage": "7.5px",
+        "pass": "6.4px",
+        "today": "8.5px"
+      },
+      "color": "yarn white on red or pine only",
+      "use": "names, numbers and moments only"
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-interface",
+        "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "Pushes, sheets rising, cards arriving, toasts."
+      },
+      {
+        "name": "ease-back",
+        "value": "cubic-bezier(0.4, 0, 0.6, 1)",
+        "purpose": "Back, 300ms."
+      },
+      {
+        "name": "push",
+        "value": "380ms from the right; parent slides 30% left and dims",
+        "purpose": "Going deeper."
+      },
+      {
+        "name": "tab",
+        "value": "220ms crossfade; pill springs 340ms cubic-bezier(0.3, 1.25, 0.5, 1)",
+        "purpose": "Switching tabs. Tabs never slide."
+      },
+      {
+        "name": "sheet",
+        "value": "rise 420ms; close 260ms cubic-bezier(0.4, 0, 1, 1); dismiss past 30% height or a flick",
+        "purpose": "Sheets behave like iOS sheets."
+      },
+      {
+        "name": "press",
+        "value": "scale 0.97, 120ms",
+        "purpose": "Every tappable thing."
+      },
+      {
+        "name": "arrive",
+        "value": "340 to 380ms, rise 14 to 16px, 60 to 80ms stagger, at most 5",
+        "purpose": "Cards arriving on a screen."
+      },
+      {
+        "name": "toast",
+        "value": "rise 280ms; 2.6s, or 5s with Undo",
+        "purpose": "Feedback and Undo."
+      },
+      {
+        "name": "knit-word",
+        "value": "5 to 7ms per stitch; 220ms pop cubic-bezier(0.3, 1.6, 0.5, 1)",
+        "purpose": "Stitched words knit in."
+      },
+      {
+        "name": "unravel",
+        "value": "300ms per row cubic-bezier(0.55, 0, 0.8, 0.35); 1.7s per gift of holding; tap fallback 1100ms",
+        "purpose": "The reveal."
+      },
+      {
+        "name": "knit-name",
+        "value": "7.5ms per stitch, bottom row first, alternating",
+        "purpose": "The reveal."
+      },
+      {
+        "name": "ground-to-pine",
+        "value": "700ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "The reveal."
+      },
+      {
+        "name": "claim-dye",
+        "value": "clip-path circle from the button, 440ms",
+        "purpose": "I'm getting this."
+      },
+      {
+        "name": "tag-swing",
+        "value": "1000ms cubic-bezier(0.25, 0.8, 0.3, 1); 20, -11, 7, -3, 5 degrees",
+        "purpose": "I'm getting this."
+      },
+      {
+        "name": "draw",
+        "value": "loop 2.4s, panel 1.3s in 28 steps, lock knits 9ms a stitch",
+        "purpose": "The draw ceremony; skippable."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "160ms crossfades; instant reveal; no knitting; fades only",
+        "purpose": "Follows prefers-reduced-motion."
+      }
+    ],
+    "haptics": [
+      {
+        "name": "tick",
+        "when": "PIN digit, size chip, suggestion, each row of yarn"
+      },
+      {
+        "name": "error",
+        "when": "refused or mismatched PIN"
+      },
+      {
+        "name": "success",
+        "when": "PIN made, Face ID on, all set, your person revealed, names drawn, question sent, key sent"
+      },
+      {
+        "name": "firm",
+        "when": "I'm getting this"
+      },
+      {
+        "name": "soft",
+        "when": "sheet put away, back swipe, tab change"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "390px x 844px design frame"
+      }
+    ],
+    "accessibility": {
+      "bodyMin": "18px",
+      "targetsMin": "48px",
+      "textOnTexture": "never",
+      "holdFallback": "every hold has a tap path and works with Space or Enter",
+      "reducedMotion": "crossfades, instant reveal",
+      "focus": "3px yarn-white ring, 3px offset; ink inside sheets",
+      "largestText": "tab bar stacks icon over label (frame 13.5)"
+    },
+    "rules": [
+      "One gold surface per screen, for the one thing to do now.",
+      "Pine is yours or only-you; the ground turns pine only for what only you may see.",
+      "Selection, ticks, switches and avatars are ink or track tone, never pine or gold.",
+      "No borders, cuffs, edge bands or shadows on cards.",
+      "No small caps label above a heading.",
+      "Undo instead of confirm for anything reversible.",
+      "Nothing hints at who has whom."
+    ],
+    "openDecisions": [
+      {
+        "name": "Product pictures",
+        "status": "open",
+        "body": "Drawn stand-ins in the design; the build uses the fetched store photo on an 18px-cornered tile."
+      },
+      {
+        "name": "Stitched alphabet",
+        "status": "open",
+        "body": "Draw the letters the real family's names need on the same 6 x 9 grid."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Information card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A flat yarn-white block: anything that is not one of the other three.",
+      "html": "<div class=\"ds-card\"><strong>Thursday, Dec 24 · 7 pm</strong><span>Ana's house · $50 each</span></div>",
+      "css": ".ds-card{font-family:'Rubik',system-ui,sans-serif;width:350px;border-radius:var(--card-radius,32px);background:var(--card-info,#FFF8EF);color:#1B1416;padding:20px;display:flex;flex-direction:column;gap:8px}"
+    },
+    {
+      "name": "Next step card",
+      "kind": "card",
+      "refersTo": "card-next",
+      "description": "Gold: the one thing to do now, with one ink button.",
+      "html": "<div class=\"ds-card-next\"><strong>Add a few things to your list</strong><span>Lists are due Saturday, Dec 5</span><button>Add to my list</button></div>",
+      "css": ".ds-card-next{font-family:'Rubik',system-ui,sans-serif;width:350px;border-radius:var(--card-radius,32px);background:var(--card-next,#EDB43E);color:#1B1416;padding:20px;display:flex;flex-direction:column;gap:8px}.ds-card-next span{color:#4A3512}.ds-card-next button{height:52px;border:0;border-radius:26px;background:#1B1416;color:#fff;font:700 18px Rubik,sans-serif}"
+    },
+    {
+      "name": "The pass",
+      "kind": "card",
+      "refersTo": "card-mine",
+      "description": "Pine: your person, kept on Home and at the top of Family. The name is stitched; the card says 'Only you can see this'.",
+      "html": "<a class=\"ds-pass\" href=\"#\"><span>You're giving to</span><strong>BETO</strong><small>Only you can see this · $50</small></a>",
+      "css": ".ds-pass{font-family:'Rubik',system-ui,sans-serif;width:350px;border-radius:var(--card-radius,32px);background:var(--card-mine,#12573A);color:#FFFFFF;padding:20px;display:flex;flex-direction:column;gap:8px}.ds-pass span,.ds-pass small{color:#D3E6DC;font:600 18px/25px Rubik,sans-serif}.ds-pass strong{font:800 36px/38px Rubik,sans-serif;letter-spacing:.1em}"
+    },
+    {
+      "name": "Gift item",
+      "kind": "card",
+      "refersTo": "item",
+      "description": "A 72px picture, the title, store and price, then a note, status, action or budget measure. Rose when someone else is getting it, pine when you are.",
+      "html": "<div class=\"ds-item\"><img alt=\"\" width=\"72\" height=\"72\"><div><strong>Cozy slipper socks</strong><span>Walmart · <b>$12.97</b></span><button>I'm getting this</button></div></div>",
+      "css": ".ds-item{font-family:'Rubik',system-ui,sans-serif;width:350px;border-radius:var(--card-radius-item,28px);background:var(--card-info,#FFF8EF);padding:16px;display:flex;gap:14px}.ds-item img{border-radius:18px;background:#E9EEF1}.ds-item strong{display:block;font:700 20px/26px Rubik,sans-serif}.ds-item span{font:500 18px/25px Rubik,sans-serif;color:#5F5456}.ds-item button{height:48px;margin-top:10px;padding:0 18px;border:0;border-radius:24px;background:#1B1416;color:#fff;font:700 18px Rubik,sans-serif}"
+    },
+    {
+      "name": "Button on the ground",
+      "kind": "button",
+      "refersTo": "button-ground",
+      "description": "The one main action on the red or pine ground.",
+      "html": "<button class=\"ds-btn\">Yes, it's my phone</button>",
+      "css": ".ds-btn{font-family:'Rubik',system-ui,sans-serif;height:64px;width:100%;border:0;border-radius:32px;background:#FFFFFF;color:#1B1416;font-size:20px;font-weight:700}.ds-btn:active{transform:scale(.97)}.ds-btn:focus-visible{outline:3px solid #FFF8EF;outline-offset:3px}"
+    },
+    {
+      "name": "Outline button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "A real alternative on the ground.",
+      "html": "<button class=\"ds-btn-outline\">No, I'm helping Rosa</button>",
+      "css": ".ds-btn-outline{font-family:'Rubik',system-ui,sans-serif;height:60px;width:100%;border:2px solid rgba(255,255,255,.6);border-radius:30px;background:transparent;color:#fff;font-size:20px;font-weight:700}"
+    },
+    {
+      "name": "In-card button",
+      "kind": "button",
+      "refersTo": "button-card",
+      "description": "The action inside a card or sheet.",
+      "html": "<button class=\"ds-btn-ink\">Add to my list</button>",
+      "css": ".ds-btn-ink{font-family:'Rubik',system-ui,sans-serif;height:52px;width:100%;border:0;border-radius:26px;background:#1B1416;color:#fff;font-size:18px;font-weight:700}"
+    },
+    {
+      "name": "Text link",
+      "kind": "button",
+      "refersTo": "text-link",
+      "description": "Skip, later, cancel: underlined, 48px tall.",
+      "html": "<button class=\"ds-link\">Skip for now</button>",
+      "css": ".ds-link{font-family:'Rubik',system-ui,sans-serif;min-height:48px;padding:0 12px;border:0;background:none;color:inherit;font-size:18px;font-weight:600;text-decoration:underline;text-underline-offset:4px}"
+    },
+    {
+      "name": "Sheet",
+      "kind": "overlay",
+      "refersTo": "sheet",
+      "description": "Yarn white, grabber, 28px title, 48px close; drag down, tap the scrim or Escape to close.",
+      "html": "<div class=\"ds-scrim\"></div><section class=\"ds-sheet\" role=\"dialog\"><div class=\"ds-grab\"></div><header><h3>Add something</h3><button aria-label=\"Close\">×</button></header></section>",
+      "css": ".ds-scrim{position:fixed;inset:0;background:rgba(40,6,10,.55)}.ds-sheet{font-family:'Rubik',system-ui,sans-serif;position:fixed;left:0;right:0;bottom:0;border-radius:34px 34px 0 0;background:#FFF8EF;color:#1B1416;padding:8px 20px 34px}.ds-grab{width:40px;height:5px;border-radius:3px;background:rgba(27,20,22,.22);margin:0 auto 12px}.ds-sheet h3{font:800 28px/32px Rubik,sans-serif}.ds-sheet header{display:flex;justify-content:space-between}.ds-sheet header button{width:48px;height:48px;border-radius:24px;border:0;background:#F2E7D5}"
+    },
+    {
+      "name": "Toast with Undo",
+      "kind": "feedback",
+      "refersTo": "toast",
+      "description": "Replaces confirm dialogs for anything reversible. Floats above the tab bar or the screen's own buttons.",
+      "html": "<div class=\"ds-toast\" role=\"status\"><span>Took off the crosswords</span><button>Undo</button></div>",
+      "css": ".ds-toast{font-family:'Rubik',system-ui,sans-serif;display:flex;align-items:center;gap:12px;min-height:60px;padding:0 6px 0 20px;border-radius:30px;background:#1B1416;color:#fff;font-size:18px;font-weight:600}.ds-toast button{min-height:48px;padding:0 16px;border:0;background:none;color:#EDB43E;font-weight:800;text-decoration:underline}"
+    },
+    {
+      "name": "Mode banner",
+      "kind": "navigation",
+      "refersTo": "mode-banner",
+      "description": "One banner for every mode: helping someone, practice family, preview as.",
+      "html": "<div class=\"ds-mode\"><span>You're helping Tito</span><button>Done</button></div>",
+      "css": ".ds-mode{font-family:'Rubik',system-ui,sans-serif;display:flex;align-items:center;gap:12px;height:56px;padding:0 8px 0 20px;background:#1B1416;color:#fff;font-size:18px;font-weight:700}.ds-mode span{flex:1}.ds-mode button{height:48px;padding:0 18px;border:0;border-radius:24px;background:rgba(255,255,255,.14);color:#fff;font:700 18px Rubik,sans-serif}"
+    },
+    {
+      "name": "Tab bar",
+      "kind": "navigation",
+      "refersTo": "tab-bar",
+      "description": "Home, My list, Family. Ink pill; the active tab is a white pill that springs across.",
+      "html": "<nav class=\"ds-tabs\"><a aria-current=\"page\">Home</a><a>My list</a><a>Family</a></nav>",
+      "css": ".ds-tabs{font-family:'Rubik',system-ui,sans-serif;display:flex;gap:4px;height:72px;padding:8px;border-radius:36px;background:#1B1416}.ds-tabs a{flex:1;display:flex;align-items:center;justify-content:center;border-radius:28px;color:#fff;font-size:17px}.ds-tabs a[aria-current]{background:#fff;color:#1B1416;font-weight:700}"
+    },
+    {
+      "name": "Avatar",
+      "kind": "identity",
+      "refersTo": "avatar",
+      "description": "A neutral disc with the initial in ink, so colour keeps its meaning.",
+      "html": "<span class=\"ds-av\">B</span>",
+      "css": ".ds-av{font-family:'Rubik',system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:24px;background:#F2E7D5;color:#1B1416;font-size:21px;font-weight:800}"
+    },
+    {
+      "name": "Size chip",
+      "kind": "input",
+      "refersTo": "chip",
+      "description": "48px; picked is ink, never pine.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">M</button>",
+      "css": ".ds-chip{font-family:'Rubik',system-ui,sans-serif;height:48px;min-width:48px;padding:0 12px;border:0;border-radius:24px;background:#F2E7D5;color:#1B1416;font-size:18px;font-weight:700}.ds-chip[aria-pressed=\"true\"]{background:#1B1416;color:#fff}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Family Sweater",
+    "overview": "A sweater-red phone app. Everything you read and press sits on flat yarn blocks whose colour says what they are: yarn white for information, gold for the one thing to do now, pine for yours or only-you, oat rose for taken. Stitched lettering is kept for names, numbers and moments. The one authored moment is the reveal: hold the knitted gift, it unravels, the yarn knits your person's name, the ground turns pine, and the name stays knitted on a pine pass at the top of Home and Family.",
+    "keyCharacteristics": [
+      "Flat sweater-red ground; pine only for private screens.",
+      "Yarn-block cards with colour meaning, always said in words too.",
+      "One type scale, one 20px edge, one icon set, one sheet, one toast, one mode banner.",
+      "Stitches only for names, numbers and moments.",
+      "No shadows, borders or edge bands.",
+      "Motion behaves like yarn."
+    ]
+  }
+}

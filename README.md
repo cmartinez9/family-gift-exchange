@@ -43,6 +43,8 @@ pnpm dev --experimental-https
 
 Set `AUTH_ORIGIN=https://localhost:3000` for this local HTTPS server. Open [the local app](https://localhost:3000) or [captured messages](https://localhost:3000/dev/messages). Seeding adds five fictional practice rosters. Create a new family with the organizer invitation code to practice the full sign-in flow.
 
+Preview the Sweater Weather components, states, and motion in the [design gallery](https://localhost:3000/dev/design). Its controls demonstrate the components without changing family data, including a **Reduce motion** switch. The gallery is development-only and returns 404 on production builds. See the [design rulebook](design/DESIGN.md) for the product direction and [implementation coverage](docs/architecture.md#design-system) for the foundations available now.
+
 On Vercel, set `AUTH_ORIGIN` to the canonical HTTPS address members use. This sets the origin for personal links and the scope of passkeys. To check sharing on a real phone, use a practice family and send keys only to test recipients.
 
 Wishlist photos and preview images use a private Vercel Blob store when `BLOB_READ_WRITE_TOKEN` is set. Configure that token on Vercel; local filesystem storage is unavailable there. Without the token, local development uses temporary photo storage by default. Set `LIST_PHOTO_DIR` to a persistent local directory to retain images across temporary-directory cleanup; a local production server also requires this setting when no Blob token is provided. If photo storage is unavailable, photo uploads fail and link items can still be saved without preview images. Photo access goes through signed-in, family-scoped app routes.
@@ -54,7 +56,7 @@ pnpm exec playwright install chromium webkit
 pnpm test:all
 ```
 
-On Linux, add `--with-deps` to the browser install if system libraries are needed. The integration tests use the local Postgres database. Playwright uses the same database, builds the production app, and serves it over HTTPS on port 3100. It uses OpenSSL to create a temporary local certificate and generates its own organizer invitation code.
+On Linux, add `--with-deps` to the browser install if system libraries are needed. The integration tests use the local Postgres database. Playwright uses the same database, builds the production app, and serves it over HTTPS on port 3100 (`E2E_PORT` overrides this). It also serves the design gallery with `next dev` over HTTP on port 3101 (`E2E_DESIGN_PORT` overrides this); use distinct ports for the two servers. The production test server uses OpenSSL to create a temporary local certificate and gets a generated organizer invitation code.
 
 See [Architecture](docs/architecture.md) for module ownership, database access, and migration conventions.
 

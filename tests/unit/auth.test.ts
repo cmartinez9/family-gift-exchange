@@ -11,6 +11,7 @@ describe("sign-in secrets", () => {
     ["0412", "0412", "pinDate"], ["3112", "3112", "pinDate"], ["0229", "0229", "pinDate"],
     ["1962", "1962", "pinDate"], ["2026", "2026", "pinDate"], ["1111", "1111", "pinPattern"],
     ["3434", "3434", "pinPattern"], ["1234", "1234", "pinPattern"], ["9876", "9876", "pinPattern"],
+    ["2580", "2580", "pinPattern"], ["0852", "0852", "pinPattern"],
     ["abc1", "abc1", "pinLength"], ["4268", "4269", "pinMatch"], ["4268", "4268", null],
   ])("validates PIN %s against confirmation %s", (pin, confirmation, result) => {
     expect(pinProblem(pin, confirmation)).toBe(result);

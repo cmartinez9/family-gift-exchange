@@ -12,7 +12,7 @@ export default defineConfig({
     projects: [
       {
         resolve: {alias: {"@": fileURLToPath(new URL("./src", import.meta.url))}},
-        test: {name: "unit", include: ["tests/unit/**/*.test.ts"]},
+        test: {name: "unit", include: ["tests/unit/**/*.test.{ts,tsx}"]},
       },
       {
         resolve: {alias: {"@": fileURLToPath(new URL("./src", import.meta.url))}},

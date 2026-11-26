@@ -109,7 +109,7 @@ test("co-organizer dispute locks down the family and old PIN stays invalid after
     const disputed = coPage.getByRole("listitem").filter({hasText: "A new device signed in."})
       .filter({has: coPage.getByRole("button", {name: "That wasn't me"})});
     await disputed.getByRole("button", {name: "That wasn't me"}).click();
-    await expect(coPage.getByRole("status")).toHaveText("Everyone was signed out for safety.");
+    await expect(coPage.getByRole("main").getByRole("status")).toHaveText("Everyone was signed out for safety.");
     await capture(coPage, info, "family-lockdown-notice");
     for (const signedIn of [page, memberPage, intruderPage]) {
       await signedIn.goto("/en/account");
@@ -180,7 +180,7 @@ test("five wrong PIN guesses lock the name, notify its owner, and permit organiz
     await capture(ownerPage, info, "owner-lockout-activity");
     await strangerPage.locator("summary").filter({hasText: "Forgot my PIN"}).click();
     await strangerPage.getByRole("button", {name: "Ask the organizer for a new key"}).click();
-    await expect(strangerPage.getByRole("status")).toContainText("The organizer has been asked.");
+    await expect(strangerPage.getByRole("main").getByRole("status")).toContainText("The organizer has been asked.");
     await page.reload();
     const replacement = await prepareKey(page, "Rosa", true);
     await redeem(strangerPage, replacement, "Rosa", replacementPin);
@@ -323,7 +323,7 @@ for (const chain of ["unredeemed key", "PIN successor", "new co-organizer appoin
       const event = page.getByRole("listitem").filter({hasText: "A new device signed in."})
         .filter({has: page.getByRole("button", {name: "That wasn't me"})});
       await event.getByRole("button", {name: "That wasn't me"}).click();
-      await expect(page.getByRole("status")).toHaveText("Everyone was signed out for safety.");
+      await expect(page.getByRole("main").getByRole("status")).toHaveText("Everyone was signed out for safety.");
       await capture(page, info, "organizer-lockdown");
       for (const other of [coPage, safePage, intruderPage, successorPage]) {
         await other.goto("/en/account");
@@ -418,7 +418,7 @@ test("member dispute revokes the authenticating passkey and later PIN sessions w
     const event = originalPage.getByRole("listitem").filter({hasText: "A new device signed in."})
       .filter({hasText: "iPhone"}).filter({has: originalPage.getByRole("button", {name: "That wasn't me"})});
     await event.getByRole("button", {name: "That wasn't me"}).click();
-    await expect(originalPage.getByRole("status")).toContainText("was signed out");
+    await expect(originalPage.getByRole("main").getByRole("status")).toContainText("was signed out");
     for (const on of [reportedPage, successorPage]) {
       await on.reload();
       await expect(on).toHaveURL(/\/en\/sign-in$/);
