@@ -42,7 +42,7 @@ async function fixture() {
   }));
   cleanup.add(familyId);
   const viewer = (await resolve(session.cookie))!;
-  return {familyId, viewer};
+  return {familyId, viewer, session};
 }
 
 async function enroll(familyId: string, personId: string, enrollmentDevice: Device, viewer?: Viewer) {
@@ -211,6 +211,56 @@ it("revokes existing passkey sessions after a PIN-authenticated enrollment brows
     await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, blockedDevice, new Date())))
       .resolves.toEqual({error: "newDevicesLocked"});
   }
+});
+
+it("revokes the full credential chain and a PIN successor linked through a retained revoked session", async () => {
+  const {familyId, viewer, session: reporter} = await fixture();
+  const enrollmentDevice = device();
+  const firstCredential = await enroll(familyId, viewer.personId, enrollmentDevice);
+  const unrelatedCredential = await enroll(familyId, viewer.personId, enrollmentDevice);
+  const unrelatedSession = (await unrelatedCredential.authenticate(device()))!.session;
+  const reportedDevice = device();
+  const reported = (await firstCredential.authenticate(reportedDevice))!.session;
+  const reportedViewer = (await resolve(reported.cookie))!;
+  const secondCredential = await enroll(familyId, viewer.personId, reportedDevice, reportedViewer);
+  const secondDevice = device();
+  const intermediate = (await secondCredential.authenticate(secondDevice))!.session;
+  const intermediateViewer = (await resolve(intermediate.cookie))!;
+  const thirdCredential = await enroll(familyId, viewer.personId, secondDevice, intermediateViewer);
+  const thirdDevice = device();
+  const remote = (await thirdCredential.authenticate(thirdDevice))!.session;
+  const pinSuccessor = (await withFamily(familyId, (tx) => signInWithPin(
+    tx, familyId, viewer.personId, pin, pepper, secondDevice, new Date(),
+  ))).session!;
+  await expect(resolve(intermediate.cookie)).resolves.toBeNull();
+  await expect(resolve(pinSuccessor.cookie)).resolves.toMatchObject({personId: viewer.personId});
+  const [retained] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, intermediate.id)));
+  expect(retained).toMatchObject({passkeyId: secondCredential.id, trusted: true});
+  expect(retained.revokedAt).toBeInstanceOf(Date);
+  const view = await withFamily(familyId, (tx) => account(tx, viewer));
+  const event = view.activity.find(({kind, sessionId}) => kind === "newDevice" && sessionId === reported.id)!;
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, event.id, at))).resolves.toBe(true);
+  for (const session of [reported, intermediate, pinSuccessor, remote]) {
+    await expect(resolve(session.cookie)).resolves.toBeNull();
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: at, trusted: false});
+  }
+  for (const session of [reporter, unrelatedSession]) {
+    await expect(resolve(session.cookie)).resolves.toMatchObject({personId: viewer.personId});
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: null, trusted: true});
+  }
+  for (const blockedDevice of [reportedDevice, secondDevice, thirdDevice]) {
+    await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, blockedDevice, new Date())))
+      .resolves.toEqual({error: "newDevicesLocked"});
+  }
+  for (const credential of [firstCredential, secondCredential, thirdCredential]) {
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, credential.id)));
+    expect(stored.revokedAt).toEqual(at);
+    await expect(credential.authenticate(device())).resolves.toBeNull();
+  }
+  await expect(unrelatedCredential.authenticate(device())).resolves.toHaveProperty("session");
 });
 
 it("surfaces reset throttling after the previous requests have been answered", async () => {
