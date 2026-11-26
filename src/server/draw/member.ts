@@ -20,7 +20,7 @@ export async function ownParticipant(tx: FamilyTransaction, viewer: DrawViewer, 
 }
 
 export async function memberDrawStatus(viewer: DrawViewer, id: string) {
-  return auditedDraw(viewer.familyId, async (tx) => {
+  return auditedDraw(viewer, async (tx) => {
     await authorizeSubject(tx, viewer);
     const exchange = await loadExchange(tx, viewer.familyId, recordId(id));
     const [subject] = await tx.select({displayName: people.displayName}).from(people).where(and(
@@ -49,7 +49,7 @@ export async function memberDrawStatus(viewer: DrawViewer, id: string) {
 
 export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVersion: number) {
   const familyId = viewer.familyId;
-  return auditedDraw(familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await authorizeSubject(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -77,7 +77,7 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
 }
 
 export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
-  return withDrawFamily(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await authorizeSubject(tx, viewer);
     if (id) await loadExchange(tx, viewer.familyId, recordId(id));
     const disputes = await listSessionDisputes(tx, viewer.familyId, viewer.personId);
@@ -100,5 +100,5 @@ export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
 }
 
 export async function repairDisputedReveals(viewer: DrawViewer) {
-  return auditedDraw(viewer.familyId, async (tx) => { await authorizeSubject(tx, viewer); });
+  return auditedDraw(viewer, async (tx) => { await authorizeSubject(tx, viewer); });
 }

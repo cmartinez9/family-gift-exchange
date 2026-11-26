@@ -14,7 +14,7 @@ import {
 
 export async function createExchange(viewer: DrawViewer, details: ExchangeDetails) {
   requireOrganizer(viewer);
-  return withDrawFamily(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const [open] = await tx.select({id: exchanges.id}).from(exchanges)
       .where(and(eq(exchanges.familyId, viewer.familyId), ne(exchanges.status, "closed"))).limit(1);
@@ -31,7 +31,7 @@ export async function editExchange(
 ) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -51,7 +51,7 @@ export async function editExchange(
 export async function closeExchange(viewer: DrawViewer, id: string) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     await tx.update(exchanges).set({status: "closed"}).where(exchangeScope(familyId, exchange.id));
@@ -65,7 +65,7 @@ export async function closeExchange(viewer: DrawViewer, id: string) {
 }
 
 export async function listExchanges(viewer: DrawViewer) {
-  return withDrawFamily(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await authorizeSubject(tx, viewer);
     return tx.select(exchangeFields).from(exchanges).where(eq(exchanges.familyId, viewer.familyId))
       .orderBy(sql`(${exchanges.status} = 'closed')`, desc(exchanges.giftDay), exchanges.name);
@@ -75,7 +75,7 @@ export async function listExchanges(viewer: DrawViewer) {
 export async function organizerExchange(viewer: DrawViewer, id: string) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     const members = await liveRoster(tx, familyId);
@@ -123,7 +123,7 @@ export async function selectRoster(
 export async function setParticipants(viewer: DrawViewer, id: string, selection: readonly string[]) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -141,7 +141,7 @@ export async function setKeepApart(
   if (!personB || (reason !== null && reason !== "partner" && reason !== "custom")) {
     throw new DrawError("invalidKeepApart");
   }
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -169,7 +169,7 @@ export async function setKeepApart(
 export async function previewAsMember(viewer: DrawViewer, id: string, personId: string) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return withDrawFamily(familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     const subjectId = recordId(personId);

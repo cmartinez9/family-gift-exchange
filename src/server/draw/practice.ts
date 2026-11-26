@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {and, eq, sql} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {exchanges, families, participants} from "../db/schema";
-import {DrawError, lockOrganizer, requireOrganizer, scopeDrawFamily, withDrawFamily, type DrawViewer} from "./access";
+import {delegatePractice, DrawError, lockOrganizer, requireOrganizer, scopeDrawFamily, withDrawFamily, type DrawViewer} from "./access";
 import {closeExchange} from "./exchange";
 import {recordId} from "./inputs";
 import {changeParticipation, reportPair, runDraw} from "./lifecycle";
@@ -48,7 +48,7 @@ async function newPracticeExchange(
 
 export async function startPractice(viewer: DrawViewer, language: PracticeLanguage) {
   requireOrganizer(viewer);
-  return withDrawFamily(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer, "update");
     const previous = await loadPractice(tx, viewer);
     const example = examples[language];
@@ -97,7 +97,7 @@ export async function startPractice(viewer: DrawViewer, language: PracticeLangua
 
 async function practiceContext(viewer: DrawViewer, as?: string) {
   requireOrganizer(viewer);
-  return withDrawFamily(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const practice = await loadPractice(tx, viewer);
     if (!practice) throw new DrawError("notFound");
@@ -106,10 +106,7 @@ async function practiceContext(viewer: DrawViewer, as?: string) {
     const member = (await liveRoster(tx, practice.practiceFamilyId)).find(({id}) => id === personId);
     if (!member) throw new DrawError("notFound");
     return {
-      viewer: {
-        familyId: practice.practiceFamilyId, sessionId: viewer.sessionId,
-        personId, actingAs: personId, isOrganizer: personId === practice.practiceOrganizerId,
-      },
+      viewer: delegatePractice(viewer, practice, personId),
       exchangeId: practice.exchangeId,
     };
   });
@@ -117,7 +114,7 @@ async function practiceContext(viewer: DrawViewer, as?: string) {
 
 export async function practiceSeason(viewer: DrawViewer) {
   requireOrganizer(viewer);
-  return auditedDraw(viewer.familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await lockOrganizer(tx, viewer);
     const practice = await loadPractice(tx, viewer);
     if (!practice) return null;

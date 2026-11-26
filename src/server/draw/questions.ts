@@ -38,7 +38,7 @@ async function authorizeQuestions(tx: FamilyTransaction, viewer: DrawViewer, id:
 
 export async function askYourPerson(viewer: DrawViewer, id: string, expectedVersion: number, input: string) {
   const text = questionText(input);
-  return auditedDraw(viewer.familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     const {exchange, seen} = await authorizeQuestions(tx, viewer, id);
     checkVersion(exchange, expectedVersion);
     if (!seen) throw new DrawError("revealFirst");
@@ -58,7 +58,7 @@ export async function askYourPerson(viewer: DrawViewer, id: string, expectedVers
 }
 
 export async function listOwnQuestions(viewer: DrawViewer, id: string) {
-  return auditedDraw(viewer.familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     const {exchange} = await authorizeQuestions(tx, viewer, id);
     const outgoing = await tx.select().from(questions).where(and(
       questionScope(viewer, exchange), eq(questions.askerId, viewer.actingAs),
@@ -96,7 +96,7 @@ export async function answerQuestion(
   viewer: DrawViewer, id: string, questionId: string, expectedVersion: number, input: string,
 ) {
   const answer = questionText(input);
-  return auditedDraw(viewer.familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     const {exchange} = await authorizeQuestions(tx, viewer, id);
     checkVersion(exchange, expectedVersion);
     const scope = and(questionScope(viewer, exchange), eq(questions.id, recordId(questionId)));

@@ -139,12 +139,13 @@ function drawDecryptor() {
 export type DrawDecryptor = ReturnType<typeof drawDecryptor>;
 
 export async function auditedDraw<T>(
-  familyId: string, action: (tx: FamilyTransaction, decrypt: DrawDecryptor) => Promise<T>,
+  viewer: DrawViewer, action: (tx: FamilyTransaction, decrypt: DrawDecryptor) => Promise<T>,
   repairDisputes = true,
 ) {
+  const familyId = viewer.familyId;
   const decrypt = drawDecryptor();
   try {
-    return await withDrawFamily(familyId, async (tx) => {
+    return await withDrawFamily(viewer, async (tx) => {
       if (repairDisputes) await reconcileDisputedReveals(tx, familyId, decrypt);
       const result = await action(tx, decrypt);
       if (decrypt.purposes.length) {
@@ -288,7 +289,13 @@ export async function privateDrawRepair(
   const observers = snapshot.roster.filter(({id, helperId}) => organizerIds.has(helperId ?? id)).map(({id}) => id);
   const seenGivers = fullRedraw ? [] : (await currentParticipants(tx, familyId, exchange.id))
     .filter(({status, seenVersion}) => status === "in" && seenVersion === exchange.version).map(({id}) => id);
-  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, seenGivers, fullRedraw});
+  const observerIds = new Set(observers);
+  const visibleGivers = [...previous].filter(([giver, recipient]) => observerIds.has(giver) || observerIds.has(recipient))
+    .map(([giver]) => giver);
+  const questionGivers = fullRedraw ? [] : (await tx.selectDistinct({id: questions.askerId}).from(questions).where(and(
+    questionScope(familyId, exchange.id), inArray(questions.askerId, visibleGivers),
+  ))).map(({id}) => id);
+  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, seenGivers, questionGivers, fullRedraw});
 }
 
 async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {

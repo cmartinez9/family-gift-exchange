@@ -27,7 +27,7 @@ function deadline(ms: number) {
 
 export async function drawFeasibility(viewer: DrawViewer, id: string) {
   requireOrganizer(viewer);
-  return auditedDraw(viewer.familyId, async (tx) => {
+  return auditedDraw(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, viewer.familyId, recordId(id));
     requireOpen(exchange);
@@ -40,7 +40,7 @@ export async function drawFeasibility(viewer: DrawViewer, id: string) {
 
 export async function dryRunDraw(viewer: DrawViewer, id: string) {
   requireOrganizer(viewer);
-  const snapshot = await auditedDraw(viewer.familyId, async (tx) => {
+  const snapshot = await auditedDraw(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, viewer.familyId, recordId(id));
     requireOpen(exchange);
@@ -66,7 +66,7 @@ export async function runDraw(
 ) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return auditedDraw(familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -101,7 +101,7 @@ export async function runDraw(
 export async function checkSealedDraw(viewer: DrawViewer, id: string) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return auditedDraw(familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     if (exchange.status === "closed") return {status: "closed" as const};
@@ -135,7 +135,7 @@ export async function changeParticipation(
   const personId = recordId(person);
   if (status !== "in" && status !== "out") throw new DrawError("invalidParticipants");
 
-  return auditedDraw(familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -179,7 +179,7 @@ export async function reportPair(
   viewer: DrawViewer, id: string, expectedVersion: number, events?: DrawEvents,
 ) {
   const familyId = viewer.familyId;
-  return auditedDraw(familyId, async (tx, decrypt) => {
+  return auditedDraw(viewer, async (tx, decrypt) => {
     await authorizeSubject(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);

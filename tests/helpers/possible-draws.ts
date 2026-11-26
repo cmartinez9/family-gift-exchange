@@ -17,3 +17,14 @@ export function possibleDraws(ids: readonly string[]) {
   permute(ids);
   return results;
 }
+
+export function reportedRepairOrder<T>(values: Iterable<T>): T[] {
+  const choices = [...values];
+  if (!choices.every((value) => typeof value === "number")) return choices.reverse();
+  const preferred = choices.some((value) => value === 1) ? [5] : [3, 4];
+  const rank = (value: T) => {
+    const index = preferred.indexOf(Number(value));
+    return index < 0 ? preferred.length + Number(value) : index;
+  };
+  return choices.sort((a, b) => rank(a) - rank(b));
+}

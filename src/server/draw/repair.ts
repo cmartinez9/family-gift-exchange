@@ -12,7 +12,7 @@ export function removeFromDraw(rules: DrawRules, pairs: Pairs, leaving: string, 
 
 export function repairDraw(
   rules: DrawRules, previous: Pairs, mustChange: readonly string[], checkTime?: () => void,
-  privacy?: {observers: readonly string[]; seenGivers: readonly string[]; fullRedraw?: boolean},
+  privacy?: {observers: readonly string[]; seenGivers: readonly string[]; questionGivers: readonly string[]; fullRedraw?: boolean},
 ): Pairs | null {
   const {people, choices, indices} = rules;
   if (people.length < minimumPeople || mustChange.some((id) => !indices.has(id))) return null;
@@ -24,6 +24,7 @@ export function repairDraw(
   const next = new Map<string, string>();
   const used = new Set<string>();
   const observers = [...new Set(privacy?.observers)].sort();
+  const questionGivers = [...new Set(privacy?.questionGivers)].sort();
   const groups = new Map<string, {pairs: Pairs[]; recipients: Map<string, Set<string>>}>();
   let selected: Pairs | undefined;
 
@@ -32,7 +33,11 @@ export function repairDraw(
     if (!privacy || !required.size) return true;
     const seenCount = privacy.fullRedraw ? 0 : privacy.seenGivers.filter((id) =>
       next.has(id) && next.get(id) === previous.get(id)).length;
-    const observation = JSON.stringify([privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id)), seenCount]);
+    const retainedQuestions = privacy.fullRedraw ? [] : questionGivers.map((id) =>
+      next.has(id) && next.get(id) === previous.get(id));
+    const observation = JSON.stringify([
+      privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id)), seenCount, retainedQuestions,
+    ]);
     const group = groups.get(observation) ?? {
       pairs: [], recipients: new Map([...required].map((id) => [id, new Set<string>()])),
     };

@@ -12,10 +12,11 @@ import {
   type DrawEvents, type DrawViewer, type ExchangeDetails,
 } from "../../src/server/draw";
 import {issueKey, redeemKey, signInDevice, signInWithPin, type Device} from "../../src/server/auth/access";
-import {account, disputeEvent, disputeSession, endSessions, listSessionDisputes} from "../../src/server/auth/security";
+import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionDisputes} from "../../src/server/auth/security";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {possibleDraws} from "../helpers/possible-draws";
+import * as member from "../../src/server/draw/member";
 import * as solver from "../../src/server/draw/solver";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
@@ -161,7 +162,7 @@ it("denies the app login sealed reads and role assumption, and scopes the draw l
   await expect(runForFamily(app.db, a.familyId, (tx) => tx.execute(sql`
     SELECT public.fge_sealed_recipient(${a.exchangeId}::uuid, ${a.ids[0]}::uuid, ${a.ids[0]}::uuid, 1)
   `))).rejects.toMatchObject({cause: {code: "42501"}});
-  const foreignGiver = await withDrawFamily(a.familyId, (tx) => tx.execute(sql`
+  const foreignGiver = await withDrawFamily(a.organizer, (tx) => tx.execute(sql`
     SELECT public.fge_sealed_recipient(${a.exchangeId}::uuid, ${a.ids[0]}::uuid, ${a.ids[1]}::uuid, 1) AS sealed
   `));
   expect(foreignGiver.rows).toEqual([{sealed: null}]);
@@ -172,7 +173,7 @@ it("denies the app login sealed reads and role assumption, and scopes the draw l
     return tx.select().from(assignments);
   });
   expect(unscoped).toEqual([]);
-  expect(await withDrawFamily(b.familyId, (tx) => tx.select().from(assignments).where(
+  expect(await withDrawFamily(b.organizer, (tx) => tx.select().from(assignments).where(
     eq(assignments.exchangeId, a.exchangeId),
   ))).toEqual([]);
   await expect(revealMyPerson(b.organizer, a.exchangeId, 1)).rejects.toMatchObject({code: "notFound"});
@@ -200,7 +201,12 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   expect(await checkSealedDraw(organizer, exchangeId)).toMatchObject({
     status: "checked", valid: true, oneLoop: true, sealMatches: true, rosterMatches: true,
   });
-  const helper = {...organizer, actingAs: ids[1]};
+  const helperSession = await runForFamily(app.db, familyId, (tx) => signInDevice(
+    tx, familyId, organizer.personId, {hash: digest(secret()), kind: "computer", network: null}, new Date(),
+  ));
+  const helperOwner = {...organizer, sessionId: helperSession.id};
+  await runForFamily(app.db, familyId, (tx) => actFor(tx, helperOwner, ids[1]));
+  const helper = {...helperOwner, actingAs: ids[1]};
   await expect(revealMyPerson(viewers[1], exchangeId, 2)).rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...viewers[3], actingAs: ids[1]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
@@ -210,7 +216,12 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   expect(Object.keys(opened).sort()).toEqual(["person", "version"]);
   expect(opened.person.id).not.toBe(ids[0]);
   expect(opened.person.id).not.toBe(ids[1]);
-  const deviceTwo = {...helper, sessionId: randomUUID()};
+  const secondSession = await runForFamily(app.db, familyId, (tx) => signInDevice(
+    tx, familyId, organizer.personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const secondOwner = {...organizer, sessionId: secondSession.id};
+  await runForFamily(app.db, familyId, (tx) => actFor(tx, secondOwner, ids[1]));
+  const deviceTwo = {...secondOwner, actingAs: ids[1]};
   expect(await revealMyPerson(deviceTwo, exchangeId, 2)).toEqual(opened);
   await revealMyPerson(deviceTwo, exchangeId, 2);
   expect((await ownRevealOpenings(helper, exchangeId)).map(({sessionId}) => sessionId).sort())
@@ -737,5 +748,166 @@ it("keeps repaired recipients private at the same opened count and preserves una
       expect(row.seen).toBe(seenGivers.includes(row.id) ? 3 : row.id === ids[0] ? 1 : null);
     }
   }
+  verifyNoPairing(state);
+});
+
+it.each(["member reveal", "organizer edit", "practice read", "practice draw"])(
+  "rejects a queued %s after the authenticated session is revoked", async (operation) => {
+    const f = await fixture();
+    await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+    const personId = operation === "member reveal" ? f.ids[3] : f.organizer.personId;
+    const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+      tx, f.familyId, personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+    ));
+    const actor = (await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!)))!;
+    let practiceVersion: number | undefined;
+    if (operation.startsWith("practice")) {
+      await startPractice(actor, "en");
+      const [mapping] = await admin.db.select().from(practiceFamilies).where(eq(practiceFamilies.familyId, f.familyId));
+      testFamilies.add(mapping.practiceFamilyId);
+      if (operation === "practice read") await practiceCommand(actor, {kind: "draw", expectedVersion: 0});
+      practiceVersion = operation === "practice read" ? 1 : 0;
+    }
+    const locked = Promise.withResolvers<number>();
+    const release = Promise.withResolvers<void>();
+    const revocation = runForFamily(app.db, f.familyId, async (tx) => {
+      expect(await endSessions(tx, actor, new Date(), false)).toBe(true);
+      const {rows: [row]} = await tx.execute<{pid: number}>(sql`SELECT pg_backend_pid() AS pid`);
+      locked.resolve(row.pid);
+      await release.promise;
+    });
+    void revocation.catch(locked.reject);
+    let outcome: Promise<{value?: unknown; error?: unknown}> | undefined;
+    try {
+      const blocker = await locked.promise;
+      const authenticated = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
+      expect(authenticated).not.toBeNull();
+      const request: Promise<unknown> = operation === "member reveal" ? revealMyPerson(authenticated!, f.exchangeId, 1)
+        : operation === "organizer edit" ? editExchange(authenticated!, f.exchangeId, {...details, budgetAmount: "99"})
+        : operation === "practice read" ? practiceSeason(authenticated!)
+        : practiceCommand(authenticated!, {kind: "draw", expectedVersion: 0});
+      outcome = request.then((value) => ({value}), (error: unknown) => ({error}));
+      await vi.waitFor(async () => {
+        const {rows: [row]} = await admin.db.execute<{blocked: boolean}>(sql`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity AS activity WHERE ${blocker} = ANY(pg_blocking_pids(activity.pid))
+          ) AS blocked
+        `);
+        expect(row.blocked).toBe(true);
+      }, {timeout: 3000, interval: 10});
+    } finally {
+      release.resolve();
+      await revocation;
+    }
+    expect(await outcome).toMatchObject({error: {code: "forbidden"}});
+    expect(await organizerExchange(f.organizer, f.exchangeId)).toMatchObject({seenCount: 0, exchange: {version: 1, budgetAmount: "25.00"}});
+    if (practiceVersion !== undefined) {
+      expect((await practiceSeason(f.organizer))!.exchange.version).toBe(practiceVersion);
+    }
+  },
+);
+
+it("rejects a delegated practice reveal after owner revocation and rejects copied synthetic identities", async () => {
+  const f = await fixture();
+  await startPractice(f.organizer, "en");
+  const [mapping] = await admin.db.select().from(practiceFamilies).where(eq(practiceFamilies.familyId, f.familyId));
+  testFamilies.add(mapping.practiceFamilyId);
+  await practiceCommand(f.organizer, {kind: "draw", expectedVersion: 0});
+  const season = (await practiceSeason(f.organizer))!;
+  const subject = season.people.find(({participating}) => participating)!;
+  const entered = Promise.withResolvers<{viewer: DrawViewer; id: string; version: number}>();
+  const resume = Promise.withResolvers<void>();
+  const reveal = member.revealMyPerson;
+  vi.spyOn(member, "revealMyPerson").mockImplementation(async (viewer, id, version) => {
+    entered.resolve({viewer, id, version});
+    await resume.promise;
+    return reveal(viewer, id, version);
+  });
+  const outcome = practiceCommand(f.organizer, {kind: "reveal", as: subject.id, expectedVersion: 1})
+    .then((value) => ({value}), (error: unknown) => ({error}));
+  try {
+    const delegated = await entered.promise;
+    await expect(reveal({...delegated.viewer}, delegated.id, delegated.version)).rejects.toMatchObject({code: "forbidden"});
+    await runForFamily(app.db, f.familyId, (tx) => endSessions(tx, f.organizer, new Date(), false));
+  } finally {
+    resume.resolve();
+  }
+  expect(await outcome).toMatchObject({error: {code: "forbidden"}});
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.organizer.personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  expect((await practiceSeason({...f.organizer, sessionId: session.id}))!.exchange.version).toBe(1);
+});
+
+it("rejects stale acting profiles and expired sessions at the draw boundary", async () => {
+  const f = await fixture({helpers: true});
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.organizer.personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const owner = {...f.organizer, sessionId: session.id};
+  expect(await runForFamily(app.db, f.familyId, (tx) => actFor(tx, owner, f.ids[1]))).toBe(true);
+  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "forbidden"});
+  await expect(editExchange(owner, f.exchangeId, {...details, budgetAmount: "99"})).rejects.toMatchObject({code: "forbidden"});
+  await expect(startPractice(owner, "en")).rejects.toMatchObject({code: "forbidden"});
+  const helper = (await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!)))!;
+  await revealMyPerson(helper, f.exchangeId, 1);
+  expect(await runForFamily(app.db, f.familyId, (tx) => actFor(tx, helper, f.organizer.personId))).toBe(true);
+  await expect(revealMyPerson(helper, f.exchangeId, 1)).rejects.toMatchObject({code: "forbidden"});
+  await runForFamily(app.db, f.familyId, (tx) => tx.execute(sql`
+    UPDATE public.sessions SET expires_at = now() - interval '1 second' WHERE family_id = ${f.familyId} AND id = ${session.id}
+  `));
+  await expect(listExchanges(owner)).rejects.toMatchObject({code: "forbidden"});
+});
+
+it("restores the sign-in handoff after a disputed organizer session locks down the family", async () => {
+  const f = await fixture();
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.organizer.personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  signedIn.viewer = {...f.organizer, sessionId: session.id};
+  await expect(reportSession(f.organizer.sessionId)).rejects.toThrow(`redirect:/en/sign-in?family=${f.familyId}&safety=1`);
+  expect(signedIn.clearSession).toHaveBeenCalledOnce();
+  expect(await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!))).toBeNull();
+});
+
+it("keeps repaired B ambiguous after the organizer observes question retention, reveals and opened count", async () => {
+  const f = await fixture({count: 6, organizerIndex: 4, coOrganizerIndex: null});
+  const previous = cycle(f.ids);
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  for (const viewer of f.viewers) await revealMyPerson(viewer, f.exchangeId, 1);
+  const recognized = await askYourPerson(f.viewers[3], f.exchangeId, 1, "The blue lantern is my secret code.");
+  const outgoing = await askYourPerson(f.organizer, f.exchangeId, 1, "Organizer's outgoing question.");
+  await askYourPerson(f.viewers[0], f.exchangeId, 1, "This question is private to A and B.");
+  expect((await listOwnQuestions(f.organizer, f.exchangeId)).incoming).toContainEqual({
+    id: recognized.id, text: "The blue lantern is my secret code.", answered: false,
+  });
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const owner = {...f.viewers[1], sessionId: session.id};
+  signedIn.viewer = owner;
+  await expect(reportSession(f.viewers[1].sessionId)).rejects.toThrow("redirect:/en/account?reported=1");
+  const state = await organizerExchange(f.organizer, f.exchangeId);
+  const visible = await listOwnQuestions(f.organizer, f.exchangeId);
+  const retained = visible.incoming.some(({id}) => id === recognized.id);
+  const actual = new Map(await Promise.all(f.viewers.map(async (viewer, index) => [
+    viewer.personId, (await revealMyPerson(index === 1 ? owner : viewer, f.exchangeId, 2)).person.id,
+  ] as const)));
+  const count = (pairs: ReadonlyMap<string, string>) => f.ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const questionRetained = (pairs: ReadonlyMap<string, string>) => pairs.get(f.ids[3]) === f.ids[4];
+  expect(retained).toBe(questionRetained(actual));
+  expect(visible.outgoing.some(({id}) => id === outgoing.id)).toBe(actual.get(f.ids[4]) === previous.get(f.ids[4]));
+  expect(state.seenCount).toBe(f.ids.length - count(actual));
+  const all = possibleDraws(f.ids).filter((pairs) => pairs.get(f.ids[1]) !== f.ids[2]);
+  const safe = all.filter((pairs) => all.some((other) => count(other) === count(pairs)
+    && other.get(f.ids[4]) === pairs.get(f.ids[4]) && questionRetained(other) === questionRetained(pairs)
+    && other.get(f.ids[1]) !== pairs.get(f.ids[1])));
+  expect(count(actual)).toBe(Math.min(...safe.map(count)));
+  const alternatives = all.filter((pairs) => count(pairs) === count(actual)
+    && pairs.get(f.ids[4]) === actual.get(f.ids[4]) && questionRetained(pairs) === retained
+    && f.ids.length - count(pairs) === state.seenCount);
+  expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
   verifyNoPairing(state);
 });

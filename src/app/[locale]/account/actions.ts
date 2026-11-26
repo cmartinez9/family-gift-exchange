@@ -44,16 +44,16 @@ export async function reportSession(sessionId: string): Promise<AuthResult> {
 
 async function finishReport(viewer: Awaited<ReturnType<typeof requireViewer>>, recorded: Awaited<ReturnType<typeof disputeEvent>>): Promise<AuthResult> {
   if (!recorded) return {error: "unavailable"};
+  if (recorded === "lockdown") {
+    await clearSession();
+    redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
+  }
   let repairError: AuthResult["error"];
   try {
     await repairDisputedReveals(viewer);
   } catch (error) {
     if (!(error instanceof DrawError) || (error.code !== "repairImpossible" && error.code !== "checkTimedOut")) throw error;
     repairError = "repairRequired";
-  }
-  if (recorded === "lockdown") {
-    await clearSession();
-    redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
   }
   if (repairError) return {error: repairError};
   redirect(`/${await getLocale()}/account?reported=1`);
