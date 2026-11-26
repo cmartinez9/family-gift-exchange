@@ -9,7 +9,7 @@ export type ListViewer = Pick<Viewer, "familyId" | "personId" | "actingAs">;
 export class ListError extends Error {
   constructor(readonly code:
     | "not-found" | "forbidden" | "invalid-item" | "invalid-size"
-    | "invalid-profile" | "invalid-budget" | "list-full" | "already-claimed"
+    | "invalid-profile" | "invalid-budget" | "already-claimed"
     | "item-changed" | "invalid-photo" | "storage-unavailable",
   ) {
     super(code);

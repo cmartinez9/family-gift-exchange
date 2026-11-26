@@ -1,5 +1,5 @@
 import "server-only";
-import {and, asc, count, desc, eq, inArray, sql} from "drizzle-orm";
+import {and, asc, desc, eq, inArray, sql} from "drizzle-orm";
 import {withFamily} from "../db/client";
 import type {FamilyTransaction} from "../db/database";
 import {items} from "../db/schema";
@@ -10,7 +10,7 @@ import {listEvents, type ListEvents} from "./list-events";
 import {resolveLinkPreview, type LinkPreview} from "./link-preview";
 import {safeStoredLink} from "./link-preview/url";
 import {discardListPhoto, photoStorage, processListPhoto, storeListPhoto, type ListPhotoStorage} from "./photo-storage";
-import {itemKinds, LIST_CAP, listText, NOTE_LIMIT, TITLE_LIMIT, usdAmount, type ItemKind} from "./validation";
+import {itemKinds, listText, NOTE_LIMIT, TITLE_LIMIT, usdAmount, type ItemKind} from "./validation";
 
 type Item = typeof items.$inferSelect;
 type ItemValues = Partial<typeof items.$inferInsert>;
@@ -141,8 +141,6 @@ export async function addListItem(viewer: ListViewer, ownerId: string, input: Ad
       // Serializes additions and ordering changes for this owner's list.
       await requireListEditor(tx, viewer, ownerId, true);
       const scope = listItemsScope(viewer.familyId, ownerId);
-      const [total] = await tx.select({count: count()}).from(items).where(scope);
-      if (total.count >= LIST_CAP) throw new ListError("list-full");
       const [last] = await tx.select({position: items.position}).from(items)
         .where(scope).orderBy(desc(items.position)).limit(1);
       const [item] = await tx.insert(items).values({

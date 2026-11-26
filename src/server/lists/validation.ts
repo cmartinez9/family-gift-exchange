@@ -1,4 +1,3 @@
-export const LIST_CAP = 300;
 export const NOTE_LIMIT = 500;
 export const TITLE_LIMIT = 200;
 

@@ -10,7 +10,6 @@ import {
 } from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 import type {ListPhotoStorage} from "../../src/server/lists/photo-storage";
-import {LIST_CAP} from "../../src/server/lists/validation";
 
 vi.mock("server-only", () => ({}));
 
@@ -21,7 +20,7 @@ const helperId = randomUUID();
 const lookedAfterId = randomUUID();
 const ownerId = randomUUID();
 const buyerId = randomUUID();
-const cappedPersonId = randomUUID();
+const largeListPersonId = randomUUID();
 const outsiderId = randomUUID();
 const exchangeId = randomUUID();
 
@@ -45,7 +44,7 @@ beforeAll(async () => {
       {id: helperId, familyId, displayName: "Willowbit"},
       {id: ownerId, familyId, displayName: "Frostpaw"},
       {id: buyerId, familyId, displayName: "Cinnabar"},
-      {id: cappedPersonId, familyId, displayName: "Snowdrop"},
+      {id: largeListPersonId, familyId, displayName: "Snowdrop"},
     ]);
     await tx.insert(people).values({id: lookedAfterId, familyId, displayName: "Acornkin", helperId});
   });
@@ -179,22 +178,19 @@ describe("list editing", () => {
       .resolves.toMatchObject({starred: true, price: null});
   });
 
-  it("caps concurrent additions and lets a removed item free a slot", async () => {
+  it("saves concurrent additions beyond 300 items", async () => {
     await withFamily(familyId, (tx) => tx.insert(items).values(
-      Array.from({length: LIST_CAP - 1}, (_, position) => ({
-        familyId, ownerId: cappedPersonId, kind: "note" as const, title: `Fixture item ${position}`, position,
+      Array.from({length: 300}, (_, position) => ({
+        familyId, ownerId: largeListPersonId, kind: "note" as const, title: `Fixture item ${position}`, position,
       })),
     ).execute());
-    const actor = viewer(cappedPersonId);
-    const results = await Promise.allSettled([
-      addWritten(actor, cappedPersonId, "Last item A"), addWritten(actor, cappedPersonId, "Last item B"),
+    const actor = viewer(largeListPersonId);
+    const added = await Promise.all([
+      addWritten(actor, largeListPersonId, "Additional item A"), addWritten(actor, largeListPersonId, "Additional item B"),
     ]);
-    expect(results.find(({status}) => status === "rejected")).toMatchObject({reason: {code: "list-full"}});
-    const accepted = results.find((result) => result.status === "fulfilled");
-    expect(accepted).toBeDefined();
-    expect((await getWishlist(actor, cappedPersonId)).items).toHaveLength(LIST_CAP);
-    await removeListItem(actor, cappedPersonId, accepted!.value.id);
-    await expect(addWritten(actor, cappedPersonId, "Freed slot")).resolves.toMatchObject({title: "Freed slot"});
+    const list = await getWishlist(actor, largeListPersonId);
+    expect(list.items).toHaveLength(302);
+    expect(list.items.slice(-2)).toEqual(expect.arrayContaining(added));
   });
 
   it("stores photos privately and refreshes a preview while preserving a custom photo and price", async () => {
