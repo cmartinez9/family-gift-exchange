@@ -13,7 +13,7 @@ import {withFamily} from "@/server/db/client";
 import {DrawError, drawFeasibility, organizerExchange} from "@/server/draw";
 import {manage} from "../../../actions";
 import {DrawStep} from "../../../ceremony";
-import {Bullet, DrawRecovery, drawPage} from "../../../components";
+import {Bullet, DrawRecovery, drawPage, PersonStatusScreen} from "../../../components";
 import {Disclosure} from "../../../disclosure";
 import {DrawForm} from "../../../form";
 import {SetupSteps} from "../../../setup";
@@ -28,6 +28,9 @@ export default async function DrawPage({params}: {params: Promise<{exchangeId: s
   if (state instanceof DrawError) return <DrawRecovery error={state} manageId={exchangeId} />;
   const {id, version, seal, status} = state.exchange;
   const hub = `/exchanges/${id}/manage`;
+  if (status === "closed") {
+    return <PersonStatusScreen status="closed" details={state.exchange} back={hub} backLabel={t("season.running")} />;
+  }
   const taking = state.people.filter(({participating}) => participating);
 
   const sealed = (
@@ -40,15 +43,17 @@ export default async function DrawPage({params}: {params: Promise<{exchangeId: s
           <p className="text-body text-muted-ink">{t("setup.sealHint")}</p>
           <TextLink href={`${hub}?check=1`} prefetch={false} className="self-start px-0">{t("checkDraw")}</TextLink>
         </Card>
-        <Card className="flex flex-col gap-1 py-4">
-          <Bullet icon="gift">{t("setup.ownPerson")}</Bullet>
-          <TextLink href={`/exchanges/${id}`} prefetch={false} className="self-start px-0">{t("yourPerson")}</TextLink>
-        </Card>
+        {taking.some(({id: personId}) => personId === viewer.personId) && (
+          <Card className="flex flex-col gap-1 py-4">
+            <Bullet icon="gift">{t("setup.ownPerson")}</Bullet>
+            <TextLink href={`/exchanges/${id}`} prefetch={false} className="self-start px-0">{t("yourPerson")}</TextLink>
+          </Card>
+        )}
       </KnitIn>
     </Screen>
   );
 
-  if (version || status === "closed") {
+  if (version) {
     return <DrawStep exchangeId={id} version={version} drawn canDraw={false} names={[]} check={null} sealed={sealed} />;
   }
 
