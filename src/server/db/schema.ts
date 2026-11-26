@@ -25,7 +25,7 @@ export const participantStatus = pgEnum("participant_status", ["in", "out"]);
 export const keepApartReason = pgEnum("keep_apart_reason", ["partner", "custom"]);
 export const itemKind = pgEnum("item_kind", ["link", "photo", "note"]);
 export const messageChannel = pgEnum("message_channel", ["push"]);
-export const messageStatus = pgEnum("message_status", ["captured", "pending", "sent", "failed"]);
+export const messageStatus = pgEnum("message_status", ["captured", "pending", "sent", "failed", "skipped"]);
 
 export const families = pgTable("families", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -237,10 +237,18 @@ export const outbox = pgTable("outbox", {
   template: text("template").notNull(),
   language: language("language").notNull(),
   status: messageStatus("status").notNull(),
+  requesterName: text("requester_name"),
+  dedupeKey: text("dedupe_key"),
+  pushAttempts: integer("push_attempts").default(0).notNull(),
   createdAt: instant("created_at").defaultNow().notNull(),
   sentAt: instant("sent_at"),
+  readAt: instant("read_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
+  uniqueIndex("outbox_dedupe_idx").on(table.familyId, table.personId, table.dedupeKey),
+  index("outbox_person_created_idx").on(table.familyId, table.personId, table.createdAt),
+  index("outbox_pending_idx").on(table.familyId, table.createdAt).where(sql`${table.status} = 'pending'`),
+  check("outbox_requester_is_pin_reset", sql`${table.requesterName} is null or ${table.template} = 'pin-reset-request'`),
   foreignKey({
     name: "outbox_person_fk",
     columns: [table.familyId, table.personId],

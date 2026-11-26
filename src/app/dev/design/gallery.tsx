@@ -575,4 +575,3 @@ export function Gallery({tab}: {tab: TabKey}) {
     </NextIntlClientProvider>
   );
 }
-

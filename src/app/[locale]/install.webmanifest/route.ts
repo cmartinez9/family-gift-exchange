@@ -8,6 +8,7 @@ export async function GET(_request: Request, {params}: {params: Promise<{locale:
   if (!hasLocale(routing.locales, locale)) return new Response(null, {status: 404});
   const t = await getTranslations({locale, namespace: "home"});
   const manifest: MetadataRoute.Manifest = {
+    id: "/",
     name: t("title"),
     short_name: t("title"),
     lang: locale,

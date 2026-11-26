@@ -22,6 +22,18 @@ Choose **Edit sizes and About me** to add sizing, preferences, or allergies. The
 
 On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
 
+## Notifications
+
+Open **Notifications** from your account or family management screen to read notices and choose **Mark as read**. The app uses this inbox and optional home-screen notifications; it sends no email or texts.
+
+When an item you've marked **I'm getting this** is edited or removed, you receive a general notice without the item or buyer's name. Participating members also receive notices when the budget changes after a draw.
+
+For home-screen setup, open **Put this on your home screen? Show me how** in the app and follow the instructions for your phone. Open the app from its new icon, sign in, then choose **Notifications → Turn on notifications for this device** and allow the browser prompt. Enable notifications on each device and after each new sign-in. Use **Turn off notifications for this device** to stop alerts there; the inbox remains available. If permission was denied, allow notifications in your device or browser settings and try again.
+
+Helpers receive device alerts for the people they help on their enabled devices. Switch to the person's profile under **People you help**, then open **Notifications** to read their notices.
+
+Organizers can open **Manage my family → Messages for the family chat** to copy or share a prepared message through the phone's share menu or WhatsApp. The organizer chooses when and where to send it.
+
 ## Run locally
 
 Use Node from `.nvmrc`, pnpm from `package.json`, and Docker Compose.
@@ -45,7 +57,7 @@ Set `AUTH_ORIGIN=https://localhost:3000` for this local HTTPS server. Open [the 
 
 Preview the Sweater Weather components, states, and motion in the [design gallery](https://localhost:3000/dev/design). Its controls demonstrate the components without changing family data, including a **Reduce motion** switch. The gallery is development-only and returns 404 on production builds. See the [design rulebook](design/DESIGN.md) for the product direction and [implementation coverage](docs/architecture.md#design-system) for the foundations available now.
 
-On Vercel, set `AUTH_ORIGIN` to the canonical HTTPS address members use. This sets the origin for personal links and the scope of passkeys. To check sharing on a real phone, use a practice family and send keys only to test recipients.
+On Vercel, set `AUTH_ORIGIN` to the canonical HTTPS address members use. This sets the origin for personal links and the scope of passkeys. See [Architecture](docs/architecture.md#notifications) for device-notification and reminder configuration. To check sharing on a real phone, use a practice family and send keys only to test recipients.
 
 Wishlist photos and preview images use a private Vercel Blob store when `BLOB_READ_WRITE_TOKEN` is set. Configure that token on Vercel; local filesystem storage is unavailable there. Without the token, local development uses temporary photo storage by default. Set `LIST_PHOTO_DIR` to a persistent local directory to retain images across temporary-directory cleanup; a local production server also requires this setting when no Blob token is provided. If photo storage is unavailable, photo uploads fail and link items can still be saved without preview images. Photo access goes through signed-in, family-scoped app routes.
 
@@ -62,7 +74,7 @@ See [Architecture](docs/architecture.md) for module ownership, database access, 
 
 ## Account recovery
 
-For a forgotten PIN, choose your name, open **Forgot my PIN**, and select **Ask the organizer for a new key**. The request appears in the family's management screen. An organizer or co-organizer confirms with the person, then prepares and privately shares a replacement from **Send keys → Reset PIN**. Face ID sign-in also offers **Make a new PIN** for an account that does not require a fresh key. Repeated wrong PIN guesses temporarily lock PIN sign-in. If PIN sign-in on new devices is blocked, use Face ID, a previously used device after the temporary lock ends, or a replacement key.
+For a forgotten PIN, choose your name, open **Forgot my PIN**, and select **Ask the organizer for a new key**. The request appears in the family's management screen; any other organizer or co-organizer also receives it in **Notifications**. An organizer or co-organizer confirms with the person, then prepares and privately shares a replacement from **Send keys → Reset PIN**. Face ID sign-in also offers **Make a new PIN** for an account that does not require a fresh key. Repeated wrong PIN guesses temporarily lock PIN sign-in. If PIN sign-in on new devices is blocked, use Face ID, a previously used device after the temporary lock ends, or a replacement key.
 
 Opening or sharing a replacement key leaves reset requests open. Redeeming it closes the requests, replaces the PIN, signs out all other sessions for that name, and revokes its existing passkeys. The person can then enroll Face ID again. An existing PIN remains usable until redemption unless a security report has already cleared it or restricted access.
 

@@ -22,8 +22,10 @@ export default async function DevMessagesPage() {
       ) : (
         <ul className="mt-4 space-y-4">
           {messages.map((message) => (
-            <li key={message.id}>
-              <dl>
+            <li key={message.id} lang={message.language}>
+              <h2>{message.title}</h2>
+              <p>{message.body}</p>
+              <dl lang="en">
                 <dt>{t("created")}</dt>
                 <dd><time dateTime={message.createdAt.toISOString()}>{message.createdAt.toISOString()}</time></dd>
                 <dt>{t("channel")}</dt>

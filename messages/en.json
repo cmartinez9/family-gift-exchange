@@ -302,5 +302,97 @@
       "unsafe-link": "Use a public store link that starts with http or https.",
       "could-not-save": "Something went wrong. Try again."
     }
+  },
+  "notify": {
+    "templates": {
+      "practice-reminder": {
+        "title": "Practice reminder",
+        "body": "Open the app to try your gift exchange."
+      },
+      "names-drawn": {
+        "title": "Names are drawn!",
+        "body": "Open the app to see who you’re giving to."
+      },
+      "list-reminder": {
+        "title": "Wishlists are due tomorrow",
+        "body": "Add some gift ideas so your family knows what you’d like."
+      },
+      "plans-changed": {
+        "title": "Change of plans",
+        "body": "You have a new person. Open the app to see who you’re giving to."
+      },
+      "gift-day-reminder": {
+        "title": "Gift day is tomorrow",
+        "body": "Check the details in the app and remember to bring your gift."
+      },
+      "pin-reset-request": {
+        "title": "PIN reset requested",
+        "body": "{name} asked for a PIN reset."
+      },
+      "claimed-item-changed": {
+        "title": "A gift idea changed",
+        "body": "An item you’re getting changed. Check your list of gifts you’re getting."
+      },
+      "budget-changed": {
+        "title": "The gift budget changed",
+        "body": "Open the app to see the new budget."
+      }
+    },
+    "privatePush": {
+      "title": "Family Gift Exchange",
+      "body": "You have a new notification."
+    },
+    "install": {
+      "prompt": "Put this on your home screen? Show me how",
+      "iphone": "iPhone Safari",
+      "iphoneOpen": "Open this page in Safari.",
+      "iphoneShare": "Tap the Share button.",
+      "iphoneAdd": "Tap Add to Home Screen, then tap Add.",
+      "iphoneLaunch": "Open the app from its new icon. Home-screen notifications need iOS 16.4 or later.",
+      "android": "Android Chrome",
+      "androidOpen": "Open this page in Chrome.",
+      "androidMenu": "Tap the three dots in the top-right corner.",
+      "androidAdd": "Tap Add to home screen or Install app, then follow the prompts.",
+      "androidLaunch": "Open the app from its new icon."
+    },
+    "groupChat": {
+      "wishlists": "Come add your wishlist for our gift exchange! {address}",
+      "draw": "Names are drawn! Open the app to see your person. {address}",
+      "giftDay": "Gift day is tomorrow! Check the app for details and bring your gift. {address}",
+      "title": "Messages for the family chat",
+      "back": "Back to my family",
+      "copy": "Copy message",
+      "share": "Share",
+      "whatsapp": "Share on WhatsApp",
+      "copied": "Message copied.",
+      "copyError": "Couldn't copy. Select the message text to copy it.",
+      "shareError": "Couldn't share. Copy the message or open WhatsApp.",
+      "topic": {
+        "wishlists": "Wishlist reminder",
+        "draw": "Names are drawn!",
+        "giftDay": "Gift day tomorrow"
+      }
+    },
+    "inbox": {
+      "title": "Notifications",
+      "bellUnread": "Notifications ({count, plural, one {# unread} other {# unread}})",
+      "back": "Back to my account",
+      "empty": "No notifications yet.",
+      "read": "Read",
+      "unread": "Unread",
+      "markRead": "Mark as read",
+      "resetRequests": "View PIN reset requests"
+    },
+    "device": {
+      "title": "Home-screen notifications",
+      "enable": "Turn on notifications for this device",
+      "disable": "Turn off notifications for this device",
+      "enabled": "Notifications are on for this device.",
+      "disabled": "Notifications are off for this device.",
+      "denied": "Allow notifications in your device or browser settings, then try again.",
+      "error": "We couldn't update notifications. Try again.",
+      "unsupported": "Open the app from your home screen to turn on notifications.",
+      "unavailable": "Device notifications are unavailable right now."
+    }
   }
 }

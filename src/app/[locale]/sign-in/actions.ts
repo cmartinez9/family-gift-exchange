@@ -4,6 +4,7 @@ import {randomUUID} from "node:crypto";
 import {getLocale} from "next-intl/server";
 import {redirect} from "next/navigation";
 import {withFamily} from "@/server/db/client";
+import {notify} from "@/server/messages";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
   allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, parseLinkKey,
@@ -85,7 +86,11 @@ export async function enterPin(familyId: string, personId: string, _: AuthResult
 export async function forgotPin(familyId: string, personId: string): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || !uuidPattern.test(personId)) return {error: "unavailable"};
   const device = await requestDevice();
-  return withFamily(familyId, (tx) => requestPinReset(tx, familyId, personId, device, new Date()));
+  return withFamily(familyId, async (tx) => {
+    const result = await requestPinReset(tx, familyId, personId, device, new Date());
+    if (result.success) await notify.requestPinReset({familyId, personId}, tx);
+    return result;
+  });
 }
 
 export async function reportUsedKey(familyId: string, value: string, typed: boolean): Promise<AuthResult> {

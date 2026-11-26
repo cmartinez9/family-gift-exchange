@@ -1,5 +1,6 @@
 import {getFormatter, getLocale, getTranslations} from "next-intl/server";
 import {notFound} from "next/navigation";
+import {NotificationBell} from "@/components/notifications/bell";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
 import {readiness} from "@/server/auth/families";
@@ -58,6 +59,7 @@ export default async function FamilyPage() {
   const t = await getTranslations("auth");
   const lists = await getTranslations("lists");
   const format = await getFormatter();
+  const chat = await getTranslations("notify.groupChat");
   const visibleMembers = new Map(board.members.map(({id, name}) => [id, name]));
   const coOrganizer = board.members.find(({role}) => role === "co_organizer");
   return (
@@ -66,6 +68,8 @@ export default async function FamilyPage() {
       <nav className="flex flex-wrap gap-4" aria-label={t("manageFamily")}>
         <Link href="/account" className={linkClass}>{t("openAccount")}</Link>
         <Link href="/lists" className={linkClass}>{lists("familyLists")}</Link>
+        <NotificationBell viewer={viewer} />
+        <Link href="/family/group-chat" className={linkClass}>{chat("title")}</Link>
         {board.canSendKeys && <Link href="/family/keys" className={linkClass}>{t("sendKeys")}</Link>}
       </nav>
       <section className="space-y-3">

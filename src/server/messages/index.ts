@@ -1,27 +1,16 @@
 import "server-only";
 import {withFamily} from "../db/client";
-import {outbox} from "../db/schema";
+import {schedulePushDelivery} from "./delivery";
+import {drawEvents, listEvents, requestPinReset} from "./events";
+import {enqueueMessages, type Message} from "./queue";
 
-type OutboxRow = typeof outbox.$inferSelect;
+export type {Message} from "./queue";
+export {drawEvents, listEvents, requestPinReset};
 
-export type Message = Pick<OutboxRow, "familyId" | "personId" | "language"> & {
-  template: "practice-reminder";
-};
+export const notify = {drawEvents, listEvents, requestPinReset};
 
-/** Capture a message or queue it for the future production delivery worker. */
+/** Store the in-app notification and arrange delivery to opted-in devices in production. */
 export async function sendMessage(message: Message): Promise<void> {
-  const isProduction = process.env.VERCEL_ENV
-    ? process.env.VERCEL_ENV === "production"
-    : process.env.NODE_ENV === "production";
-
-  await withFamily(message.familyId, async (transaction) => {
-    await transaction.insert(outbox).values({
-      familyId: message.familyId,
-      personId: message.personId,
-      channel: "push",
-      language: message.language,
-      template: message.template,
-      status: isProduction ? "pending" : "captured",
-    });
-  });
+  await withFamily(message.familyId, (tx) => enqueueMessages(tx, [message]));
+  schedulePushDelivery(message.familyId);
 }

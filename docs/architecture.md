@@ -24,7 +24,7 @@ Build screens with `Screen` for the ground, tab roots, pushed pages, and bottom 
 
 Keep reads in Server Components and use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
 
-Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep pool-level access limited to tooling and the local message viewer. RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
+Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep direct connection access limited to tooling, the local message viewer, and the reminder scheduler's discovery call in [`reminders.ts`](../src/server/messages/reminders.ts). RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
 Restrict pairing data to the draw module. Store only sealed recipients in assignments and questions, with their draw version. Keep the normal app role off both tables. Phase 2 owns their privileged queries, the authorized single-person reveal and question projections, and the draw and repair summaries. Organizer screens use summaries. Use the claim identity only for internal authorization and the caller's own actions. Enforce the [documented claim visibility](../README.md#wishlists-and-gifts) in list projections before returning data to components. Send only payloads defined by the message module's [`Message` type](../src/server/messages/index.ts), keeping pairing and claim data out of message payloads.
 
@@ -34,7 +34,13 @@ The `schema` setting in [`drizzle.config.ts`](../drizzle.config.ts) owns the lis
 
 For deployments, `DATABASE_URL` should connect as a runtime login allowed to assume `fge_app`, with neither table ownership nor RLS bypass. Use `DATABASE_ADMIN_URL` for migrations, with privileges to manage the schema and role. For local Compose and CI, the disposable database owner can run migrations and assume the same `fge_app` role that application queries use. The local viewer uses that local owner connection to inspect the latest 100 captured rows across practice families.
 
-The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`: `production` queues messages with status `pending`; all other environments capture them. Delivery adapters belong to Phase 4. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
+## Notifications
+
+The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. In production, notices enter the inbox and push delivery runs after the request commits for opted-in devices. Other environments record captured content without contacting devices. The outbox backs the in-app inbox and its read state independently of push delivery status. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
+
+Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily schedule is defined in [`vercel.json`](../vercel.json). The job queues reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
+
+The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. The draw hooks await Phase 2 integration.
 
 ## Tests
 
