@@ -12,6 +12,10 @@
 
 Use named exports for domain modules and default exports where framework or tool conventions require them. Use kebab-case for file and directory names, camelCase for TypeScript fields, and snake_case for SQL. Keep domain helpers beside their entry points. Place translated routes under `src/app/[locale]`, translation messages in `messages/{en,es}.json`, and theme variables in `src/styles/tokens.css`.
 
+## Design system
+
+The design is "Sweater Weather". [`design/DESIGN.md`](../design/DESIGN.md) is the rulebook and [`design/design.json`](../design/design.json) its tokens; `src/styles/tokens.css` declares every token for Tailwind, and a unit test keeps the two in step. Build screens from `src/components/ui`: the `Screen` page container (red or pine ground, tab roots, pushed pages and their bottom actions), yarn-block cards, buttons, sheets, the toast, the stitched lettering and the motion primitives. Links that change pages say how they move with `AppLink`'s `transition` (`push`, `back` or `tab`). The shared layout renders the tab bar and the toast once; a tab root shows the bar by rendering `Screen` with `tab`. The `/dev/design` gallery shows every component, state and motion under `pnpm dev` and returns 404 on production builds. Rubik is self-hosted from `src/styles/fonts` under the SIL Open Font License.
+
 ## Requests and data access
 
 Keep reads in Server Components and use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
@@ -33,4 +37,5 @@ The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`: `production` que
 - Put pure tests in `tests/unit`. Use fast-check for invariants that need many generated inputs.
 - Put database behavior in `tests/integration`. Apply real migrations, use `withFamily` for runtime queries, and use isolated synthetic fixtures. Test permission failures through the actual transaction.
 - Put user workflows in `tests/e2e`. Use mobile Chromium and WebKit, separated browser contexts for different people, and axe for accessibility.
+- `tests/e2e/design.spec.ts` checks the design gallery at 390 by 844, with and without reduced motion. Playwright serves it from `next dev` on port 3101, beside the production build the other tests use.
 - `pnpm check:i18n` compares translation leaf keys in both directions. Update both catalogs with every new user-facing key.

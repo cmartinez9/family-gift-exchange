@@ -3,6 +3,17 @@
     "title": "Intercambio familiar de regalos",
     "language": "Idioma"
   },
+  "ui": {
+    "tabs": {
+      "label": "Principal",
+      "home": "Inicio",
+      "list": "Mi lista",
+      "family": "Familia"
+    },
+    "undo": "Deshacer",
+    "close": "Cerrar",
+    "back": "Volver a"
+  },
   "devMessages": {
     "title": "Mensajes capturados",
     "empty": "Todavía no se han capturado mensajes.",

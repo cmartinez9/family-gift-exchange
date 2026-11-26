@@ -1,15 +1,259 @@
 @import "tailwindcss";
+@import "./ui.css" layer(components);
+
+/*
+ * Sweater Weather: the design tokens.
+ * Source of truth: design/design.json and design/DESIGN.md. tests/unit/design-tokens.test.ts checks
+ * that every token in design.json is declared here:
+ *   colors      --color-<name>             typography  --text-<role>, --text-<role>--line-height, --font-weight
+ *   card tokens --card-*                   spacing     --space-<name>
+ *   motion      --motion-<name>            radii       --radius-<name> (from DESIGN.md)
+ */
+
+@custom-variant reduce-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+  &:where([data-motion="reduce"], [data-motion="reduce"] *) {
+    @slot;
+  }
+}
 
 @theme {
-  --color-background: #fff;
-  --color-foreground: #171717;
-  --font-sans: system-ui, sans-serif;
+  /* The ground and the three yarns */
+  --color-sweater-red: #C8202F;
+  --color-pin-slot-red: #9C1525;
+  --color-pine: #12573A;
+  --color-pine-tone: #1A6646;
+  --color-gold: #EDB43E;
+  --color-yarn-white: #FFF8EF;
+  --color-snow-white: #FFFFFF;
+  --color-oat-rose: #EADBD7;
+
+  /* Ink and the rest */
+  --color-ink: #1B1416;
+  --color-muted-ink: #5F5456;
+  --color-gold-ink: #4A3512;
+  --color-pale-pine: #D3E6DC;
+  --color-danger: #A61B29;
+  --color-line: #EADFCD;
+  --color-on-ground: rgba(255, 255, 255, 0.16);
+  --color-sheet-scrim: rgba(40, 6, 10, 0.55);
+  --color-budget-track: #E6DCCB;
+  --color-switch-off: #D9CFC9;
+
+  /* The yarn blocks */
+  --color-card-info: #FFF8EF;
+  --color-card-next: #EDB43E;
+  --color-card-mine: #12573A;
+  --color-card-taken: #EADBD7;
+  --color-card-track: #F2E7D5;
+  --color-card-track-next: #DBA533;
+  --color-card-track-mine: #2A6A4E;
+  --color-card-track-taken: #E0CFCA;
+
+  /* Existing names, mapped onto the ground so unstyled screens read white on red */
+  --color-background: #C8202F;
+  --color-foreground: #FFFFFF;
+
+  /* Type: Rubik, one scale */
+  --font-sans: var(--font-rubik), Rubik, system-ui, sans-serif;
+
+  --text-title: 36px;
+  --text-title--line-height: 38px;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 800;
+  --text-sheet-title: 28px;
+  --text-sheet-title--line-height: 32px;
+  --text-sheet-title--letter-spacing: -0.01em;
+  --text-sheet-title--font-weight: 800;
+  --text-section: 22px;
+  --text-section--line-height: 27px;
+  --text-section--font-weight: 800;
+  --text-card-title: 20px;
+  --text-card-title--line-height: 26px;
+  --text-card-title--font-weight: 800;
+  --text-item-title: 20px;
+  --text-item-title--line-height: 26px;
+  --text-item-title--font-weight: 700;
+  --text-button: 20px;
+  --text-button--line-height: 26px;
+  --text-button--font-weight: 700;
+  --text-lead: 19px;
+  --text-lead--line-height: 27px;
+  --text-lead--font-weight: 400;
+  --text-row-title: 19px;
+  --text-row-title--line-height: 27px;
+  --text-row-title--font-weight: 700;
+  --text-body: 18px;
+  --text-body--line-height: 25px;
+  --text-body--font-weight: 500;
+  --text-body-strong: 18px;
+  --text-body-strong--line-height: 25px;
+  --text-body-strong--font-weight: 700;
+  --text-tab: 17px;
+  --text-tab--line-height: 22px;
+  --text-tab--font-weight: 500;
+  --text-label: 13px;
+  --text-label--line-height: 16px;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 800;
+  --text-keypad: 30px;
+  --text-keypad--line-height: 32px;
+  --text-keypad--font-weight: 500;
+
+  /* Radii */
+  --radius-pill: 999px;
+  --radius-sheet: 34px;
+  --radius-card: 32px;
+  --radius-item: 28px;
+  --radius-key: 24px;
+  --radius-track: 22px;
+  --radius-pin-slot: 22px;
+  --radius-picture: 18px;
+  --radius-app-icon: 13px;
+
+  /* Spacing: a 4px base and one 20px edge */
+  --spacing-edge: 20px;
+  --spacing-in-group: 8px;
+  --spacing-card-gap: 12px;
+  --spacing-group: 24px;
+  --spacing-card-pad: 20px;
+  --spacing-item-pad: 16px;
+  --spacing-bottom-action: 34px;
+  --spacing-tab-clearance: 98px;
+
+  /* Easing */
+  --ease-interface: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-back: cubic-bezier(0.4, 0, 0.6, 1);
+  --ease-sheet-close: cubic-bezier(0.4, 0, 1, 1);
+  --ease-pill: cubic-bezier(0.3, 1.25, 0.5, 1);
+  --ease-pop: cubic-bezier(0.3, 1.6, 0.5, 1);
+  --ease-unravel: cubic-bezier(0.55, 0, 0.8, 0.35);
+  --ease-pine: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-swing: cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+
+:root {
+  /* The yarn blocks, bound to the Paper tokens */
+  --card-info: #FFF8EF;
+  --card-next: #EDB43E;
+  --card-mine: #12573A;
+  --card-taken: #EADBD7;
+  --card-track: #F2E7D5;
+  --card-track-next: #DBA533;
+  --card-track-mine: #2A6A4E;
+  --card-track-taken: #E0CFCA;
+  --card-radius: 32px;
+  --card-radius-item: 28px;
+
+  /* design.json spacing */
+  --space-base: 4px;
+  --space-edge: 20px;
+  --space-in-group: 8px;
+  --space-between-cards: 12px;
+  --space-between-groups: 24px;
+  --space-card-padding: 20px;
+  --space-item-padding: 16px;
+  --space-bottom-action: 34px;
+  --space-tab-bar-clearance: 98px;
+
+  /* design.json motion: one token per named motion, with its parts */
+  --motion-ease-interface: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-back: cubic-bezier(0.4, 0, 0.6, 1);
+  --motion-push: 380ms;
+  --motion-push-parent-shift: -30%;
+  --motion-push-parent-dim: 0.8;
+  --motion-back: 300ms;
+  --motion-back-swipe-distance: 120px;
+  --motion-tab: 220ms;
+  --motion-tab-pill: 340ms;
+  --motion-sheet: 420ms;
+  --motion-sheet-scrim: 300ms;
+  --motion-sheet-close: 260ms;
+  --motion-sheet-dismiss-fraction: 0.3;
+  --motion-press: 120ms;
+  --motion-press-scale: 0.97;
+  --motion-press-dim: 0.94;
+  --motion-arrive: 340ms;
+  --motion-arrive-long: 380ms;
+  --motion-arrive-rise: 14px;
+  --motion-arrive-stagger: 60ms;
+  --motion-arrive-max: 5;
+  --motion-toast: 280ms;
+  --motion-toast-rise: 16px;
+  --motion-toast-stay: 2600ms;
+  --motion-toast-stay-undo: 5000ms;
+  --motion-knit-word: 6ms;
+  --motion-knit-word-pop: 220ms;
+  --motion-knit-step: 14ms;
+  --motion-unravel: 300ms;
+  --motion-unravel-per-gift: 1700ms;
+  --motion-unravel-tap: 1100ms;
+  --motion-knit-name: 7.5ms;
+  --motion-ground-to-pine: 700ms;
+  --motion-claim-dye: 440ms;
+  --motion-tag-swing: 1000ms;
+  --motion-tag-drop: 70px;
+  --motion-tag-lift: 320ms;
+  --motion-draw: 2400ms;
+  --motion-draw-panel: 1300ms;
+  --motion-draw-lock-stitch: 9ms;
+  --motion-reduced-motion: 160ms;
+
+  /* Safe areas, used by the shell */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 @layer base {
+  html {
+    background: var(--color-sweater-red);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* The app shell: one phone column on the sweater-red ground, clear of the notch and the home indicator */
   body {
+    min-height: 100dvh;
+    max-width: 480px;
+    margin-inline: auto;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* a tab root keeps its content clear of the floating tab bar, from the first paint */
+  body:has([data-screen="tab"]) {
+    padding-bottom: calc(var(--space-tab-bar-clearance) + var(--safe-bottom));
+  }
+
+  /* focus and scrolling keep things clear of the floating tab bar */
+  html:has([data-screen="tab"]) {
+    scroll-padding-bottom: calc(var(--space-tab-bar-clearance) + var(--safe-bottom));
+  }
+
+  /* paper is white: print ink on it, whatever the ground */
+  @media print {
+    html,
+    body {
+      background: #fff;
+      color: #000;
+    }
+  }
+
+  ::selection {
+    background: var(--color-gold);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-yarn-white);
+    outline-offset: 3px;
   }
 }

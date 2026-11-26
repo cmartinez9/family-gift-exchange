@@ -1,0 +1,439 @@
+/*
+ * Sweater Weather: component and motion styles that utilities cannot express.
+ * Timings and easings come from design/DESIGN.md and the prototype (fge-ui-final/prototype).
+ */
+
+/* ---------------- yarn blocks: the colour says what the card is ---------------- */
+.fge-card {
+  --fg: var(--color-ink);
+  --fg-muted: var(--color-muted-ink);
+  --track: var(--card-track);
+  --row-line: var(--color-line);
+  --focus: var(--color-ink);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-info);
+  color: var(--fg);
+  border-radius: var(--card-radius);
+}
+.fge-card[data-tone="next"] {
+  --fg-muted: var(--color-gold-ink);
+  --track: var(--card-track-next);
+  --row-line: rgba(27, 20, 22, 0.12);
+  background: var(--card-next);
+}
+.fge-card[data-tone="mine"] {
+  --fg: var(--color-snow-white);
+  --fg-muted: var(--color-pale-pine);
+  --track: var(--card-track-mine);
+  --row-line: rgba(255, 255, 255, 0.16);
+  --focus: var(--color-yarn-white);
+  background: var(--card-mine);
+}
+.fge-card[data-tone="taken"] {
+  --track: var(--card-track-taken);
+  --row-line: rgba(27, 20, 22, 0.12);
+  background: var(--card-taken);
+}
+.fge-card[data-size="item"] {
+  border-radius: var(--card-radius-item);
+}
+/* The ring is ink on light yarn, so it shows; yarn white on pine and on the ground. */
+.fge-card :focus-visible,
+.fge-sheet :focus-visible {
+  outline-color: var(--focus, var(--color-ink));
+}
+.fge-sheet {
+  --focus: var(--color-ink);
+}
+
+/* grouped rows: a 1.5px line between rows */
+.fge-rows > * + * {
+  border-top: 1.5px solid var(--row-line, var(--color-line));
+}
+
+/* ---------------- press ---------------- */
+.fge-press {
+  transition:
+    transform var(--motion-press) var(--ease-interface),
+    filter var(--motion-press) var(--ease-interface);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.fge-press:active:not(:disabled, [aria-disabled="true"]) {
+  transform: scale(var(--motion-press-scale));
+  filter: brightness(var(--motion-press-dim));
+}
+
+/* ---------------- stitched words knitting in ---------------- */
+.fge-knit .fge-st {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation:
+    fge-stitch-fade 140ms ease-out both,
+    fge-stitch-pop var(--motion-knit-word-pop) var(--ease-pop) both;
+  animation-delay: calc(var(--i) * var(--knit-step, 6ms) + var(--knit-delay, 0ms));
+}
+.fge-knit[data-paused="true"] .fge-st {
+  animation-play-state: paused;
+}
+@keyframes fge-stitch-fade {
+  from { opacity: 0; }
+}
+@keyframes fge-stitch-pop {
+  from { transform: scale(0.2); }
+}
+.fge-knit .fge-st {
+  @variant reduce-motion {
+    animation: none;
+  }
+}
+
+/* ---------------- step bar: a finished strip knits up, 14ms a stitch ---------------- */
+.fge-strip .fge-ss {
+  fill: rgba(255, 248, 239, 0.4);
+  transition: fill 180ms;
+}
+.fge-strip[data-state="done"] .fge-ss { fill: var(--color-yarn-white); }
+.fge-strip[data-state="now"] .fge-ss { fill: rgba(237, 180, 62, 0.4); }
+.fge-strip[data-state="now"] .fge-ss[data-lit] { fill: var(--color-gold); }
+.fge-strip[data-state="wait"] .fge-ss:not([data-wait]) { fill: transparent; }
+.fge-strip[data-knitting="true"] .fge-ss {
+  transition-delay: calc(var(--i) * var(--motion-knit-step));
+  transition-timing-function: linear;
+}
+.fge-strip .fge-ss {
+  @variant reduce-motion {
+    transition: none;
+  }
+}
+
+/* ---------------- cards arriving (knit-in for new items) ---------------- */
+.fge-arrive > *,
+.fge-arrive-one {
+  animation: fge-arrive var(--motion-arrive) var(--ease-interface) both;
+}
+.fge-arrive > :nth-child(1) { animation-delay: 120ms; }
+.fge-arrive > :nth-child(2) { animation-delay: 180ms; }
+.fge-arrive > :nth-child(3) { animation-delay: 240ms; }
+.fge-arrive > :nth-child(4) { animation-delay: 300ms; }
+.fge-arrive > :nth-child(n + 5) { animation-delay: 360ms; }
+.fge-arrive[data-variant="home"] > * {
+  --rise: 16px;
+  animation-duration: var(--motion-arrive-long);
+}
+.fge-arrive[data-variant="home"] > :nth-child(1) { animation-delay: 200ms; }
+.fge-arrive[data-variant="home"] > :nth-child(2) { animation-delay: 280ms; }
+.fge-arrive[data-variant="home"] > :nth-child(3) { animation-delay: 360ms; }
+.fge-arrive[data-variant="home"] > :nth-child(4) { animation-delay: 440ms; }
+.fge-arrive[data-variant="home"] > :nth-child(n + 5) { animation-delay: 520ms; }
+@keyframes fge-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise, var(--motion-arrive-rise)));
+  }
+}
+.fge-arrive > *,
+.fge-arrive-one {
+  @variant reduce-motion {
+    animation: none;
+  }
+}
+
+/* ---------------- PIN ---------------- */
+.fge-slot {
+  transition: background-color 160ms;
+}
+.fge-slot .fge-slot-dot {
+  opacity: 0;
+  transform: scale(0);
+}
+.fge-slot[data-filled="true"] .fge-slot-dot {
+  animation: fge-pop 240ms var(--ease-pop) forwards;
+}
+.fge-slot[data-bad="true"] {
+  box-shadow: inset 0 0 0 3px var(--color-gold);
+}
+@keyframes fge-pop {
+  from { transform: scale(0.2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.fge-shake {
+  animation: fge-shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes fge-shake {
+  20% { transform: translateX(-10px); }
+  40% { transform: translateX(9px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(3px); }
+}
+.fge-drop {
+  animation: fge-drop 320ms var(--ease-interface);
+}
+@keyframes fge-drop {
+  from { transform: translateY(-10px); opacity: 0; }
+}
+.fge-slot[data-filled="true"] .fge-slot-dot,
+.fge-shake,
+.fge-drop {
+  @variant reduce-motion {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------- switch ---------------- */
+.fge-switch .fge-knob {
+  transition: transform 260ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.fge-switch[aria-checked="true"] .fge-knob {
+  transform: translateX(22px);
+}
+
+/* ---------------- loading tile: a slow sweep across the stitches ---------------- */
+.fge-shimmer .fge-ts {
+  animation: fge-shimmer 540ms steps(1, end) infinite;
+  animation-delay: calc(var(--d) * 90ms);
+}
+@keyframes fge-shimmer {
+  0%, 83% { fill: var(--stitch); }
+  84%, 100% { fill: #CFC5C0; }
+}
+.fge-shimmer .fge-ts {
+  @variant reduce-motion {
+    animation: none;
+  }
+}
+
+/* ---------------- tab bar: tabs crossfade; the white pill springs across ---------------- */
+.fge-tabbar {
+  view-transition-name: fge-tabbar;
+}
+.fge-tab-pill {
+  transition:
+    transform var(--motion-tab-pill) var(--ease-pill),
+    width var(--motion-tab-pill) var(--ease-pill);
+}
+.fge-tabbar[data-ready="false"] .fge-tab-pill {
+  transition: none;
+}
+.fge-tab-pill {
+  @variant reduce-motion {
+    transition: none;
+  }
+}
+.fge-tab {
+  transition: color 200ms;
+}
+
+/* ---------------- sheets ---------------- */
+dialog.fge-sheet-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  max-height: none;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+}
+dialog.fge-sheet-dialog::backdrop {
+  background: transparent;
+}
+.fge-sheet-body {
+  touch-action: none;
+}
+.fge-sheet-content {
+  touch-action: pan-y;
+}
+html:has(dialog.fge-sheet-dialog[open]) {
+  overflow: hidden;
+}
+
+/* ---------------- toast ---------------- */
+.fge-toast {
+  opacity: 0;
+  transform: translateY(var(--motion-toast-rise));
+  pointer-events: none;
+  transition:
+    opacity 220ms,
+    transform var(--motion-toast) var(--ease-interface);
+}
+.fge-toast[data-placement="top"] {
+  transform: translateY(calc(-1 * var(--motion-toast-rise)));
+}
+.fge-toast[data-show="true"] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.fge-toast {
+  @variant reduce-motion {
+    transform: none;
+    transition: opacity var(--motion-reduced-motion);
+  }
+}
+
+/* ---------------- the claim: the card dyes pine; a knitted tag swings on its strand ---------------- */
+.fge-claim-mine {
+  transition: clip-path var(--motion-claim-dye) var(--ease-interface);
+}
+.fge-claim-mine {
+  @variant reduce-motion {
+    transition: none;
+  }
+}
+
+/* ---------------- the reveal ---------------- */
+.fge-gift {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.fge-gift .fge-kr {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  transition:
+    transform var(--motion-unravel) var(--ease-unravel),
+    opacity var(--motion-unravel) ease-in;
+}
+.fge-gift .fge-kr[data-gone="true"] {
+  transform: translateY(-10px) scaleX(0.04);
+  opacity: 0;
+}
+.fge-gift .fge-kr {
+  @variant reduce-motion {
+    transition: none;
+  }
+}
+.fge-reveal .fge-nm {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  opacity: 0;
+  transform: scale(0.2);
+}
+.fge-reveal .fge-nm[data-on="true"] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 140ms ease-out,
+    transform var(--motion-knit-word-pop) var(--ease-pop);
+}
+.fge-reveal .fge-nm[data-on="true"] {
+  @variant reduce-motion {
+    transition: none;
+  }
+}
+
+/* ---------------- page push, back and tab: view transitions ---------------- */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(fge-tabbar) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(fge-tabbar) {
+  display: none;
+}
+::view-transition-new(fge-tabbar) {
+  animation: none;
+}
+
+/* push: the new page comes in from the right; the parent slides 30% left and dims */
+::view-transition-group(.fge-push-in) { z-index: 2; }
+::view-transition-new(.fge-push-in) {
+  animation: fge-from-right var(--motion-push) var(--ease-interface) both;
+}
+::view-transition-old(.fge-push-out) {
+  animation: fge-to-parent var(--motion-push) var(--ease-interface) both;
+}
+/* back: the page leaves to the right; the parent returns */
+::view-transition-group(.fge-back-out) { z-index: 2; }
+::view-transition-old(.fge-back-out) {
+  animation: fge-to-right var(--motion-back) var(--ease-back) both;
+}
+::view-transition-new(.fge-back-in) {
+  animation: fge-from-parent var(--motion-back) var(--ease-back) both;
+}
+/* tabs crossfade; they never slide */
+::view-transition-old(.fge-tab-out) {
+  animation: fge-fade-out var(--motion-tab) ease-out both;
+}
+::view-transition-new(.fge-tab-in) {
+  animation: fge-fade-in var(--motion-tab) ease-out both;
+}
+
+/*
+ * Each side also clips itself where the other page's edge is, so the page in front is in front in every
+ * engine, whatever order the browser stacks the two snapshots in.
+ */
+@keyframes fge-from-right {
+  from { transform: translateX(100%); }
+}
+@keyframes fge-to-right {
+  to { transform: translateX(100%); }
+}
+@keyframes fge-to-parent {
+  from { clip-path: inset(0 0 0 0); }
+  to { transform: translateX(var(--motion-push-parent-shift)); filter: brightness(var(--motion-push-parent-dim)); clip-path: inset(0 70% 0 0); }
+}
+@keyframes fge-from-parent {
+  from { transform: translateX(var(--motion-push-parent-shift)); filter: brightness(var(--motion-push-parent-dim)); clip-path: inset(0 70% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes fge-fade-in {
+  from { opacity: 0; }
+}
+@keyframes fge-fade-out {
+  to { opacity: 0; }
+}
+
+/* reduced motion: every page change is a 160ms crossfade */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(.fge-push-in),
+  ::view-transition-new(.fge-back-in),
+  ::view-transition-new(.fge-tab-in) {
+    animation: fge-fade-in var(--motion-reduced-motion) ease-out both;
+  }
+  ::view-transition-old(.fge-push-out),
+  ::view-transition-old(.fge-back-out),
+  ::view-transition-old(.fge-tab-out) {
+    animation: fge-fade-out var(--motion-reduced-motion) ease-out both;
+  }
+}
+:root[data-motion="reduce"]::view-transition-new(.fge-push-in),
+:root[data-motion="reduce"]::view-transition-new(.fge-back-in),
+:root[data-motion="reduce"]::view-transition-new(.fge-tab-in) {
+  animation: fge-fade-in var(--motion-reduced-motion) ease-out both;
+}
+:root[data-motion="reduce"]::view-transition-old(.fge-push-out),
+:root[data-motion="reduce"]::view-transition-old(.fge-back-out),
+:root[data-motion="reduce"]::view-transition-old(.fge-tab-out) {
+  animation: fge-fade-out var(--motion-reduced-motion) ease-out both;
+}
+
+/* the hint that something can be held */
+.fge-wiggle {
+  animation: fge-wiggle 2.6s ease-in-out infinite;
+}
+@keyframes fge-wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+.fge-wiggle {
+  @variant reduce-motion {
+    animation: none;
+  }
+}
