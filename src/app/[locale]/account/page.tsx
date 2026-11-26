@@ -9,7 +9,7 @@ import {withFamily} from "@/server/db/client";
 import {changePin} from "../sign-in/actions";
 import {AuthForm, PinFields} from "../sign-in/controls";
 import {activityDateFormat, linkClass, sectionClass} from "../sign-in/styles";
-import {reportEvent, setLanguage, signOut, switchProfile} from "./actions";
+import {reportEvent, reportSession, setLanguage, signOut, switchProfile} from "./actions";
 
 export default async function AccountPage({searchParams}: {searchParams: Promise<{reported?: string; face?: string}>}) {
   const viewer = await requireViewer();
@@ -51,15 +51,13 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
         <h2 className="text-xl font-semibold">{t("revealActivity")}</h2>
         {!openings.length && <p>{t("noRevealActivity")}</p>}
         <ul className="space-y-4">
-          {openings.map(({exchangeId, exchangeName, version, sessionId, openedAt, deviceKind}) => {
-            const event = activity.find((entry) => entry.sessionId === sessionId
-              && (entry.kind === "newDevice" || entry.kind === "keyUsed" || entry.kind === "resetUsed"));
+          {openings.map(({exchangeId, exchangeName, version, sessionId, openedAt, deviceKind, disputed}) => {
             return (
               <li key={`${exchangeId}.${version}.${sessionId}`} className="border-b border-current/25 pb-3">
                 <p>{t("revealOpened", {exchange: exchangeName, device: t(`device.${deviceKind ?? "other"}` as Parameters<typeof t>[0])})}</p>
                 <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
-                {event && (event.disputed ? <p>{t("alreadyReported")}</p>
-                  : <AuthForm action={reportEvent.bind(null, event.id)} label={t("notMe")} />)}
+                {disputed ? <p>{t("alreadyReported")}</p>
+                  : <AuthForm action={reportSession.bind(null, sessionId)} label={t("notMe")} />}
               </li>
             );
           })}

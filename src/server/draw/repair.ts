@@ -12,6 +12,7 @@ export function removeFromDraw(rules: DrawRules, pairs: Pairs, leaving: string, 
 
 export function repairDraw(
   rules: DrawRules, previous: Pairs, mustChange: readonly string[], checkTime?: () => void,
+  privacy?: {observers: readonly string[]; fullRedraw?: boolean},
 ): Pairs | null {
   const {people, choices, indices} = rules;
   if (people.length < minimumPeople || mustChange.some((id) => !indices.has(id))) return null;
@@ -22,10 +23,33 @@ export function repairDraw(
     .sort((a, b) => Number(b === previous.get(people[giver].id)) - Number(a === previous.get(people[giver].id))));
   const next = new Map<string, string>();
   const used = new Set<string>();
+  const observers = [...new Set(privacy?.observers)].sort();
+  const groups = new Map<string, {pairs: Pairs[]; recipients: Map<string, Set<string>>}>();
+  let selected: Pairs | undefined;
+
+  function accept(changed: number) {
+    if (!validPairs(rules, next)) return false;
+    if (!privacy || !required.size) return true;
+    const observation = JSON.stringify([privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id))]);
+    const group = groups.get(observation) ?? {
+      pairs: [], recipients: new Map([...required].map((id) => [id, new Set<string>()])),
+    };
+    let novel = false;
+    for (const [id, recipients] of group.recipients) {
+      const recipient = next.get(id)!;
+      if (!recipients.has(recipient)) novel = true;
+      recipients.add(recipient);
+    }
+    if (novel) group.pairs.push(new Map(next));
+    groups.set(observation, group);
+    if ([...group.recipients.values()].some((recipients) => recipients.size < 2)) return false;
+    selected = shuffled(group.pairs)[0];
+    return true;
+  }
 
   function search(changed: number, limit: number): boolean {
     checkTime?.();
-    if (next.size === people.length) return validPairs(rules, next);
+    if (next.size === people.length) return accept(changed);
     let unavoidable = 0;
     let giver: string | undefined;
     let candidates: string[] = [];
@@ -52,8 +76,8 @@ export function repairDraw(
     return false;
   }
 
-  for (let count = required.size; count <= people.length; count++) {
-    if (search(0, count)) return new Map(next);
+  for (let count = privacy?.fullRedraw ? people.length : required.size; count <= people.length; count++) {
+    if (search(0, count)) return selected ?? new Map(next);
   }
   return null;
 }

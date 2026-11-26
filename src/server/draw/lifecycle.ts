@@ -1,5 +1,5 @@
 import {and, eq} from "drizzle-orm";
-import {participants} from "../db/schema";
+import {exchanges, participants} from "../db/schema";
 import {
   authorizeSubject, DrawError, lockOrganizer, requireOrganizer, type DrawViewer,
 } from "./access";
@@ -11,9 +11,9 @@ import {drawReports} from "./schema";
 import {drawSeal, encryptionKey} from "./sealing";
 import {checkRules, inspectDraw, maximumPeople, solveDraw} from "./solver";
 import {
-  auditedDraw, authorizeSealedSubject, checkVersion, currentParticipants,
+  auditedDraw, authorizeSealedSubject, checkVersion, currentParticipants, disputedGivers, exchangeScope,
   InvalidSeal, liveRoster, loadDraftRules, loadExchange, loadPairs, loadSnapshot, participantScope, requireOpen,
-  snapshotRules, writeDraw, writeRepair,
+  privateDrawRepair, snapshotRules, writeDraw, writeRepair,
 } from "./store";
 
 export const redrawConfirmation = {en: "REDRAW", es: "VOLVER A SORTEAR"} as const;
@@ -66,7 +66,7 @@ export async function runDraw(
 ) {
   requireOrganizer(viewer);
   const familyId = viewer.familyId;
-  return auditedDraw(familyId, async (tx) => {
+  return auditedDraw(familyId, async (tx, decrypt) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
     requireOpen(exchange);
@@ -79,10 +79,17 @@ export async function runDraw(
 
     const snapshot = await loadDraftRules(tx, familyId, exchange.id);
     if (snapshot.roster.length > maximumPeople) throw new DrawError("invalidParticipants");
-    const pairs = solveDraw(snapshotRules(snapshot), {checkTime: deadline(1500)});
-    if (!pairs) throw new DrawError("drawImpossible");
+    const previous = exchange.version ? await loadPairs(tx, familyId, exchange, decrypt, "repair") : undefined;
+    const active = new Set(snapshot.roster.map(({id}) => id));
+    const exposed = [...((await disputedGivers(tx, familyId)).get(exchange.id) ?? [])].filter((id) => active.has(id));
+    const pairs = previous && exposed.length
+      ? await privateDrawRepair(tx, familyId, snapshot, previous, exposed, deadline(1500), true)
+      : solveDraw(snapshotRules(snapshot), {checkTime: deadline(1500)});
+    if (!pairs) throw new DrawError(exposed.length ? "repairImpossible" : "drawImpossible");
 
-    const summary = await writeDraw(tx, familyId, exchange, pairs, snapshot, "drawn");
+    const summary = await writeDraw(tx, familyId, exchange, pairs, snapshot, "drawn", previous, true);
+    if (exposed.length) await tx.update(exchanges).set({disputedRevealRepairedAt: new Date()})
+      .where(exchangeScope(familyId, exchange.id));
     await publishDraw(events, tx, {
       kind: exchange.version ? "redrawn" : "drawn",
       familyId, exchangeId: exchange.id, version: summary.version,

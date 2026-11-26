@@ -149,7 +149,8 @@
       "resetSent": "A new key was sent to reset your PIN.",
       "resetUsed": "A new key was used to replace your PIN.",
       "keyDisputed": "Someone with your used key reported that its first use was not them.",
-      "familyLockdown": "Everyone was signed out for safety."
+      "familyLockdown": "Everyone was signed out for safety.",
+      "signIn": "A session signed in on this device."
     },
     "feedback": {
       "pinLength": "Enter four digits.",

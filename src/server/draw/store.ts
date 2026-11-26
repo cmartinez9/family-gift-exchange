@@ -200,7 +200,7 @@ function questionScope(familyId: string, exchangeId: string) {
 export async function writeDraw(
   tx: FamilyTransaction, familyId: string, exchange: Exchange,
   pairs: Pairs, snapshot: RuleSnapshot, status: "drawn" | "locked",
-  previous?: Pairs,
+  previous?: Pairs, resetSeen = false,
 ) {
   const exchangeId = exchange.id;
   const version = exchange.version + 1;
@@ -213,10 +213,10 @@ export async function writeDraw(
 
   const changed = previous
     ? [...previous].filter(([giver, recipient]) => pairs.get(giver) !== recipient).map(([giver]) => giver)
-    : null;
-  await tx.update(drawOpenings).set({invalidatedAt: new Date()}).where(and(
+    : [];
+  if (changed.length) await tx.update(drawOpenings).set({invalidatedAt: new Date()}).where(and(
     eq(drawOpenings.familyId, familyId), eq(drawOpenings.exchangeId, exchangeId),
-    isNull(drawOpenings.invalidatedAt), changed ? inArray(drawOpenings.giverId, changed) : undefined,
+    isNull(drawOpenings.invalidatedAt), inArray(drawOpenings.giverId, changed),
   ));
   await tx.delete(assignments).where(assignmentScope(familyId, exchangeId));
   await tx.insert(assignments).values(replacement);
@@ -224,14 +224,14 @@ export async function writeDraw(
   await tx.update(exchanges).set({drawVersion: version, seal, status}).where(exchangeScope(familyId, exchangeId));
 
   const scope = participantScope(familyId, exchangeId);
-  if (!previous) {
+  if (!previous || resetSeen) {
     await tx.update(participants).set({seenVersion: null}).where(scope);
     await tx.delete(questions).where(questionScope(familyId, exchangeId));
     return {version, seal, participantCount: pairs.size};
   }
 
   // Preserve seen status only when the person still has the same recipient.
-  const reset = changed ?? [];
+  const reset = changed;
   if (reset.length) {
     await tx.update(participants).set({seenVersion: null})
       .where(and(scope, inArray(participants.personId, reset)));
@@ -258,7 +258,7 @@ export async function writeRepair(
   return {...summary, changedGivers: destinations.filter((giver) => previous.has(giver)).length};
 }
 
-async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {
+export async function disputedGivers(tx: FamilyTransaction, familyId: string) {
   const openings = await tx.select({
     exchangeId: drawOpenings.exchangeId, giverId: drawOpenings.giverId,
     viewerId: drawOpenings.viewerId, sessionId: drawOpenings.sessionId,
@@ -274,13 +274,29 @@ async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string,
       affected.set(opening.exchangeId, givers);
     }
   }
-  for (const [exchangeId, givers] of affected) {
+  return affected;
+}
+
+export async function privateDrawRepair(
+  tx: FamilyTransaction, familyId: string, snapshot: RuleSnapshot, previous: Pairs,
+  givers: readonly string[], checkTime: () => void, fullRedraw = false,
+) {
+  const organizers = await tx.select({id: people.id}).from(people).where(and(
+    eq(people.familyId, familyId), isNull(people.removedAt), inArray(people.role, ["organizer", "co_organizer"]),
+  ));
+  const organizerIds = new Set(organizers.map(({id}) => id));
+  const observers = snapshot.roster.filter(({id, helperId}) => organizerIds.has(helperId ?? id)).map(({id}) => id);
+  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, fullRedraw});
+}
+
+async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {
+  for (const [exchangeId, givers] of await disputedGivers(tx, familyId)) {
     const exchange = await loadExchange(tx, familyId, exchangeId);
     if (exchange.status === "closed" || !exchange.version) continue;
     const snapshot = await loadSnapshot(tx, familyId, exchangeId);
     const previous = await loadPairs(tx, familyId, exchange, decrypt, "repair");
     const end = performance.now() + 1500;
-    const next = repairDraw(snapshotRules(snapshot), previous, [...givers], () => {
+    const next = await privateDrawRepair(tx, familyId, snapshot, previous, [...givers], () => {
       if (performance.now() > end) throw new DrawError("checkTimedOut");
     });
     await writeRepair(tx, familyId, exchange, snapshot, previous, next);

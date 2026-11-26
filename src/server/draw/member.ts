@@ -1,4 +1,5 @@
 import {and, eq, ne} from "drizzle-orm";
+import {listSessionDisputes} from "../auth/security";
 import {sessions} from "../auth/schema";
 import type {FamilyTransaction} from "../db/database";
 import {exchanges, participants, people} from "../db/schema";
@@ -79,7 +80,9 @@ export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
   return auditedDraw(viewer.familyId, async (tx) => {
     await authorizeSubject(tx, viewer);
     if (id) await loadExchange(tx, viewer.familyId, recordId(id));
-    return tx.select({
+    const disputes = await listSessionDisputes(tx, viewer.familyId, viewer.personId);
+    const disputed = new Set(disputes.map(({sessionId}) => sessionId));
+    const openings = await tx.select({
       exchangeId: drawOpenings.exchangeId, exchangeName: exchanges.name,
       version: drawOpenings.version, sessionId: drawOpenings.sessionId, openedAt: drawOpenings.openedAt,
       deviceKind: sessions.deviceKind,
@@ -92,6 +95,7 @@ export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
       eq(drawOpenings.giverId, viewer.actingAs), eq(drawOpenings.viewerId, viewer.personId),
       ne(drawOpenings.sessionId, viewer.sessionId),
     )).orderBy(drawOpenings.openedAt, drawOpenings.sessionId);
+    return openings.map((opening) => ({...opening, disputed: disputed.has(opening.sessionId)}));
   });
 }
 

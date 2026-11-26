@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import {expect, it} from "vitest";
-import {insertIntoDraw, removeFromDraw, repairReportedPair} from "../../src/server/draw/repair";
+import {insertIntoDraw, removeFromDraw, repairDraw, repairReportedPair} from "../../src/server/draw/repair";
+import {possibleDraws} from "../helpers/possible-draws";
 import {
   checkRules, drawRules, inspectDraw, solveDraw, type DrawPerson, type KeepApartPair, type Pairs,
 } from "../../src/server/draw/solver";
@@ -174,4 +175,38 @@ it("expands a reveal repair beyond two givers when needed", () => {
   expect(validate(people, [], next)).toBe(true);
   expect(next.get("A")).not.toBe(previous.get("A"));
   expect(people.filter(({id}) => next.get(id) !== previous.get(id))).toHaveLength(3);
+});
+
+it("chooses the smallest private repair for A B C D E F with organizer E and a disputed B reveal", () => {
+  const ids = ["A", "B", "C", "D", "E", "F"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const rules = drawRules(people, []);
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const changedCount = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const all = possibleDraws(ids).filter((pairs) => pairs.get("B") !== "C");
+  const two = all.filter((pairs) => changedCount(pairs) === 2);
+  expect(two).toHaveLength(1);
+  expect(two[0].get("B")).toBe("F");
+  expect(two[0].get("E")).toBe("C");
+  const safe = all.filter((pairs) => all.some((other) => changedCount(other) === changedCount(pairs)
+    && other.get("E") === pairs.get("E") && other.get("B") !== pairs.get("B")));
+  const minimum = Math.min(...safe.map(changedCount));
+  expect(minimum).toBe(3);
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const next = repairDraw(rules, previous, ["B"], undefined, {observers: ["E"]})!;
+    expect(validate(people, [], next)).toBe(true);
+    expect(changedCount(next)).toBe(minimum);
+    expect(next.get("B")).not.toBe("C");
+    const alternatives = safe.filter((pairs) => changedCount(pairs) === minimum && pairs.get("E") === next.get("E"));
+    expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
+  }
+});
+
+it("does not publish a private repair when organizer observations determine the new match", () => {
+  const ids = ["A", "B", "C", "D"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const rules = drawRules(people, []);
+  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"]})).toBeNull();
+  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], fullRedraw: true})).toBeNull();
 });

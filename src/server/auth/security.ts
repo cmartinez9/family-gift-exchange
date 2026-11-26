@@ -1,4 +1,4 @@
-import {and, asc, desc, eq, gte, inArray, isNull, ne, or} from "drizzle-orm";
+import {and, asc, desc, eq, gte, inArray, isNull, ne, or, sql} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
@@ -44,6 +44,26 @@ export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Da
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), all ? undefined : eq(sessions.id, sessionId),
   ));
   return true;
+}
+
+export async function disputeSession(tx: FamilyTransaction, viewer: Viewer, targetId: string, now: Date) {
+  const {familyId, personId} = viewer;
+  await lockFamily(tx, familyId);
+  if (!await revalidateViewer(tx, viewer) || targetId === viewer.sessionId) return false;
+  const [target] = await tx.select({at: sessions.createdAt, deviceKind: sessions.deviceKind}).from(sessions).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, targetId),
+  ));
+  if (!target) return false;
+  let [event] = await tx.select({id: authEvents.id}).from(authEvents).where(and(
+    eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.sessionId, targetId),
+    inArray(authEvents.kind, ["newDevice", "signIn", "keyUsed", "resetUsed"]),
+  )).limit(1);
+  if (!event) {
+    [event] = await tx.insert(authEvents).values({
+      familyId, personId, sessionId: targetId, kind: "signIn", deviceKind: target.deviceKind, at: target.at,
+    }).returning({id: authEvents.id});
+  }
+  return disputeEvent(tx, viewer, event.id, now);
 }
 
 export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventId: string, now: Date) {
@@ -116,6 +136,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   ));
   const [record] = await tx.insert(sessionDisputes).values({
     familyId, eventId, personId, disputedSessionId, reportedBySessionId: sessionId, at: now,
+    affectedSessionIds: [...sessionIds].filter((id) => id !== sessionId),
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
   const affectedPeople = familySessions.filter(({id}) => sessionIds.has(id)).map(({personId}) => personId);
@@ -176,9 +197,12 @@ async function lockDownFamily(
 
 /** Phase 2 can read reports for the current family and person from this projection. */
 export async function listSessionDisputes(tx: FamilyTransaction, familyId: string, personId: string) {
-  return tx.select({sessionId: sessionDisputes.disputedSessionId, at: sessionDisputes.at})
-    .from(sessionDisputes).where(and(eq(sessionDisputes.familyId, familyId), eq(sessionDisputes.personId, personId)))
-    .orderBy(desc(sessionDisputes.at));
+  return tx.select({sessionId: sessions.id, at: sessionDisputes.at})
+    .from(sessionDisputes).innerJoin(sessions, and(
+      eq(sessions.familyId, sessionDisputes.familyId),
+      or(eq(sessions.id, sessionDisputes.disputedSessionId), sql`${sessions.id} = ANY(${sessionDisputes.affectedSessionIds})`),
+    )).where(and(eq(sessionDisputes.familyId, familyId), eq(sessions.personId, personId)))
+    .orderBy(desc(sessionDisputes.at), sessions.id);
 }
 
 /** Phase 2 consumes this projection when evaluating reported key use. */

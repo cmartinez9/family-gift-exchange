@@ -149,7 +149,8 @@
       "resetSent": "Se envió una llave nueva para restablecer tu PIN.",
       "resetUsed": "Se usó una llave nueva para reemplazar tu PIN.",
       "keyDisputed": "Alguien con tu llave usada reportó que no fue quien la usó por primera vez.",
-      "familyLockdown": "Se cerraron todas las sesiones por seguridad."
+      "familyLockdown": "Se cerraron todas las sesiones por seguridad.",
+      "signIn": "Se inició una sesión en este dispositivo."
     },
     "feedback": {
       "pinLength": "Escribe cuatro dígitos.",
