@@ -20,7 +20,7 @@ type InitialItem = {
   photo?: string;
 };
 
-async function preparePhoto(file: File) {
+export async function preparePhoto(file: File) {
   if (file.size <= 3_000_000 && !/hei[cf]$/i.test(file.type || file.name)) return file;
   const url = URL.createObjectURL(file);
   try {

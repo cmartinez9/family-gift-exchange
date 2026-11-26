@@ -7,11 +7,12 @@ import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
+import {openKey, skipFaceId} from "../helpers/pin-pad";
 
 const pin = "4268";
 
 async function startFamily(page: Page, language: "en" | "es") {
-  const {auth} = language === "en" ? en : es;
+  const {auth, getIn} = language === "en" ? en : es;
   const familyName = `Spruce ${randomUUID().slice(0, 6)}`;
   await page.goto(`/${language}/start`);
   await page.getByLabel(auth.organizerInvite).fill(process.env.E2E_ORGANIZER_INVITE_CODE!);
@@ -20,7 +21,7 @@ async function startFamily(page: Page, language: "en" | "es") {
   await page.getByLabel(auth.pin, {exact: true}).fill(pin);
   await page.getByLabel(auth.confirmPin).fill(pin);
   await page.getByRole("button", {name: auth.createFamily}).click();
-  await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
+  await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
   await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session");
@@ -131,13 +132,8 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     const url = (await keyMessage.innerText()).split(" ").at(-1)!;
 
     const memberPage = await member.newPage();
-    await memberPage.goto(url);
-    await memberPage.getByRole("button", {name: "Yes, I'm Snowfinch"}).click();
-    await memberPage.getByLabel(en.auth.pin, {exact: true}).fill(pin);
-    await memberPage.getByLabel(en.auth.confirmPin).fill(pin);
-    await memberPage.getByRole("button", {name: en.auth.savePin}).click();
-    await expect(memberPage.getByRole("heading", {name: en.auth.facePrompt})).toBeVisible();
-    await memberPage.getByRole("link", {name: en.auth.notNow}).click();
+    await openKey(memberPage, url, pin);
+    await skipFaceId(memberPage);
 
     await page.goto("/en/lists");
     await page.getByText(en.lists.budget, {exact: true}).first().click();
@@ -184,7 +180,7 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
       await anonymous.close();
     }
 
-    await memberPage.getByRole("link", {name: en.lists.familyLists}).click();
+    await memberPage.goto("/en/lists");
     await memberPage.getByRole("link", {name: "Frostleaf"}).click();
     const memberCard = memberPage.getByRole("article", {name: "Bright lantern"});
     await memberCard.getByRole("button", {name: en.lists.claim}).click();

@@ -1,0 +1,505 @@
+"use client";
+
+import {useActionState, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
+import {startAuthentication, startRegistration} from "@simplewebauthn/browser";
+import {useFormatter, useTranslations} from "next-intl";
+import {Link, useRouter} from "@/i18n/navigation";
+import {Avatar} from "@/components/ui/avatar";
+import {ErrorBlock} from "@/components/ui/blocks";
+import {Button, TextButton, TextLink} from "@/components/ui/button";
+import {Card} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
+import {Icon, type IconName} from "@/components/ui/icon";
+import {TextField} from "@/components/ui/inputs";
+import {FairIsleBand} from "@/components/ui/knit/knit-svg";
+import {KnitMotif} from "@/components/ui/knit/knit-motif";
+import {canStitch, textBitmap} from "@/components/ui/knit/knit";
+import {STITCH_CELL, StitchedText} from "@/components/ui/knit/stitched-text";
+import {haptic} from "@/components/ui/motion/haptic";
+import {BackRow, PageTitle} from "@/components/ui/page-header";
+import {Screen} from "@/components/ui/screen";
+import {Sheet} from "@/components/ui/sheet";
+import {StepBar} from "@/components/ui/step-bar";
+import {
+  beginFaceId, enterPin, finishFaceIdEnrollment, finishFaceIdSignIn, forgotPin, openFamily, previewCode, reportUsedKey, useKey,
+  type AuthResult, type CodeResult,
+} from "./actions";
+import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
+import {tryAuthAction} from "./client-action";
+
+/** The widest a stitched word may be: the 350px column. */
+const COLUMN = 350;
+
+/** The cell size that keeps a stitched word inside the column, never larger than the design's. */
+export function fitCell(text: string, cell: number) {
+  if (!canStitch(text)) return cell;
+  const columns = textBitmap(text)[0]?.length ?? 1;
+  return Math.min(cell, Math.floor((COLUMN / columns) * 10) / 10);
+}
+
+/** A greeting knitted in, one stitch at a time: "HI" over "ROSA!". `heading` makes it the screen's title. */
+export function Greeting({top, bottom, heading = false}: {top: string; bottom: string; heading?: boolean}) {
+  const Tag = heading ? "h1" : "div";
+  return (
+    <Tag className="flex flex-col items-center gap-4 pt-6" data-greeting="">
+      <StitchedText as="span" className="block" text={top} cell={fitCell(top, STITCH_CELL.greeting)} knit stepMs={7} />
+      <span className="sr-only"> </span>
+      <StitchedText as="span" className="block" text={bottom} cell={fitCell(bottom, STITCH_CELL.greeting)} knit stepMs={5} delayMs={180} />
+    </Tag>
+  );
+}
+
+/** Onboarding's knitted step bar: Sign in, Your person, Your sizes, Your list. */
+export function WelcomeSteps({step, done = false, waitingStep, allDone = true}: {
+  step: number; done?: boolean; waitingStep?: number; allDone?: boolean;
+}) {
+  const t = useTranslations("getIn.steps");
+  const names = [t("signIn"), t("person"), t("sizes"), t("list")];
+  return (
+    <StepBar id="welcome" step={step} total={4} done={done} waitingStep={waitingStep}
+      progress={done ? (allDone ? t("allDone", {total: 4}) : t("doneForNow")) : t("progress", {step, total: 4})}
+      name={names[step - 1]} />
+  );
+}
+
+/** One line with an icon inside a card: what is safe, what happens next. */
+export function Bullet({icon, children, tone = "pine"}: {icon: IconName; children: ReactNode; tone?: "pine" | "ink"}) {
+  return (
+    <li className="flex items-start gap-3 text-body">
+      <Icon name={icon} size={24} strokeWidth={2.3} className={cn("mt-px", tone === "pine" ? "text-pine" : "text-ink")} />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Face ID
+// ---------------------------------------------------------------------------------------------
+
+function useFaceId(enroll: boolean, onDone: () => void) {
+  const [failed, setFailed] = useState(false);
+  const [pending, start] = useTransition();
+  function begin() {
+    setFailed(false);
+    start(async () => {
+      try {
+        if (enroll) {
+          const options = await beginFaceId(true);
+          if (!options || !("user" in options)) throw new Error();
+          if (!await finishFaceIdEnrollment(await startRegistration({optionsJSON: options}))) throw new Error();
+        } else {
+          const options = await beginFaceId(false);
+          if (!options || "user" in options) throw new Error();
+          if (!await finishFaceIdSignIn(await startAuthentication({optionsJSON: options}))) throw new Error();
+        }
+        haptic("success");
+        onDone();
+      } catch {
+        setFailed(true);
+      }
+    });
+  }
+  return {failed, pending, begin};
+}
+
+/**
+ * Welcome back (10.1): the phone's own Face ID panel, as a button. From the home-screen icon it asks by
+ * itself, the way banking apps do; in a browser tab it waits for a tap.
+ */
+export function FaceIdTile({next = "/account?face=1"}: {next?: string}) {
+  const t = useTranslations("getIn.back");
+  const auth = useTranslations("auth");
+  const router = useRouter();
+  const {failed, pending, begin} = useFaceId(false, () => router.replace(next));
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || !window.matchMedia("(display-mode: standalone)").matches || !window.PublicKeyCredential) return;
+    asked.current = true;
+    begin();
+  });
+  return (
+    <div className="flex flex-col items-center gap-3 pt-10">
+      <button type="button" onClick={begin} disabled={pending} aria-label={auth("signInFaceId")}
+        className="fge-press flex size-[168px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[36px] bg-ink/55 text-snow-white">
+        <Icon name="faceid" size={64} strokeWidth={1.6} />
+        <span className="text-tab font-semibold">{t("faceTile")}</span>
+      </button>
+      {failed && <p role="alert" className="px-edge text-center text-body font-semibold">{auth("faceSignInFailed")}</p>}
+    </div>
+  );
+}
+
+/** "Use Face ID instead": the same sign-in, as a text link. */
+export function FaceIdLink({label, next = "/account?face=1"}: {label: string; next?: string}) {
+  const auth = useTranslations("auth");
+  const router = useRouter();
+  const {failed, pending, begin} = useFaceId(false, () => router.replace(next));
+  return (
+    <div className="flex flex-col items-center">
+      <TextButton onClick={begin} disabled={pending}>{label}</TextButton>
+      {failed && <p role="alert" className="text-center text-body font-semibold">{auth("faceSignInFailed")}</p>}
+    </div>
+  );
+}
+
+/** Use Face ID next time? (1.6): the gold card at the bottom of the screen. */
+export function FaceIdOffer({next, steps}: {next: string; steps: boolean}) {
+  const t = useTranslations("getIn.face");
+  const auth = useTranslations("auth");
+  const router = useRouter();
+  const {failed, pending, begin} = useFaceId(true, () => router.replace(next));
+  return (
+    <Screen>
+      {steps && <WelcomeSteps step={1} />}
+      <div aria-hidden="true" className="flex flex-1 items-center justify-center py-8">
+        <StitchedFlake />
+      </div>
+      <div className="px-edge pb-[34px]">
+        <Card tone="next" className="px-6 pt-[26px] pb-3">
+          <span aria-hidden="true" className="flex size-20 items-center justify-center rounded-full bg-ink text-snow-white">
+            <Icon name="faceid" size={44} strokeWidth={1.8} />
+          </span>
+          <h1 className="pt-[18px] text-title">{t("title")}</h1>
+          <p className="pt-2.5 text-lead">{t("lead")}</p>
+          <div className="flex flex-col items-center gap-1 pt-[22px]">
+            <Button variant="card" icon="faceid" onClick={begin} disabled={pending}>{t("yes")}</Button>
+            {failed && <p role="alert" className="pt-2 text-body font-semibold">{auth("faceUnavailable")}</p>}
+            <TextLink href={next}>{auth("notNow")}</TextLink>
+          </div>
+        </Card>
+      </div>
+    </Screen>
+  );
+}
+
+/** The snowflake, knitted large on the ground above the Face ID card. */
+function StitchedFlake() {
+  return <KnitMotif name="flake" cell={12} colors={{"#": "var(--color-yarn-white)"}} knit stepMs={9} />;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The key: 1.2 to 1.5, and 10.5 when it was already opened
+// ---------------------------------------------------------------------------------------------
+
+type KeyView = NonNullable<CodeResult["key"]>;
+
+/**
+ * Opening your own key: "HI ROSA! Is this your phone?", then a PIN made in two tries.
+ * `otherLanguage` switches the whole flow to the other language without losing the key.
+ */
+export function KeyWelcome({familyId, value, typed, entry, sender, otherLanguage}: {
+  familyId: string; value: string; typed: boolean; entry: KeyView; sender: string | null;
+  otherLanguage?: {href: string; locale: "en" | "es"};
+}) {
+  const t = useTranslations("getIn.hello");
+  const auth = useTranslations("auth");
+  const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
+
+  if (phase === "pin") {
+    const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);
+    return (
+      <Screen>
+        <MakePin top={<WelcomeSteps step={1} />} save={(pin) => save({}, pinForm(pin))} />
+      </Screen>
+    );
+  }
+
+  if (phase === "helper") {
+    return (
+      <Screen actions={<Button variant="outline" icon="back" onClick={() => setPhase("hello")}>{t("helperBack")}</Button>}>
+        <WelcomeSteps step={1} />
+        <PageTitle title={t("helperTitle", {name: entry.name})} lead={auth("helperInstructions", {name: entry.name})} className="pt-8" />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen actions={<>
+      <Button onClick={() => {
+        haptic("light");
+        setPhase("pin");
+      }}>{t("yes")}</Button>
+      <Button variant="outline" onClick={() => setPhase("helper")}>{t("helping", {name: entry.name})}</Button>
+      {otherLanguage && (
+        <Link href={otherLanguage.href} locale={otherLanguage.locale} lang={otherLanguage.locale}
+          className="inline-flex min-h-12 items-center justify-center self-center px-3 text-body font-semibold underline underline-offset-4">
+          {t("otherLanguage")}
+        </Link>
+      )}
+    </>}>
+      <WelcomeSteps step={1} />
+      <Greeting top={t("hi")} bottom={t("name", {name: entry.name})} />
+      <div className="pt-[22px]"><FairIsleBand kind="trees" cell={8.5} /></div>
+      <PageTitle title={t("title")} lead={sender ? t("lead", {sender}) : t("leadAnon")} className="pt-5" />
+    </Screen>
+  );
+}
+
+/**
+ * A key that was already opened (10.5): this phone only asks for the PIN, and the owner's phone is told.
+ * "Forgot?" holds the ways out: a new key from the organizer, or saying you never opened it.
+ */
+export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
+  familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string;
+}) {
+  const t = useTranslations("getIn.used");
+  const enter = useTranslations("getIn.enter");
+  const forgot = useTranslations("getIn.forgot");
+  const feedback = useTranslations("auth.feedback");
+  const ui = useTranslations("ui");
+  const [locked, setLocked] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<AuthResult>({});
+  const [resetRequested, setResetRequested] = useState(false);
+  const [keyReported, setKeyReported] = useState(false);
+  const [pending, start] = useTransition();
+
+  if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
+    onRetry={() => setLocked(null)} />;
+
+  return (
+    <Screen>
+      <EnterPin title={t("title")} lead={t("lead", {name: entry.name})} organizer={organizer} onLocked={setLocked} suspended={open}
+        submit={(data) => enterPin(familyId, entry.personId, {}, data)}
+        note={result.success
+          ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>
+          : <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote>}
+        left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>} />
+      <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
+        <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
+          const response = await tryAuthAction(() => forgotPin(familyId, entry.personId));
+          setResult(response);
+          if (response.success) {
+            setResetRequested(true);
+            setOpen(false);
+          }
+        })}>{forgot("ask", {organizer})}</Button>
+        <p className="text-body text-muted-ink">{t("askSub", {organizer})}</p>
+        <Button variant="soft" disabled={pending || keyReported} onClick={() => start(async () => {
+          const response = await tryAuthAction(() => reportUsedKey(familyId, value, typed));
+          setResult(response);
+          if (response.success) {
+            setKeyReported(true);
+            setOpen(false);
+          }
+        })}>{t("never")}</Button>
+        <p className="text-body text-muted-ink">{t("neverSub", {organizer})}</p>
+        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+      </Sheet>
+    </Screen>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Coming back: 10.2 to 10.4
+// ---------------------------------------------------------------------------------------------
+
+/** Enter your PIN (10.2), with "Forgot?" (10.3) and the rest after five tries (10.4). */
+export function SignInWithPin({familyId, personId, name, organizer, backHref}: {
+  familyId: string; personId: string; name: string; organizer: string; backHref: string;
+}) {
+  const t = useTranslations("getIn.enter");
+  const back = useTranslations("getIn.back");
+  const [view, setView] = useState<{kind: "pin"} | {kind: "forgot"} | {kind: "locked"; minutes: number}>({kind: "pin"});
+
+  if (view.kind === "locked") {
+    return <Locked minutes={view.minutes} name={name} familyId={familyId} personId={personId} organizer={organizer}
+      onRetry={() => setView({kind: "pin"})} />;
+  }
+  if (view.kind === "forgot") {
+    return <Forgot familyId={familyId} personId={personId} organizer={organizer} doneHref={backHref}
+      onKeep={() => setView({kind: "pin"})} />;
+  }
+  return (
+    <Screen back={backHref}>
+      <BackRow href={backHref} parent={back("notMe", {name})} />
+      <EnterPin title={t("title")} lead={t("lead", {name})} organizer={organizer}
+        onLocked={(minutes) => setView({kind: "locked", minutes})}
+        submit={(data) => enterPin(familyId, personId, {}, data)}
+        left={<TextButton className="px-1 text-snow-white" onClick={() => setView({kind: "forgot"})}>{t("forgot")}</TextButton>} />
+    </Screen>
+  );
+}
+
+/** The asked card: who was asked, when, and what happens next. */
+function AskedCard({organizer, at}: {organizer: string; at: Date}) {
+  const t = useTranslations("getIn.forgot");
+  const format = useFormatter();
+  return (
+    <Card role="status" className="px-5 py-[18px]">
+      <div className="flex items-center gap-3.5">
+        <Avatar name={organizer} size={52} />
+        <div className="flex min-w-0 flex-col">
+          <p className="text-card-title">{t("asked", {organizer})}</p>
+          <p className="text-body text-muted-ink">{t("when", {time: format.dateTime(at, {hour: "numeric", minute: "2-digit"})})}</p>
+        </div>
+      </div>
+      <p className="pt-3.5 text-body">{t("body", {organizer})}</p>
+    </Card>
+  );
+}
+
+/** Forgot your PIN? (10.3): one tap asks the organizer for a new key. */
+function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
+  familyId: string; personId: string; organizer: string; doneHref: string; onKeep: () => void;
+}) {
+  const t = useTranslations("getIn.forgot");
+  const feedback = useTranslations("auth.feedback");
+  const router = useRouter();
+  const [result, setResult] = useState<AuthResult & {at?: Date}>({});
+  const [pending, start] = useTransition();
+  const asked = Boolean(result.success);
+  return (
+    <Screen actions={asked
+      ? <Button onClick={() => router.replace(doneHref)}>{t("done")}</Button>
+      : <>
+        <Button disabled={pending} onClick={() => start(async () => {
+          const response = await tryAuthAction(() => forgotPin(familyId, personId));
+          if (response.success) haptic("success");
+          setResult({...response, at: new Date()});
+        })}>{t("ask", {organizer})}</Button>
+        <TextButton className="self-center" onClick={onKeep}>{t("keep")}</TextButton>
+      </>}>
+      <PageTitle title={t("title")} lead={t("lead", {organizer})} className="pt-10" />
+      <div className="flex flex-col gap-[18px] px-edge pt-6">
+        {asked && result.at && <div className="fge-drop"><AskedCard organizer={organizer} at={result.at} /></div>}
+        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+        <GroundNote icon="lock">{t("only", {organizer})}</GroundNote>
+      </div>
+    </Screen>
+  );
+}
+
+/** Let's take a break (10.4): the minutes stitched, what is safe, and the ways forward. */
+function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
+  minutes: number; name: string; familyId: string; personId: string; organizer: string; onRetry: () => void;
+}) {
+  const t = useTranslations("getIn.locked");
+  const forgot = useTranslations("getIn.forgot");
+  const feedback = useTranslations("auth.feedback");
+  const [result, setResult] = useState<AuthResult & {at?: Date}>({});
+  const [pending, start] = useTransition();
+  const [until] = useState(() => Date.now() + minutes * 60_000);
+  const [remaining, setRemaining] = useState(minutes);
+  useEffect(() => {
+    const update = () => setRemaining(Math.max(0, Math.ceil((until - Date.now()) / 60_000)));
+    const timer = window.setInterval(update, 1000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, [until]);
+  return (
+    <Screen actions={<>
+      {remaining === 0 && <Button disabled={pending} onClick={onRetry}>{t("retry")}</Button>}
+      {!result.success && (
+        <Button variant={remaining === 0 ? "outline" : "ground"} disabled={pending} onClick={() => start(async () => {
+          const response = await tryAuthAction(() => forgotPin(familyId, personId));
+          if (response.success) haptic("success");
+          setResult({...response, at: new Date()});
+        })}>{t("ask", {organizer})}</Button>
+      )}
+      <FaceIdLink label={t("face")} />
+    </>}>
+      {remaining > 0 ? <div className="flex flex-col items-center gap-3 pt-[26px] text-snow-white" role="img"
+        aria-label={`${t("tryAgainIn")} ${remaining} ${t("minutes", {count: remaining})}`}>
+        <p aria-hidden="true" className="text-section">{t("tryAgainIn")}</p>
+        <StitchedText as="p" text={String(remaining)} cell={12} />
+        <p aria-hidden="true" className="text-section">{t("minutes", {count: remaining})}</p>
+      </div> : <p role="status" className="px-edge pt-[26px] text-center text-section">{t("ready")}</p>}
+      <PageTitle title={t("title")} lead={t("lead", {name})} className="pt-[22px]" />
+      <div className="flex flex-col gap-3 px-edge pt-[18px]">
+        {result.success && result.at
+          ? <div className="fge-drop"><AskedCard organizer={organizer} at={result.at} /></div>
+          : (
+            <Card className="px-[18px] py-4">
+              <ul className="flex flex-col gap-3">
+                <Bullet icon="lock">{t("safe")}</Bullet>
+                <Bullet icon="bell">{t("notice")}</Bullet>
+              </ul>
+            </Card>
+          )}
+        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+        {result.success && <p className="sr-only">{forgot("asked", {organizer})}</p>}
+      </div>
+    </Screen>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// A printed card: the 6-character code
+// ---------------------------------------------------------------------------------------------
+
+/** Type your key code: a short form that opens the same welcome as the link. */
+export function CodeEntry({familyId, backHref, sender, organizer}: {
+  familyId: string; backHref: string; sender: string | null; organizer: string;
+}) {
+  const t = useTranslations("getIn.code");
+  const auth = useTranslations("auth");
+  const feedback = useTranslations("auth.feedback");
+  const find = useTranslations("getIn.who");
+  const [code, setCode] = useState("");
+  const [result, setResult] = useState<CodeResult & {code?: string}>({});
+  const version = useRef(0);
+  const [pending, start] = useTransition();
+
+  if (result.key && result.code) {
+    return result.key.usedAt
+      ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} />
+      : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} />;
+  }
+  return (
+    <Screen back={backHref}>
+      <BackRow href={backHref} parent={find("title")} />
+      <PageTitle title={t("title")} lead={t("lead")} />
+      <form className="flex flex-col gap-3 px-edge pt-6" onSubmit={(event) => {
+        event.preventDefault();
+        const submitted = code;
+        const request = ++version.current;
+        start(async () => {
+          const response = await tryAuthAction(() => previewCode(familyId, submitted));
+          if (request === version.current) setResult({...response, code: submitted});
+        });
+      }}>
+        <Card className="flex flex-col gap-3 p-[18px]">
+          <TextField label={auth("keyCode")} name="code" value={code} maxLength={6} minLength={6} autoCapitalize="characters"
+            autoComplete="off" spellCheck={false} required surface="white" className="[&_input]:tracking-[0.2em] [&_input]:uppercase"
+            onChange={(event) => {
+              version.current++;
+              setResult({});
+              setCode(event.target.value.toUpperCase().trim());
+            }} />
+          <Button type="submit" variant="card" disabled={pending}>{auth("checkCode")}</Button>
+        </Card>
+        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+      </form>
+    </Screen>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// A browser that doesn't know the family yet
+// ---------------------------------------------------------------------------------------------
+
+/** Find your family: paste the family address or your own key link. */
+export function FindFamily() {
+  const t = useTranslations("getIn.find");
+  const who = useTranslations("getIn.who");
+  const auth = useTranslations("auth");
+  const feedback = useTranslations("auth.feedback");
+  const [state, submit, pending] = useActionState(openFamily, {});
+  return (
+    <Screen actions={<TextLink href="/start" className="self-center">{who("start")}</TextLink>}>
+      <PageTitle title={t("title")} lead={t("lead")} className="pt-10" />
+      <form action={submit} className="flex flex-col gap-3 px-edge pt-6">
+        <Card className="flex flex-col gap-3 p-[18px]">
+          <TextField label={auth("familyAddress")} name="address" type="text" autoCapitalize="none" inputMode="url"
+            maxLength={400} required surface="white" />
+          <Button type="submit" variant="card" disabled={pending}>{t("button")}</Button>
+        </Card>
+        {state.error && <ErrorBlock title={feedback(state.error as Parameters<typeof feedback>[0])} />}
+      </form>
+    </Screen>
+  );
+}

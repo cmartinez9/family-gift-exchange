@@ -1,99 +1,183 @@
-import {getFormatter, getTranslations} from "next-intl/server";
-import {NotificationBell} from "@/components/notifications/bell";
-import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
-import {Link} from "@/i18n/navigation";
+import type {ReactNode} from "react";
+import {getFormatter, getLocale, getTranslations} from "next-intl/server";
+import {Avatar} from "@/components/ui/avatar";
+import {Button, ButtonLink, TextButton} from "@/components/ui/button";
+import {Card, Chevron, ListRow, Rows} from "@/components/ui/card";
+import {Tick} from "@/components/ui/inputs";
+import {KnitIn} from "@/components/ui/motion/knit-in";
+import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
+import {AppLink} from "@/components/ui/navigation";
+import {BackRow} from "@/components/ui/page-header";
+import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
+import {mySizes, youSummary} from "@/server/auth/account";
+import {currentDeviceKind} from "@/server/auth/request";
 import {account} from "@/server/auth/security";
 import {ownRevealOpenings} from "@/server/draw";
 import {withFamily} from "@/server/db/client";
-import {changePin} from "../sign-in/actions";
-import {AuthForm, PinFields} from "../sign-in/controls";
-import {activityDateFormat, linkClass, sectionClass} from "../sign-in/styles";
-import {reportEvent, reportSession, setLanguage, signOut, switchProfile} from "./actions";
+import {getGettingList} from "@/server/lists/claims";
+import {getUnreadCount, listNotifications} from "@/server/messages/inbox";
+import {shoeLabel} from "../welcome/shoe-label";
+import {reportSession, signOut, switchProfile} from "./actions";
+import {noticeText} from "./notice-text";
+import {ActForm, HomeScreenRow, LanguageRow, RowDisc} from "./rows";
+import {screenTitle} from "../sign-in/title";
+import {activityDateFormat} from "../sign-in/styles";
+import styles from "./rows.module.css";
+
+function RowLink({href, icon, title, sub, trail}: {
+  href: string; icon: Parameters<typeof RowDisc>[0]["icon"]; title: string; sub?: string; trail?: ReactNode;
+}) {
+  return (
+    <li>
+      <AppLink href={href} transition="push" className="fge-press block rounded-[20px]">
+        <ListRow as="span" className={styles.row} lead={<RowDisc icon={icon} />} title={title} sub={sub} trail={trail ?? <Chevron />} />
+      </AppLink>
+    </li>
+  );
+}
+
+export async function generateMetadata() {
+  return screenTitle("you.label");
+}
 
 export default async function AccountPage({searchParams}: {searchParams: Promise<{reported?: string; face?: string}>}) {
   const viewer = await requireViewer();
-  const t = await getTranslations("auth");
+  const t = await getTranslations("getIn.you");
+  const auth = await getTranslations("auth");
+  const ui = await getTranslations("ui");
   const lists = await getTranslations("lists");
   const draw = await getTranslations("draw");
   const format = await getFormatter();
-  const {name, helpers, activity} = await withFamily(viewer.familyId, (tx) => account(tx, viewer));
-  const openings = await ownRevealOpenings(viewer);
-  const actingFor = helpers.find(({id}) => id === viewer.actingAs);
+  const locale = await getLocale() === "es" ? "es" : "en";
   const search = await searchParams;
+  const now = new Date();
+  const [{name, helpers, activity}, summary, getting, inbox, unread, openings] = await Promise.all([
+    withFamily(viewer.familyId, (tx) => account(tx, viewer)),
+    withFamily(viewer.familyId, (tx) => youSummary(tx, viewer, now)),
+    getGettingList(viewer),
+    listNotifications(viewer),
+    getUnreadCount(viewer),
+    ownRevealOpenings(viewer),
+  ]);
+  const notices = await getTranslations("getIn.notices");
+  const actingFor = helpers.find(({id}) => id === viewer.actingAs);
+  const profile = viewer.actingAs === viewer.personId ? summary
+    : await withFamily(viewer.familyId, (tx) => mySizes(tx, viewer.familyId, viewer.actingAs));
+  const device = auth(`device.${await currentDeviceKind()}` as Parameters<typeof auth>[0]);
+  // the newest unread message leads; otherwise the newest of anything
+  const message = inbox.find(({isRead}) => !isRead) ?? inbox[0];
+  const event = activity[0];
+  const latest = message && (!event || !message.isRead || message.createdAt >= event.at) ? message.title
+    : event ? (await noticeText(event, viewer)).title : null;
+  const wrapped = getting.filter(({wrapped: done}) => done).length;
+  const sizes = [
+    profile.sizes.tops && t("topsShort", {size: profile.sizes.tops === "XXL" ? "2XL" : profile.sizes.tops}),
+    profile.sizes.shoes && t("shoesShort", {size: shoeLabel(profile.sizes.shoes)}),
+  ].filter(Boolean).join(" · ");
+  const noClothes = await getTranslations("getIn.sizes");
+
   return (
-    <main className={sectionClass}>
-      <h1 className="text-2xl font-semibold">{t("hello", {name})}</h1>
-      <NotificationBell viewer={viewer} />
-      {actingFor && <p>{t("actingFor", {name: actingFor.name})}</p>}
-      <nav className="flex flex-wrap gap-x-4" aria-label={lists("navigation")}>
-        <Link className={linkClass} href={`/lists/${viewer.actingAs}`}>{lists("myList")}</Link>
-        <Link className={linkClass} href="/lists">{lists("familyLists")}</Link>
-      </nav>
-      {helpers.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xl font-semibold">{t("helpHeading")}</h2>
-          {actingFor && <AuthForm action={switchProfile.bind(null, viewer.personId)} label={t("backToMe")} />}
-          {helpers.filter(({id}) => id !== viewer.actingAs).map(({id, name: helperName}) => (
-            <AuthForm key={id} action={switchProfile.bind(null, id)} label={t("helpAs", {name: helperName})} />
-          ))}
-        </section>
+    <Screen back="/" actions={(
+      <ActForm action={signOut.bind(null, false)} className="flex flex-col items-center">
+        <TextButton type="submit">{t("signOut")}</TextButton>
+      </ActForm>
+    )}>
+      {actingFor && (
+        <ModeBanner icon="user" label={t("label")} action={(
+          <ActForm action={switchProfile.bind(null, viewer.personId)}>
+            <button type="submit" className={modeActionClass}>{t("stopHelping")}</button>
+          </ActForm>
+        )}>{t("helping", {name: actingFor.name})}</ModeBanner>
       )}
-      <Link className={linkClass} href="/exchanges" prefetch={false}>{draw("title")}</Link>
-      {viewer.isOrganizer && !actingFor && <Link className={linkClass} href="/family">{t("manageFamily")}</Link>}
-      {search.face === "1" && (
-        <details className="space-y-3">
-          <summary className={linkClass}>{t("changePin")}</summary>
-          <AuthForm action={changePin} label={t("savePin")}><PinFields create /></AuthForm>
-        </details>
-      )}
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">{t("revealActivity")}</h2>
-        {!openings.length && <p>{t("noRevealActivity")}</p>}
-        <ul className="space-y-4">
-          {openings.map(({exchangeId, exchangeName, version, sessionId, openedAt, deviceKind, disputed}) => {
-            return (
-              <li key={`${exchangeId}.${version}.${sessionId}`} className="border-b border-current/25 pb-3">
-                <p>{t("revealOpened", {exchange: exchangeName, device: t(`device.${deviceKind ?? "other"}` as Parameters<typeof t>[0])})}</p>
-                <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
-                {disputed ? <p>{t("alreadyReported")}</p>
-                  : <AuthForm action={reportSession.bind(null, sessionId)} label={t("notMe")} />}
+      <BackRow href="/" parent={t("home")} backLabel={ui("back")} />
+      <div className="flex items-center gap-4 px-edge pt-4">
+        <Avatar name={name} size={64} on="ground" />
+        <div className="flex min-w-0 flex-col">
+          <h1 className="text-title break-words">{name}</h1>
+          {summary.familyName && <p className="text-body font-semibold">{summary.familyName}</p>}
+        </div>
+      </div>
+      <KnitIn className={`${styles.settings} flex flex-col gap-3 px-edge pt-5 pb-2`}>
+        {search.reported === "1" && <p role="status" className="text-body">{auth("feedback.reported")}</p>}
+        {search.face === "1" && (
+          <Card tone="next">
+            <h2 className="text-card-title">{t("newPin")}</h2>
+            <p className="pt-0.5 pb-3.5 text-body text-gold-ink">{t("newPinSub")}</p>
+            <ButtonLink href="/account/pin" transition="push" variant="card" icon="lock">{t("newPinGo")}</ButtonLink>
+          </Card>
+        )}
+        <Card flush className="px-[18px] py-0.5">
+          <Rows as="ul">
+            <RowLink href="/exchanges" icon="gift" title={draw("title")} />
+            {actingFor && <RowLink href={`/lists/${viewer.actingAs}`} icon="list" title={lists("myList")} />}
+            <RowLink href="/lists/getting" icon="gift" title={t("getting")}
+              sub={wrapped ? t("gettingWrapped", {count: getting.length, wrapped}) : t("gettingSub", {count: getting.length})} />
+            <RowLink href="/account/notices" icon="bell" title={t("notices")} sub={latest ?? t("noticesNone")}
+              trail={unread > 0 ? (
+                <span className="flex items-center gap-2.5">
+                  <span aria-hidden="true" className="size-3 rounded-full bg-gold" />
+                  <span className="sr-only">{notices("unread", {count: unread})}</span>
+                  <Chevron />
+                </span>
+              ) : undefined} />
+            <RowLink href={`/lists/${viewer.actingAs}/profile`} icon="shirt" title={t("sizes")}
+              sub={profile.noClothes ? noClothes("noClothes") : sizes || t("sizesNone")} />
+          </Rows>
+        </Card>
+        <Card flush className="px-[18px] py-0.5">
+          <Rows as="ul">
+            <LanguageRow current={locale} />
+            {summary.faceId ? (
+              <li>
+                <ListRow className={styles.row} lead={<RowDisc icon="faceid" />} title={t("faceId")} sub={t("faceOn", {device})}
+                  trail={<Tick done size={34} label={t("faceOn", {device})} />} />
               </li>
-            );
-          })}
-        </ul>
-      </section>
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">{t("activity")}</h2>
-        {search.reported === "1" && <p role="status">{t("feedback.reported")}</p>}
-        {!activity.length && <p>{t("noActivity")}</p>}
-        <ul className="space-y-4">
-          {activity.map(({id, kind, at, deviceKind, sessionId, disputed}) => (
-            <li key={id} className="border-b border-current/25 pb-3">
-              <p>{t(`event.${kind}`)} {deviceKind && t(`device.${deviceKind}` as Parameters<typeof t>[0])}</p>
-              <time dateTime={at.toISOString()}>{format.dateTime(at, activityDateFormat)}</time>
-              {disputed ? <p>{t("alreadyReported")}</p> : sessionId !== viewer.sessionId
-                && kind !== "pinLocked" && kind !== "newDevicesLocked" && kind !== "keyDisputed" && kind !== "familyLockdown" && (
-                  <AuthForm action={reportEvent.bind(null, id)} label={t("notMe")} />
+            ) : (
+              <RowLink href="/face-id" icon="faceid" title={t("faceId")} sub={t("faceOff", {device})} />
+            )}
+            <RowLink href="/account/phones" icon="phone" title={t("phones")} sub={t("phonesSub", {count: summary.devices})} />
+            <RowLink href="/account/activity" icon="eye" title={t("activity")} sub={t("activitySub")} />
+          </Rows>
+        </Card>
+        {(helpers.length > 0 || (viewer.isOrganizer && !actingFor)) && (
+          <Card flush className="px-[18px] py-0.5">
+            <Rows as="ul">
+              {viewer.isOrganizer && !actingFor && <RowLink href="/family" icon="star" title={auth("manageFamily")} sub={t("manage")} />}
+              {helpers.filter(({id}) => id !== viewer.actingAs).map(({id, name: helped}) => (
+                <li key={id}>
+                  <ActForm action={switchProfile.bind(null, id)}>
+                    <button type="submit" className="fge-press block w-full cursor-pointer rounded-[20px] text-left">
+                      <ListRow as="span" className={styles.row} lead={<Avatar name={helped} size={44} />} title={auth("helpAs", {name: helped})}
+                        trail={<Chevron />} />
+                    </button>
+                  </ActForm>
+                </li>
+              ))}
+            </Rows>
+          </Card>
+        )}
+        <Card as="section" className="space-y-3">
+          <h2 className="text-card-title">{auth("revealActivity")}</h2>
+          {!openings.length && <p className="text-body">{auth("noRevealActivity")}</p>}
+          <ul className="flex flex-col gap-4">
+            {openings.map(({exchangeId, exchangeName, version, sessionId, openedAt, deviceKind, disputed}) => (
+              <li key={`${exchangeId}.${version}.${sessionId}`} className="space-y-2 text-body">
+                <p>{auth("revealOpened", {exchange: exchangeName, device: auth(`device.${deviceKind ?? "other"}` as Parameters<typeof auth>[0])})}</p>
+                <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
+                {disputed ? <p>{auth("alreadyReported")}</p> : (
+                  <ActForm action={reportSession.bind(null, sessionId)}>
+                    <Button type="submit" variant="outline">{auth("notMe")}</Button>
+                  </ActForm>
                 )}
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">{t("sessionSettings")}</h2>
-        <AuthForm action={signOut.bind(null, false)} label={t("switchPerson")} />
-        <details className="space-y-3">
-          <summary className={linkClass}>{t("signOutAll")}</summary>
-          <p>{t("confirmSignOutAll")}</p>
-          <AuthForm action={signOut.bind(null, true)} label={t("signOutAll")} />
-        </details>
-        <HomeScreenHelp />
-      </section>
-      <nav aria-label={t("language")} className="flex gap-4">
-        <form action={setLanguage.bind(null, "en")}><button className={linkClass} lang="en">English</button></form>
-        <form action={setLanguage.bind(null, "es")}><button className={linkClass} lang="es">Español</button></form>
-      </nav>
-    </main>
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card flush className="px-[18px] py-0.5">
+          <Rows as="ul"><HomeScreenRow /></Rows>
+        </Card>
+      </KnitIn>
+    </Screen>
   );
 }

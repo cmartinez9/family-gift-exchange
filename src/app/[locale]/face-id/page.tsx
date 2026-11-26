@@ -1,19 +1,16 @@
-import {getTranslations} from "next-intl/server";
-import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
-import {FaceIdButton} from "../sign-in/controls";
-import {linkClass, sectionClass} from "../sign-in/styles";
+import {FaceIdOffer} from "../sign-in/get-in";
+import {screenTitle} from "../sign-in/title";
 
-export default async function FaceIdPage({searchParams}: {searchParams: Promise<{setup?: string}>}) {
+export async function generateMetadata() {
+  return screenTitle("face.title");
+}
+
+export default async function FaceIdPage({searchParams}: {searchParams: Promise<{setup?: string; welcome?: string}>}) {
   const viewer = await requireViewer();
-  const t = await getTranslations("auth");
-  const next = (await searchParams).setup === "1" && viewer.isOrganizer ? "/family" : "/account";
-  return (
-    <main className={sectionClass}>
-      <h1 className="text-2xl font-semibold">{t("facePrompt")}</h1>
-      <p>{t("faceExplanation")}</p>
-      <FaceIdButton enroll next={next} />
-      <Link className={linkClass} href={next}>{t("notNow")}</Link>
-    </main>
-  );
+  const search = await searchParams;
+  const welcome = search.welcome === "1";
+  // the organizer goes on to set up the family; a new member goes on to onboarding
+  const next = search.setup === "1" && viewer.isOrganizer ? "/family" : welcome ? "/welcome" : "/account";
+  return <FaceIdOffer next={next} steps={welcome} />;
 }

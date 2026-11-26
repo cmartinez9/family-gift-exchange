@@ -7,7 +7,7 @@ import {withFamily} from "@/server/db/client";
 import {notify} from "@/server/messages";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
-  allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, parseLinkKey,
+  allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
   redeemKey, requestPinReset, signInWithPin,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
@@ -15,12 +15,13 @@ import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
 import {appOrigin, requestDevice, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {createCodePreview} from "@/server/auth/code-preview";
+import {pinAttemptState} from "@/server/auth/account";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {
   authenticationFinish, authenticationStart, changePinAfterFaceId, registrationFinish, registrationStart,
 } from "@/server/auth/webauthn";
 
-export type AuthResult = {error?: string; success?: string};
+export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number};
 
 function field(data: FormData, key: string) {
   const value = data.get(key);
@@ -78,7 +79,13 @@ export async function enterPin(familyId: string, personId: string, _: AuthResult
   const pin = field(data, "pin");
   const device = await requestDevice();
   const result = await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, authenticatorSecret(), device, new Date()));
-  if (!result.session) return {error: result.error ?? "unavailable"};
+  if (!result.session) {
+    const error = result.error ?? "unavailable";
+    if (error !== "invalidPin" && error !== "pinLocked") return {error};
+    // what the PIN screen may say next: tries left, or minutes left in the rest
+    const state = await withFamily(familyId, (tx) => pinAttemptState(tx, familyId, personId, new Date()));
+    return state ? {error, ...state} : {error};
+  }
   await setSession(familyId, result.session.cookie);
   redirect(`/${await getLocale()}/account`);
 }
@@ -123,6 +130,8 @@ export async function useKey(familyId: string, value: string, typed: boolean, pr
   if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean") return {error: "unavailable"};
   const currentViewer = await getViewer();
   const device = await requestDevice();
+  // a first key starts onboarding; a reset key only replaces the PIN
+  const kind = await withFamily(familyId, async (tx) => (await lookupKey(tx, familyId, authenticatorSecret(), value, typed))?.kind);
   const result = await withFamily(familyId, (tx) => redeemKey(tx, {
     familyId, value, typed, preview, device, currentViewer,
     pin: field(data, "pin"), confirmation: field(data, "confirmation"),
@@ -130,7 +139,7 @@ export async function useKey(familyId: string, value: string, typed: boolean, pr
   }));
   if (!result.session) return {error: result.error ?? "unavailable"};
   await setSession(familyId, result.session.cookie);
-  redirect(`/${await getLocale()}/face-id`);
+  redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
 }
 
 export async function beginFaceId(enroll: boolean) {
