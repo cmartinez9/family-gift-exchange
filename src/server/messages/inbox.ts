@@ -1,5 +1,5 @@
 import "server-only";
-import {and, count, desc, eq, isNull, or, sql} from "drizzle-orm";
+import {and, desc, eq, isNull, or, sql} from "drizzle-orm";
 import type {Viewer} from "../auth";
 import {withFamily} from "../db/client";
 import type {FamilyTransaction} from "../db/database";
@@ -24,12 +24,7 @@ function inboxScope(viewer: InboxViewer) {
 }
 
 export async function getUnreadCount(viewer: InboxViewer) {
-  return withFamily(viewer.familyId, async (tx) => {
-    if (!await canReadInbox(tx, viewer)) return 0;
-    const [unread] = await tx.select({total: count()}).from(outbox)
-      .where(and(inboxScope(viewer), isNull(outbox.readAt)));
-    return unread.total;
-  });
+  return (await listNotifications(viewer)).filter((notice) => !notice.isRead).length;
 }
 
 export function listNotifications(viewer: InboxViewer) {

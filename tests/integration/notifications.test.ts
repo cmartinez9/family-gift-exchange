@@ -267,6 +267,27 @@ it("keeps read state per recipient and permits a helper's looked-after inbox", a
   expect(await getUnreadCount(helper)).toBe(0);
 });
 
+it("counts unread notices only within the newest 100 without deleting older notices", async () => {
+  const owner = device(members[0].id);
+  const ids = Array.from({length: 101}, () => randomUUID()).toSorted().reverse();
+  await withFamily(familyId, (tx) => tx.insert(outbox).values(ids.map((id) => ({
+    familyId, id, personId: owner.personId, channel: "push" as const, language: "en" as const,
+    template: "names-drawn", status: "captured" as const, createdAt: now,
+  }))));
+
+  const notices = await listNotifications(owner);
+  expect(notices.map(({id}) => id)).toEqual(ids.slice(0, 100));
+  expect(await getUnreadCount(owner)).toBe(100);
+  for (const notice of notices) await markNotificationRead(owner, notice.id);
+  expect(await listNotifications(owner)).toHaveLength(100);
+  expect((await listNotifications(owner)).every((notice) => notice.isRead)).toBe(true);
+  expect(await getUnreadCount(owner)).toBe(0);
+
+  const stored = await withFamily(familyId, (tx) => tx.select().from(outbox));
+  expect(stored).toHaveLength(101);
+  expect(stored.filter(({readAt}) => readAt === null).map(({id}) => id)).toEqual([ids[100]]);
+});
+
 it("prunes a gone endpoint, scopes subscriptions to sessions, and delivers only safe payloads", async () => {
   const owner = await signedInDevice(organizers[0].id);
   const gone = await signedInDevice(organizers[0].id);

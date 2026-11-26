@@ -110,6 +110,33 @@ async function shot(page: Page, name: string, {axe = true} = {}) {
   await page.screenshot({path: join(folder, `${name}.png`)});
 }
 
+for (const exit of ["navigation", "Done"] as const) {
+  test(`clears helping mode after remote session revocation and ${exit}`, async ({browser}) => {
+    const f = await family(browser);
+    try {
+      const helping = await f.signedIn("Rosa");
+      const otherDevice = await f.signedIn("Rosa");
+      await helping.goto("/en/account");
+      await helping.getByRole("button", {name: "Help Tito", exact: true}).click();
+      await expect(helping).toHaveURL(/\/en\/helping$/);
+      await expect(helping.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Tito");
+
+      await otherDevice.goto("/en/account");
+      await otherDevice.locator("summary").filter({hasText: /^Sign out everywhere$/}).click();
+      await otherDevice.getByRole("button", {name: "Sign out everywhere"}).click();
+      await expect(otherDevice).toHaveURL(/\/en\/sign-in$/);
+
+      if (exit === "navigation") await helping.getByRole("link", {name: "Later", exact: true}).click();
+      else await helping.getByRole("button", {name: "Done", exact: true}).click();
+      await expect(helping).toHaveURL(/\/en\/sign-in$/);
+      await expect(helping.getByRole("heading", {name: "Sign in", exact: true})).toBeVisible();
+      await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
 test("helping someone, notices, the family chat and the end of the season match the final design", async ({browser}) => {
   test.setTimeout(240_000);
   const f = await family(browser);
