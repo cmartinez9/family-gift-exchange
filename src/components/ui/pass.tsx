@@ -35,7 +35,7 @@ export function Pass({name, lead, onlyYou, budget, href, openLabel}: {
           </span>
         )}
       </span>
-      <span className="mt-3.5 flex items-center justify-between gap-3">
+      <span className="mt-3.5 flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-body font-semibold whitespace-nowrap">
           <Icon name="lock" size={20} strokeWidth={2.3} />{onlyYou}
         </span>

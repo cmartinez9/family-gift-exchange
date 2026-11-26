@@ -67,7 +67,7 @@ export function BudgetMeasure({price, budget, underLabel, overLabel}: {
   const fill = over ? 100 : Math.round(Math.min(100, (price / budget) * 100));
   const mark = over ? Math.round((budget / price) * 100) : 98;
   return (
-    <span className="flex items-center gap-2.5 pt-1.5" data-budget={over ? "over" : "under"}>
+    <span className="flex flex-wrap items-center gap-2.5 pt-1.5" data-budget={over ? "over" : "under"}>
       <span aria-hidden="true" className="relative h-2.5 w-[100px] shrink-0 rounded-[5px] bg-budget-track">
         <span className={cn("block h-2.5 rounded-[5px]", over ? "bg-gold" : "bg-ink")} style={{width: fill}} />
         <span className="absolute -top-1 h-[18px] w-0.5 bg-sweater-red" style={{left: mark}} />
@@ -170,8 +170,8 @@ export function ItemCard({tone = "info", picture, title, titleAs: Title = "h3", 
     <Card tone={tone} size="item" as={as ?? "div"} className={className} data-item="">
       <div className="flex items-start gap-3.5">
         {picture}
-        <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", tag && "pr-[52px]")}>
-          <Title className="text-item-title">{title}</Title>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <Title className={cn("text-item-title", tag && "pr-[52px]")}>{title}</Title>
           {store && (
             <p className="text-body text-[var(--fg-muted)]">
               {store}{price && <> · <span className="font-bold text-[var(--fg)]">{price}</span></>}

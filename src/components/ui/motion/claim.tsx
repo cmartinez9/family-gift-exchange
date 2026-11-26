@@ -91,7 +91,7 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
   }, [claimed]);
 
   return (
-    <div ref={wrap} className="relative grid" data-claimed={claimed}>
+    <div ref={wrap} className="relative grid grid-cols-[minmax(0,1fr)]" data-claimed={claimed}>
       <div className="[grid-area:1/1]" inert={claimed}>{base}</div>
       <div ref={dye} className="fge-claim-mine [grid-area:1/1]" inert={!claimed} aria-hidden={!claimed}>{mine}</div>
       <span ref={tag} aria-hidden="true" className="pointer-events-none absolute -top-2.5 right-[42px] flex flex-col items-center opacity-0"

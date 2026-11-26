@@ -19,7 +19,7 @@ function Strip({state, columns, cell, knitting}: {state: StripState; columns: nu
   const width = round2(columns * cell), height = round2(2 * h);
   return (
     <svg aria-hidden="true" focusable="false" width={width} height={height} viewBox={`0 0 ${width} ${height}`}
-      className="fge-strip block overflow-visible" data-state={state} data-knitting={knitting}>
+      className="fge-strip block h-auto min-w-0 overflow-visible" data-state={state} data-knitting={knitting}>
       {stitches.map((stitch, index) => (
         <path key={index} className="fge-ss" d={stitch.d} data-lit={stitch.lit || undefined} data-wait={stitch.wait || undefined}
           style={{"--i": index} as CSSProperties} />

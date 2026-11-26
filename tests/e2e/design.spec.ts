@@ -48,6 +48,7 @@ test.describe("the design gallery", () => {
     const reveal = page.locator("[data-demo='reveal']");
     await reveal.getByRole("button", {name: "Or tap here to open it"}).click();
     await expect(reveal.locator("[data-reveal]")).toHaveAttribute("data-reveal", "revealed");
+    await expect(reveal.getByRole("progressbar", {name: "Unravelling"})).toHaveAttribute("aria-valuenow", "100");
     await expect(reveal.getByRole("button", {name: "See Beto's list"})).toBeVisible();
     await expect(reveal.locator("[data-reveal-next]")).toHaveCSS("opacity", "1");
     expect(await axe(page)).toEqual([]);
@@ -74,6 +75,7 @@ test.describe("the design gallery", () => {
     await expect(reveal.locator("[data-reveal]")).toHaveAttribute("data-reveal", /watching|revealed/, {timeout: 4000});
     await page.mouse.up();
     await expect(reveal.locator("[data-reveal]")).toHaveAttribute("data-reveal", "revealed", {timeout: 5000});
+    await expect(reveal.getByRole("progressbar", {name: "Unravelling"})).toHaveAttribute("aria-valuenow", "100");
     await expect(reveal.getByRole("button", {name: "See Beto's list"})).toBeVisible();
   });
 
@@ -166,4 +168,76 @@ test.describe("the design gallery", () => {
     await expect(page).toHaveURL(/tab=family/);
     await expect(tabs.getByRole("link", {name: "Family"})).toHaveAttribute("aria-current", "page");
   });
+
+  test("a cancelled edge swipe past the back threshold settles without navigating", async ({page}) => {
+    await page.goto("/dev/design/push");
+    const surface = page.locator("[data-edge-swipe]");
+    await expect(page.getByRole("heading", {name: "A pushed page"})).toBeVisible();
+    const box = (await surface.boundingBox())!;
+    const pointer = surface.evaluate((element) => new Promise<number>((resolve) => {
+      element.addEventListener("pointerdown", (event) => resolve((event as PointerEvent).pointerId), {once: true});
+    }));
+    await page.mouse.move(box.x + 5, 400);
+    await page.mouse.down();
+    const pointerId = await pointer;
+    await page.mouse.move(box.x + 175, 400, {steps: 10});
+    await expect(surface).toHaveCSS("transform", "matrix(1, 0, 0, 1, 170, 0)");
+    await surface.dispatchEvent("pointercancel", {pointerId});
+    await page.mouse.up();
+    await expect(surface).toHaveCSS("transform", "none");
+    await expect(surface.locator("..").locator(":scope > [aria-hidden='true']")).toBeHidden();
+    await expect(page).toHaveURL(/\/dev\/design\/push$/);
+  });
+
+  test("short slow swipes settle, and releasing past the threshold goes back", async ({page}) => {
+    await page.goto("/dev/design/push");
+    const surface = page.locator("[data-edge-swipe]");
+    await expect(page.getByRole("heading", {name: "A pushed page"})).toBeVisible();
+    const box = (await surface.boundingBox())!;
+    await page.mouse.move(box.x + 5, 400);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 65, 400, {steps: 8});
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+    await expect(surface).toHaveCSS("transform", "none");
+    await expect(page).toHaveURL(/\/dev\/design\/push$/);
+
+    await page.mouse.move(box.x + 5, 400);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 175, 400, {steps: 10});
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+    await expect(page).toHaveURL(/\/dev\/design$/);
+    await expect(page.getByRole("heading", {level: 1, name: "The design system"})).toBeVisible();
+  });
+
+  for (const width of [320, 390]) {
+    test(`keeps the gallery within a ${width}px phone viewport`, async ({page}) => {
+      await page.setViewportSize({width, height: 844});
+      await open(page);
+      await page.evaluate(() => document.fonts.ready);
+      const viewport = await page.evaluate(() => ({
+        width: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth,
+      }));
+      expect(viewport.content).toBeLessThanOrEqual(viewport.width);
+
+      // Check the components too: clipping an overflowing child must not hide a regression.
+      const overflow = await page.locator(
+        "[data-countdown], [data-claimed], [data-item], [data-budget], [data-pass], #inputs fieldset, [data-step-bar], #steps button",
+      ).evaluateAll((elements) => elements
+        .filter((element) => element.scrollWidth > element.clientWidth + 1)
+        .map((element) => ({text: element.textContent, width: element.clientWidth, content: element.scrollWidth})));
+      expect(overflow).toEqual([]);
+
+      const inputs = page.locator("#inputs");
+      await inputs.getByText("2XL", {exact: true}).click();
+      await expect(inputs.getByRole("radio", {name: "2XL", exact: true})).toBeChecked();
+      const claim = page.locator("[data-claimed]");
+      await claim.getByRole("button", {name: "I'm getting this"}).click();
+      await expect(claim).toHaveAttribute("data-claimed", "true");
+      await claim.getByRole("button", {name: "Undo", exact: true}).click();
+      await expect(claim).toHaveAttribute("data-claimed", "false");
+    });
+  }
 });

@@ -319,7 +319,7 @@ export function Gallery({tab}: {tab: TabKey}) {
             </div>
           </Demo>
           <Demo title="Tone-on-tone knit">
-            <div className="flex items-center gap-4 px-edge">
+            <div className="flex flex-wrap items-center gap-4 px-edge">
               <NoPicture />
               <NoPicture on="next" camera={false} />
               <LoadingPicture size={72} />

@@ -18,10 +18,10 @@ export function Countdown({days, unit, line, today = "TODAY", knit = false}: {
   const isToday = days <= 0;
   return (
     <div className="flex flex-col items-center pt-1 text-center text-snow-white" data-countdown={isToday ? "today" : days}>
-      <div className="flex items-center gap-[22px]">
+      <div className="flex max-w-full items-center gap-[22px]">
         <Snowflake cell={5.5} />
         <StitchedText text={isToday ? today : String(days)} cell={isToday ? STITCH_CELL.today : STITCH_CELL.homeCountdown}
-          knit={knit} stepMs={5} />
+          knit={knit} stepMs={5} className="min-w-0 [&>svg]:h-auto [&>svg]:max-w-full" />
         <Snowflake cell={5.5} />
       </div>
       {!isToday && <p className="pt-2.5 text-card-title font-bold">{unit}</p>}
