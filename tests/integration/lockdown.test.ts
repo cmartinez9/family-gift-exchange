@@ -174,6 +174,37 @@ it("applies family lockdown when the reported account is a co-organizer", async 
   await expect(f.redeem(key.token!, device(), f.at(6))).resolves.toEqual({error: "unavailable"});
 });
 
+it("blocks a disputed co-organizer's old PIN on untrusted phones while preserving trusted-phone recovery", async () => {
+  const f = await fixture();
+  const co = await f.add("Co-organizer");
+  const safe = await f.add("Unaffected member");
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
+  const reporter = (await resolve(co.session!.cookie))!;
+  const badPhone = device();
+  const intruder = (await f.login(co.id, badPhone, f.at(3))).session!;
+  const intruderViewer = (await resolve(intruder.cookie))!;
+  const takeover = await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(4));
+  const [before] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, co.id)));
+  expect(before.newDevicesLocked).toBe(false);
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(5)))).resolves.toBe("lockdown");
+  const [credential] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, co.id)));
+  expect(credential).toMatchObject({pinHash: before.pinHash, changedAt: before.changedAt, newDevicesLocked: true});
+  const [person] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, co.id)));
+  expect(person).toMatchObject({role: "co_organizer", needsNewKey: false});
+  for (const session of [f.owner, co.session!, intruder, safe.session!]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  await expect(f.login(co.id, badPhone, f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
+  await expect(f.login(co.id, device(), f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
+  await expect(f.issue(intruderViewer, f.viewer.personId, "reset", f.at(6))).resolves.toEqual({error: "forbidden"});
+  await expect(f.redeem(takeover.token!, badPhone, f.at(6))).resolves.toEqual({error: "unavailable"});
+  const unaffected = (await f.login(safe.id, device(), f.at(6))).session!;
+  await expect(resolve(unaffected.cookie)).resolves.toMatchObject({personId: safe.id, isOrganizer: false});
+  const knownPhone = (await f.login(co.id, co.phone, f.at(6))).session!;
+  await expect(resolve(knownPhone.cookie)).resolves.toMatchObject({personId: co.id, isOrganizer: true});
+});
+
 it("uses the earliest disputed session as the cutoff across successive lockdowns", async () => {
   const f = await fixture();
   const safe = await f.add("Member", true, f.at(2.5));

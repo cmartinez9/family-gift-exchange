@@ -90,11 +90,14 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     }
     for (const session of familySessions) {
       const device = `${session.personId}.${session.hash}`;
-      if (sessionIds.has(session.id) || deviceHashes.has(device) || (session.passkeyId && credentialIds.has(session.passkeyId))) {
+      const onAffectedDevice = deviceHashes.has(device);
+      if (onAffectedDevice) sessionIds.add(session.id);
+      if (target && session.createdAt >= target.createdAt
+        && (causalSessionIds.has(session.id) || onAffectedDevice || (session.passkeyId && credentialIds.has(session.passkeyId)))) {
         sessionIds.add(session.id);
         deviceHashes.add(device);
-        if (target && session.createdAt >= target.createdAt) causalSessionIds.add(session.id);
-        if (causalSessionIds.has(session.id) && session.passkeyId) credentialIds.add(session.passkeyId);
+        causalSessionIds.add(session.id);
+        if (session.passkeyId) credentialIds.add(session.passkeyId);
       }
     }
     for (const key of familyKeys) {
@@ -115,6 +118,10 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     familyId, eventId, personId, disputedSessionId, reportedBySessionId: sessionId, at: now,
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
+  const affectedPeople = familySessions.filter(({id}) => sessionIds.has(id)).map(({personId}) => personId);
+  await tx.update(pinCredentials).set({newDevicesLocked: true}).where(and(
+    eq(pinCredentials.familyId, familyId), inArray(pinCredentials.personId, affectedPeople),
+  ));
   const implicated = familySessions.filter(({id}) => causalSessionIds.has(id));
   if (organizer || implicated.some(({hadOrganizerAccess}) => hadOrganizerAccess)) {
     const earliest = implicated.reduce((at, session) => session.createdAt < at ? session.createdAt : at, target?.createdAt ?? event.at);
@@ -131,10 +138,6 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   ));
   await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
     eq(sessions.familyId, familyId), inArray(sessions.id, [...sessionIds]), ne(sessions.id, sessionId),
-  ));
-  const affectedPeople = familySessions.filter(({id}) => sessionIds.has(id)).map(({personId}) => personId);
-  await tx.update(pinCredentials).set({newDevicesLocked: true}).where(and(
-    eq(pinCredentials.familyId, familyId), inArray(pinCredentials.personId, affectedPeople),
   ));
   return true;
 }

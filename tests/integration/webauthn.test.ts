@@ -405,3 +405,51 @@ it("revokes older authenticating passkeys in a co-organizer lockdown while prese
   const returned = (await unrelated.authenticate(device()))!.session;
   await expect(resolve(returned.cookie)).resolves.toMatchObject({personId, isOrganizer: true});
 });
+
+it("does not expand revocation through a passkey's earlier browser while revoking later PIN successors", async () => {
+  const {familyId, viewer, session: reporter} = await fixture();
+  const earlierPhone = device();
+  const authenticating = await enroll(familyId, viewer.personId, earlierPhone);
+  const unrelated = await enroll(familyId, viewer.personId, earlierPhone);
+  const historical = (await authenticating.authenticate(earlierPhone))!.session;
+  const other = (await unrelated.authenticate(device()))!.session;
+  const before = new Date(Date.now() - 60_000);
+  await withFamily(familyId, async (tx) => {
+    await tx.update(passkeys).set({enrolledAt: before}).where(eq(passkeys.personId, viewer.personId));
+    await tx.update(sessions).set({createdAt: before}).where(and(
+      eq(sessions.personId, viewer.personId), eq(sessions.id, historical.id),
+    ));
+  });
+  const reportedPhone = device();
+  const reported = (await authenticating.authenticate(reportedPhone))!.session;
+  const successorPhone = device();
+  const bridge = (await authenticating.authenticate(successorPhone))!.session;
+  const successor = (await withFamily(familyId, (tx) => signInWithPin(
+    tx, familyId, viewer.personId, pin, pepper, successorPhone, new Date(),
+  ))).session!;
+  await expect(resolve(bridge.cookie)).resolves.toBeNull();
+  const [{id: eventId}] = await withFamily(familyId, (tx) => tx.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, reported.id), eq(authEvents.kind, "newDevice"),
+  )));
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, at))).resolves.toBe(true);
+  for (const session of [reported, bridge, successor]) {
+    await expect(resolve(session.cookie)).resolves.toBeNull();
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: at, trusted: false});
+  }
+  for (const session of [reporter, historical, other]) {
+    await expect(resolve(session.cookie)).resolves.toMatchObject({personId: viewer.personId});
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: null, trusted: true});
+  }
+  for (const phone of [reportedPhone, successorPhone]) {
+    await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, phone, new Date())))
+      .resolves.toEqual({error: "newDevicesLocked"});
+  }
+  await expect(authenticating.authenticate(device())).resolves.toBeNull();
+  const [preserved] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, unrelated.id)));
+  expect(preserved.revokedAt).toBeNull();
+  const returned = (await unrelated.authenticate(device()))!.session;
+  await expect(resolve(returned.cookie)).resolves.toMatchObject({personId: viewer.personId});
+});
