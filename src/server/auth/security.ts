@@ -205,7 +205,6 @@ export async function listSessionDisputes(tx: FamilyTransaction, familyId: strin
     .orderBy(desc(sessionDisputes.at), sessions.id);
 }
 
-/** Phase 2 consumes this projection when evaluating reported key use. */
 export async function listKeyDisputes(tx: FamilyTransaction, familyId: string, personId: string) {
   return tx.select({keyId: authEvents.keyId, sessionId: authEvents.sessionId, deviceKind: authEvents.deviceKind, at: authEvents.at})
     .from(authEvents).where(and(

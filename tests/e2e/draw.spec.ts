@@ -39,7 +39,7 @@ function disclosure(page: Page, name: string) {
   return page.locator("summary").filter({hasText: new RegExp(`^${name}$`)});
 }
 
-test("runs a private practice season through the browser", async ({page, browser}) => {
+test("runs a private practice season through the browser", async ({page, browser}, info) => {
   const family = await newOrganizer(page);
   const visitor = await browser.newContext({ignoreHTTPSErrors: true});
   try {
@@ -51,6 +51,7 @@ test("runs a private practice season through the browser", async ({page, browser
     await expect(pairs).toHaveCount(6);
     const pairing = await pairs.filter({hasText: /^Pinewisp gives to /}).innerText();
     const recipient = pairing.replace("Pinewisp gives to ", "");
+    await page.screenshot({path: info.outputPath("practice-draw.png"), fullPage: true});
 
     await page.getByRole("link", {name: "Pinewisp", exact: true}).click();
     await expect(page.getByRole("heading", {name: "Viewing as Pinewisp"})).toBeVisible();
@@ -73,6 +74,7 @@ test("runs a private practice season through the browser", async ({page, browser
     await page.getByRole("link", {name: "Practice exchange"}).click();
     await page.getByRole("link", {name: "Pinewisp", exact: true}).click();
     await expect(page.getByText("Midnight purple", {exact: true})).toBeVisible();
+    await page.screenshot({path: info.outputPath("private-question-answer.png"), fullPage: true});
 
     const guest = await visitor.newPage();
     await guest.goto(page.url());
@@ -86,13 +88,14 @@ test("runs a private practice season through the browser", async ({page, browser
     await disclosure(page, "Close exchange").click();
     await page.getByRole("button", {name: "Yes, close exchange"}).click();
     await expect(page.getByRole("button", {name: "Start another practice round"})).toBeVisible();
+    await page.screenshot({path: info.outputPath("closed-practice.png"), fullPage: true});
   } finally {
     await visitor.close();
     await removeFamily(family.id);
   }
 });
 
-test("keeps real previews sealed and resets the lock only after typed confirmation", async ({page}) => {
+test("keeps real previews sealed and resets the lock only after typed confirmation", async ({page}, info) => {
   const family = await newOrganizer(page);
   try {
     for (const name of ["Snowstep", "Brighttwig", "Lanternseed"]) {
@@ -139,11 +142,13 @@ test("keeps real previews sealed and resets the lock only after typed confirmati
     await expect(page.getByText("$35.00", {exact: true})).toBeVisible();
     await expect(page.getByText(/^Draw seal /)).toHaveCount(0);
     await expect(page.getByRole("button")).toHaveCount(0);
+    await page.screenshot({path: info.outputPath("sealed-organizer-preview.png"), fullPage: true});
 
     await page.getByRole("link", {name: "Back to manage exchange"}).click();
     await page.getByRole("link", {name: "Check the sealed draw"}).click();
     await expect(page.getByRole("heading", {name: "The sealed draw passes all the rules."})).toBeVisible();
     await expect(page.getByText("The draw forms one loop.", {exact: true})).toBeVisible();
+    await page.screenshot({path: info.outputPath("sealed-draw-proof.png"), fullPage: true});
     await page.getByRole("link", {name: "Your person"}).click();
     const open = page.getByRole("button", {name: "Open your person"});
     await open.dispatchEvent("pointerdown", {isPrimary: true, pointerId: 1, pointerType: "touch", button: 0});
@@ -155,6 +160,7 @@ test("keeps real previews sealed and resets the lock only after typed confirmati
     await page.getByRole("button", {name: "Replace the entire draw"}).click();
     await expect(page.getByRole("main").getByRole("alert")).toHaveText("Enter the confirmation exactly as shown.");
     await expect(seal).toHaveText(initialSeal);
+    await page.screenshot({path: info.outputPath("redraw-confirmation-rejected.png"), fullPage: true});
     await page.getByLabel("Type the confirmation").fill("REDRAW");
     await page.getByRole("button", {name: "Replace the entire draw"}).click();
     await expect(page.getByText("0 of 4 have opened their person.", {exact: true})).toBeVisible();
@@ -162,6 +168,7 @@ test("keeps real previews sealed and resets the lock only after typed confirmati
     await page.goto(page.url().replace("/en/", "/es/"));
     await expect(page.getByRole("link", {name: "Tu persona", exact: true})).toBeVisible();
     await expect(page.getByText("0 de 4 ya descubrieron a su persona.", {exact: true})).toBeVisible();
+    await page.screenshot({path: info.outputPath("spanish-redraw-reset.png"), fullPage: true});
   } finally {
     await removeFamily(family.id);
   }

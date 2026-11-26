@@ -1,16 +1,34 @@
 # Family Gift Exchange
 
-A phone-first family Christmas gift exchange being built with a blind draw and shared wishlists in English and Spanish. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
+A phone-first family Christmas gift exchange in English and Spanish, with encrypted draws and anonymous questions. Shared wishlists are planned. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
 
 ## Join and return
 
-Choose **Start a family exchange** with an organizer invitation code from the app owner. Creating the family adds the organizer as a participant. In **Manage my family**, add the other people, households, and any pairs to keep apart in the future draw. You can appoint one co-organizer to help manage the family and prepare keys. For someone without their own device, assign a relative as their helper before they join; the relative signs in as themselves and switches to that person's profile under **People you help**.
+Choose **Start a family exchange** with an organizer invitation code from the app owner. Creating the family adds the organizer as a participant. In **Manage my family**, add the other people, households, and any pairs to keep apart before drawing. You can appoint one co-organizer to help manage the family and prepare keys. For someone without their own device, assign a relative as their helper before they join; the relative signs in as themselves and switches to that person's profile under **People you help**.
 
 From **Send keys**, prepare each person's private message, show a QR code in person, or print a key card. Share privately through your phone's share menu or WhatsApp. Cards include a family address and a six-character code for anyone who prefers typing to scanning. Open the key on the person's own device, confirm their name, and choose a four-digit PIN that avoids dates, years, and easy patterns. Face ID setup is offered immediately afterward; the device may use a fingerprint or screen lock instead.
 
 After joining, return through the app address, the original message, or a home-screen icon. The same browser remembers the family; choose your name and PIN or use Face ID. On a browser that does not remember the family, paste the family sign-in address or private key link from the organizer. A used key leads back to sign-in. Use **Switch person or sign out** before someone else signs in on a shared device.
 
 Review **Sign-in activity** for key use, new devices, and replacement keys. Use **That wasn't me** for activity you do not recognize; see [Account recovery](#account-recovery) for the effects of reporting access.
+
+## Run an exchange
+
+As an organizer, open **Exchanges** and choose the current exchange, then set its details and **Who's taking part?**. A family can have one active exchange; close it before starting another. Set households, helpers, and keep-apart pairs before drawing.
+
+**Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. It tries one big loop first and permits separate valid loops when that is impossible. Past years do not restrict matches.
+
+Members choose **Open your person** to see their own recipient. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions.
+
+The first opening locks the draw. **Replace the entire draw** then requires the displayed confirmation phrase. A full redraw clears everyone's opened status and all questions, even when someone happens to draw the same person again.
+
+Use **Dropouts and late joiners** to remove or add someone after drawing. Local repairs preserve unaffected matches, opened status, and questions; changed matches must be opened again and lose their old questions. If a local repair cannot satisfy the rules, use a confirmed full redraw with an adjusted roster. After opening their recipient, a member can also use **Something wrong? → Try to fix my match** once per exchange to request the smallest valid change to their match.
+
+After opening your person, use **Ask your person** to send an anonymous question. The recipient answers under **Questions for you**; only the asker sees the answer. Helpers can use these controls for the profiles they manage.
+
+Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
+
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange**. Closing clears pairings and questions, retaining the exchange details and seal. There is no later reveal of everyone's pairings.
 
 ## Wishlists and gifts
 
@@ -85,3 +103,5 @@ A co-organizer can prepare a replacement for the organizer during ordinary recov
 A report involving current or recorded organizer or co-organizer authority signs out the entire family, including the reporter, and voids outstanding keys. Co-organizer appointments, passkey enrollments, and PINs set or changed from the earliest disputed session onward are invalidated. Credentials directly implicated in the disputed access are also revoked even if older, and the disputed administrators' PINs are cleared even if older. The organizer must recover through the operator command, then issue a new private key for a disputed co-organizer and any other account whose PIN was cleared. Other members can return with preserved PINs or unaffected Face ID; existing restrictions on new-device PIN sign-in still apply. Returning members see a notice that everyone was signed out for safety.
 
 Reports without administrator involvement revoke linked access and unredeemed keys issued from that access, preserving earlier independent keys and credentials. Reporting a used key from its link or code without signing in only records the time and reporting device in account and organizer activity; ask the organizer for a new private key.
+
+**My account** also lists other sessions that opened your person, with device and time. Report an unrecognized opening with **That wasn't me**. The app attempts to repair exposed matches before sealed access resumes. If repair cannot complete, the account remains available and the exchange shows recovery guidance, including a route to the organizer's confirmed redraw. See the [disputed-reveal recovery policy](docs/architecture.md#disputed-reveal-recovery) for the secrecy limits and fallback in small or constrained groups.

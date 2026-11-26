@@ -19,7 +19,8 @@ const phone = {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: tr
 process.env.E2E_AUTH_SECRET ??= randomBytes(32).toString("base64url");
 process.env.E2E_ORGANIZER_INVITE_CODE ??= randomBytes(24).toString("base64url");
 process.env.E2E_CRON_SECRET ??= process.env.CRON_SECRET || randomBytes(32).toString("base64url");
-const drawKey = randomBytes(32).toString("base64");
+process.env.E2E_ASSIGNMENT_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
+const drawKey = process.env.E2E_ASSIGNMENT_ENCRYPTION_KEY;
 
 export default defineConfig({
   testDir: "./tests/e2e",

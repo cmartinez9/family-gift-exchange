@@ -69,8 +69,8 @@ export const drawRuleSnapshots = pgTable("draw_rule_snapshots", {
   }),
 ]);
 
-// First open for each device and draw version. A repair can carry forward seen
-// status without creating an opening on a device that never opened that version.
+// First opening per session and draw version. A repair can carry forward seen
+// status without creating an opening for a session that never opened that version.
 export const drawOpenings = pgTable("draw_openings", {
   familyId: familyId(),
   exchangeId: uuid("exchange_id").notNull(),

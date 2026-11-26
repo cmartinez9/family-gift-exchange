@@ -823,7 +823,7 @@ it("keeps repaired recipients private at the same opened count and preserves una
   await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
   vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
   await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1});
-  const seenGivers = [ids[1], ids[3], ids[4]];
+  const seenGivers: string[] = [ids[1], ids[3], ids[4]];
   for (const index of [1, 3, 4]) await revealMyPerson(f.viewers[index], f.exchangeId, 2);
   await runForFamily(app.db, f.familyId, async (tx) => {
     await tx.update(participants).set({seenVersion: 1}).where(and(
