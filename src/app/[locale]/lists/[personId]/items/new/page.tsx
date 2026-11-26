@@ -10,7 +10,6 @@ import {ItemForm} from "../../../item-form";
 const TITLES = {link: "newLink", photo: "addPhotoTitle", note: "newNote"} as const;
 const LEADS = {link: "addLinkSub", photo: "addPhotoSub", note: "addNoteSub"} as const;
 
-/** Adding something: a pushed page over the list. Only the name is needed; everything else can wait. */
 export default async function NewItemPage({params, searchParams}: {
   params: Promise<{personId: string}>;
   searchParams: Promise<{kind?: string}>;

@@ -53,9 +53,6 @@ export async function preparePhoto(file: File) {
 const limit = (value: string, length: number) => [...value].slice(0, length).join("");
 
 /**
- * Adding or editing one thing on a list. Words first: only the name is needed. A link fills in the
- * name, price and picture it can find, and you can change any of them.
- *
  * `page` is a pushed page that returns to the list; `sheet` sits in the edit sheet over the list, saves
  * without leaving it, and offers to take the thing off the list.
  */

@@ -55,9 +55,9 @@ async function edit(page: Page, title = "Tea tin") {
   await expect(sheet).toBeVisible();
   return sheet;
 }
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, fullPage = true) {
   await page.waitForTimeout(700);
-  await page.screenshot({path: test.info().outputPath(`${name}.png`), fullPage: true});
+  await page.screenshot({path: test.info().outputPath(`${name}.png`), fullPage});
 }
 async function errorToast(page: Page) {
   await expect(page.getByRole("status").filter({hasText: lists.feedback["could-not-save"]})).toBeVisible({timeout: 10_000});
@@ -126,7 +126,8 @@ test("reconciles heart edits and displays a replacement photo without reloading 
     const pixels = await sharp(await (await page.request.get(url!)).body()).raw().toBuffer();
     expect(pixels[1]).toBeGreaterThan(pixels[0] + 100);
     await page.waitForTimeout(2000);
-    await shot(page, "replacement-photo-and-unstarred-heart");
+    // Full-page mobile capture resizes the viewport and can move the fixed tab pill during capture.
+    await shot(page, "replacement-photo-and-unstarred-heart", false);
     const barGeometry = await page.getByRole("navigation", {name: ui.tabs.label}).evaluate((bar) => {
       const active = bar.querySelector('[aria-current="page"]')!.getBoundingClientRect();
       const pill = bar.querySelector(".fge-tab-pill")!.getBoundingClientRect();
@@ -245,58 +246,63 @@ test("recovers offline heart, order, item draft, preview, budget and size saves 
   } finally { await page.context().setOffline(false).catch(() => {}); await cleanup(fixture); }
 });
 
-for (const field of ["noClothes", "tops", "shoes", "shoeSystem"] as const) {
-  test(`keeps the newest repeated ${field} edit when its earlier network request fails`, async ({page}) => {
-    const fixture = await setup(page);
-    try {
-      await database(fixture.familyId, (tx) => tx.insert(sizes).values([
-        {familyId: fixture.familyId, personId: fixture.ownerId, kind: "tops", value: "M"},
-        {familyId: fixture.familyId, personId: fixture.ownerId, kind: "shoeSystem", value: "us-women"},
-        {familyId: fixture.familyId, personId: fixture.ownerId, kind: "shoes", value: "7"},
-      ]).execute());
-      await page.goto(`${fixture.path}/profile`);
-      await page.waitForLoadState("networkidle");
-      let release!: () => void;
-      let entered!: () => void;
-      const blocked = new Promise<void>((resolve) => { entered = resolve; });
-      const gate = new Promise<void>((resolve) => { release = resolve; });
-      let firstRequest = true;
-      await page.route("**/*", async (route) => {
-        if (route.request().method() !== "POST" || !firstRequest) return route.continue();
-        firstRequest = false;
-        entered();
-        await gate;
-        await route.abort("internetdisconnected");
-      });
-      const toggle = page.getByRole("switch", {name: lists.noClothes});
-      const change = async (next: boolean) => {
-        if (field === "noClothes") await toggle.click();
-        else if (field === "tops") await page.getByRole("group", {name: lists.size.tops}).getByText(next ? "L" : "M", {exact: true}).click();
-        else if (field === "shoes") await page.getByRole("button", {name: next ? lists.shoeBigger : lists.shoeSmaller}).click();
-        else await page.getByLabel(lists.size.shoeSystem).selectOption(next ? "eu" : "us-women");
-      };
-      const expectLatest = async () => {
-        if (field === "noClothes") await expect(toggle).toHaveAttribute("aria-checked", "true");
-        else if (field === "tops") await expect(page.getByRole("group", {name: lists.size.tops}).getByRole("radio", {name: "L", exact: true})).toBeChecked();
-        else if (field === "shoes") await expect(page.getByLabel(lists.size.shoes, {exact: true})).toHaveValue("7½");
-        else await expect(page.getByLabel(lists.size.shoeSystem)).toHaveValue("eu");
-      };
-      await change(true);
-      await blocked;
-      await change(false);
-      await change(true);
-      await expectLatest();
-      const retry = page.waitForResponse((response) => response.request().method() === "POST");
-      release();
-      expect((await retry).ok()).toBe(true);
-      await expectLatest();
-      await expect(page.getByRole("status").filter({hasText: lists.saved})).toBeVisible();
-      await shot(page, `repeated-${field}-final-value-saved`);
-      await page.reload();
-      await expectLatest();
-    } finally { await cleanup(fixture); }
-  });
-}
+test.describe("profile autosave transport recovery", () => {
+  // Service-worker fetches bypass page.route in WebKit; these races must intercept the first POST.
+  test.use({serviceWorkers: "block"});
+
+  for (const field of ["noClothes", "tops", "shoes", "shoeSystem"] as const) {
+    test(`keeps the newest repeated ${field} edit when its earlier network request fails`, async ({page}) => {
+      const fixture = await setup(page);
+      try {
+        await database(fixture.familyId, (tx) => tx.insert(sizes).values([
+          {familyId: fixture.familyId, personId: fixture.ownerId, kind: "tops", value: "M"},
+          {familyId: fixture.familyId, personId: fixture.ownerId, kind: "shoeSystem", value: "us-women"},
+          {familyId: fixture.familyId, personId: fixture.ownerId, kind: "shoes", value: "7"},
+        ]).execute());
+        await page.goto(`${fixture.path}/profile`);
+        await page.waitForLoadState("networkidle");
+        let release!: () => void;
+        let entered!: () => void;
+        const blocked = new Promise<void>((resolve) => { entered = resolve; });
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        let firstRequest = true;
+        await page.route("**/*", async (route) => {
+          if (route.request().method() !== "POST" || !firstRequest) return route.continue();
+          firstRequest = false;
+          entered();
+          await gate;
+          await route.abort("internetdisconnected");
+        });
+        const toggle = page.getByRole("switch", {name: lists.noClothes});
+        const change = async (next: boolean) => {
+          if (field === "noClothes") await toggle.click();
+          else if (field === "tops") await page.getByRole("group", {name: lists.size.tops}).getByText(next ? "L" : "M", {exact: true}).click();
+          else if (field === "shoes") await page.getByRole("button", {name: next ? lists.shoeBigger : lists.shoeSmaller}).click();
+          else await page.getByLabel(lists.size.shoeSystem).selectOption(next ? "eu" : "us-women");
+        };
+        const expectLatest = async () => {
+          if (field === "noClothes") await expect(toggle).toHaveAttribute("aria-checked", "true");
+          else if (field === "tops") await expect(page.getByRole("group", {name: lists.size.tops}).getByRole("radio", {name: "L", exact: true})).toBeChecked();
+          else if (field === "shoes") await expect(page.getByLabel(lists.size.shoes, {exact: true})).toHaveValue("7½");
+          else await expect(page.getByLabel(lists.size.shoeSystem)).toHaveValue("eu");
+        };
+        await change(true);
+        await blocked;
+        await change(false);
+        await change(true);
+        await expectLatest();
+        const retry = page.waitForResponse((response) => response.request().method() === "POST");
+        release();
+        expect((await retry).ok()).toBe(true);
+        await expectLatest();
+        await expect(page.getByRole("status").filter({hasText: lists.saved})).toBeVisible();
+        await shot(page, `repeated-${field}-final-value-saved`);
+        await page.reload();
+        await expectLatest();
+      } finally { await cleanup(fixture); }
+    });
+  }
+});
 
 test("rolls back offline claims and checklist ticks, then reconciles claim changes from another tab", async ({page}) => {
   const fixture = await setup(page);
@@ -326,7 +332,8 @@ test("rolls back offline claims and checklist ticks, then reconciles claim chang
     const getting = card(page, "Puzzle A");
     for (const label of [lists.bought, lists.wrapped]) {
       await page.context().setOffline(true);
-      await getting.getByLabel(label, {exact: true}).check();
+      // A fast rejection can roll back before check() verifies its intermediate checked state.
+      await getting.getByLabel(label, {exact: true}).click();
       await expect(getting.getByRole("alert")).toHaveText(lists.feedback["could-not-save"]);
       await expect(getting.getByLabel(label, {exact: true})).not.toBeChecked();
       await page.context().setOffline(false);
@@ -471,7 +478,7 @@ test("keeps the active tab label legible after an edit sheet saves", async ({pag
     await expect(page.getByRole("dialog", {name: lists.editItem})).toBeHidden();
     await expect(card(page).getByText("Any color")).toBeVisible();
     await page.waitForTimeout(2000);
-    await shot(page, "active-tab-after-edit-save");
+    await shot(page, "active-tab-after-edit-save", false);
     const geometry = await page.getByRole("navigation", {name: ui.tabs.label}).evaluate((bar) => {
       const active = bar.querySelector('[aria-current="page"]')!.getBoundingClientRect();
       const pill = bar.querySelector(".fge-tab-pill")!.getBoundingClientRect();

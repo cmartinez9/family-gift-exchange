@@ -111,8 +111,7 @@ export async function setItemStar(ownerId: string, itemId: string, starred: bool
 }
 
 /**
- * Takes an item off the list. The list hides it at once and offers Undo; this runs only once the Undo
- * has passed, so nothing needs restoring.
+ * Defer the server deletion until Undo expires so cancellation preserves the item, photo, and claim.
  */
 export async function removeItem(ownerId: string, itemId: string): Promise<FormState> {
   const viewer = await requireViewer();
