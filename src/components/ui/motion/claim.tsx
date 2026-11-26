@@ -123,7 +123,7 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
       <div ref={plain} className="[grid-area:1/1]" inert={claimed} style={initial ? {visibility: "hidden"} : undefined}>{base}</div>
       <div ref={dye} className="fge-claim-mine [grid-area:1/1]" inert={!claimed} aria-hidden={!claimed}
         style={initial ? undefined : {visibility: "hidden"}}>{mine}</div>
-      <span ref={tag} aria-hidden="true" className="pointer-events-none absolute -top-2.5 right-[42px] flex flex-col items-center opacity-0"
+      <span ref={tag} aria-hidden="true" className="pointer-events-none absolute -top-2.5 right-4 flex flex-col items-center opacity-0"
         style={{transformOrigin: "50% 0"}} data-claim-tag="">
         <span className="block h-3.5 w-[2.5px] bg-yarn-white" />
         <YarnTag />

@@ -14,7 +14,7 @@ import {claims, exchanges, families, items, outbox, people} from "../../src/serv
 
 const pin = "4268";
 const phone = {width: 390, height: 844};
-const shots = "test-results/design";
+const shots = process.env.E2E_EVIDENCE_DIR || "test-results/design";
 
 const ART = {
   robe: ["#E9E4E0", '<path d="M30 22l10-6h20l10 6 8 54-14 6H36l-14-6z" fill="#2F3438"/><path d="M40 16l10 18 10-18" fill="none" stroke="#4A5156" stroke-width="4" stroke-linejoin="round"/><path d="M30 52h40" stroke="#5B6267" stroke-width="5" stroke-linecap="round"/>'],
