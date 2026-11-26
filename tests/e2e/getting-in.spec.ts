@@ -93,13 +93,13 @@ async function signedIn(context: BrowserContext, cookie: string, origin: string)
 }
 
 /** Save evidence before checking accessibility and layout, so failures keep their rendered screen. */
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, fullPage = false) {
   await page.waitForLoadState("networkidle");
   // the screen's title streams in just after a soft navigation
   await expect(page).toHaveTitle(/\S/);
   await settled(page);
   const path = test.info().outputPath(`${name}.png`);
-  await page.screenshot({path});
+  await page.screenshot({path, fullPage, ...(fullPage ? {scale: "css" as const} : {})});
   await test.info().attach(name, {path, contentType: "image/png"});
   expect((await new AxeBuilder({page}).analyze()).violations, name).toEqual([]);
   const layout = await page.evaluate(() => ({
@@ -338,20 +338,22 @@ test("account rows remain readable at double text size", async ({browser}) => {
   try {
     await signedIn(large, family.sessions.Ana, origin);
     const page = await large.newPage();
-    await page.goto("/en/account");
-    await page.evaluate(() => {
-      document.documentElement.style.zoom = "2";
-    });
-    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
-    await shot(page, "large-f11-11_1");
-    const overflowingLabels = await page.locator(".fge-rows .text-row-title, .fge-rows .text-body")
-      .evaluateAll((labels) => labels.filter((label) => {
-        const text = document.createRange();
-        text.selectNodeContents(label);
-        const bounds = label.getBoundingClientRect();
-        return [...text.getClientRects()].some((rect) => rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
-      }).map((label) => label.textContent));
-    expect(overflowingLabels, "Account labels stay in their text column without covering controls").toEqual([]);
+    for (const locale of ["en", "es"]) {
+      await page.goto(`/${locale}/account`);
+      await page.evaluate(() => {
+        document.documentElement.style.zoom = "2";
+      });
+      await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+      await shot(page, `${locale}-large-f11-11_1`, true);
+      const overflowingLabels = await page.locator(".fge-rows .text-row-title, .fge-rows .text-body")
+        .evaluateAll((labels) => labels.filter((label) => {
+          const text = document.createRange();
+          text.selectNodeContents(label);
+          const bounds = label.getBoundingClientRect();
+          return [...text.getClientRects()].some((rect) => rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+        }).map((label) => label.textContent));
+      expect(overflowingLabels, `${locale}: account labels stay in their text column without covering controls`).toEqual([]);
+    }
   } finally {
     await large.close();
   }
@@ -657,12 +659,17 @@ test("regression: PIN creation and returning sign-in recover from transport fail
     await page.goto(f.keys.Marta);
     await page.getByRole("button", {name: t.hello.yes}).click();
     await page.waitForLoadState("networkidle");
+    // Keep the correction inside the settling interval even on a busy browser driver.
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
     await typePin(page, "4267");
     await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
-    await page.waitForTimeout(400);
+    await page.clock.runFor(400);
     await expect(page.getByRole("heading", {name: t.pin.makeTitle})).toBeVisible();
     await expect(page.getByRole("img", {name: "3 of 4 digits typed"})).toBeVisible();
     await typePin(page, "8");
+    await page.clock.runFor(300);
+    await page.clock.resume();
     await expect(page.getByRole("heading", {name: t.pin.againTitle})).toBeVisible();
     await page.context().setOffline(true);
     await typePin(page, pin);
