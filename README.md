@@ -28,13 +28,13 @@ After opening your person, use **Ask your person** to send an anonymous question
 
 Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
 
-Matches remain available after gift day and January 1 until an organizer chooses **Close exchange**. Closing clears pairings and questions, retaining the exchange details and seal. There is no later reveal of everyone's pairings.
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings and questions, retaining the exchange details and seal, and opens **That's a wrap**. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
 
 ## Wishlists and gifts
 
 Open **Your list**, then **Add an item** to paste a product link, upload a photo, or write an idea down. There is no per-list item limit. Links work without `https://`, and you can paste the text shared by a store app. **Preview link** fills in available product details; review them, add a note or your own photo, and choose **Save item**. If the store blocks previews or has no usable image, the item can still be saved with the store link and a photo you supply. Use **Edit item**, **Refresh preview**, **Move up**, **Move down**, or **Remove item** to maintain your list.
 
-Choose **Edit sizes and About me** to add sizing, preferences, or allergies. These fields save when you leave each field; wait for **Saved** before navigating away. Select **No clothes, please** if you do not want clothing. The directory's **List ready** label requires at least one item. It also requires tops, bottoms (or waist and inseam), and shoe sizes with a shoe size system, unless **No clothes, please** is selected. When helping a relative, switch to their profile in **People you help**; their list opens for you to edit.
+Choose **Edit sizes and About me** to add sizing, preferences, or allergies. These fields save when you leave each field; wait for **Saved** before navigating away. Select **No clothes, please** if you do not want clothing. The directory's **List ready** label requires at least one item. It also requires tops, bottoms (or waist and inseam), and shoe sizes with a shoe size system, unless **No clothes, please** is selected. To edit a relative's list, [use their helper profile](#join-and-return).
 
 **Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory lists people alphabetically. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget. Once the exchange is closed, its budget cannot be changed or cleared, including from a form opened before closing.
 
@@ -42,7 +42,7 @@ On someone else's list, choose **I'm getting this** to reserve a gift. Other mem
 
 ## Notifications
 
-Open **Notices** on **You** to read messages; tapping an unread message marks it read. Choose **Notices on this phone** to open **Notifications** and manage device alerts. Organizers can also open **Notifications** from **Manage my family**, where unread messages offer **Mark as read**. The app uses this inbox and optional home-screen notifications; it sends no email or texts.
+Open **Notices** on **You** to read messages; tapping an unread message marks it read. Choose **Notices on this phone** to open **Notifications** and manage device alerts. Organizers can also open **Notifications** from **Manage my family**, where unread messages offer **Mark as read**. The app uses this inbox and optional home-screen notifications; it sends no email or texts. The inbox shows the newest 100 notices, and the unread badge counts only unread notices in that window.
 
 When an item you've marked **I'm getting this** is edited or removed, you receive a general notice without the item or buyer's name. Participating members also receive notices when the budget changes after a draw.
 
@@ -50,7 +50,7 @@ For home-screen setup, open **Put it on your home screen** on **You** and follow
 
 Helpers receive device alerts for the people they help on their enabled devices. [Switch to the person's profile](#join-and-return), then open **Notices** to read their messages.
 
-Organizers can open **Manage my family → Messages for the family chat** to copy or share a prepared message through the phone's share menu or WhatsApp. The organizer chooses when and where to send it.
+Organizers can open **Manage my family → Messages for the family chat**, choose a topic, and use **Edit** to change its prepared message before copying or sharing through the phone's share menu or WhatsApp. Edits stay with each topic while the page is open. The organizer chooses when and where to send it.
 
 ## Run locally
 
@@ -75,7 +75,7 @@ pnpm dev --experimental-https
 
 Set `AUTH_ORIGIN=https://localhost:3000` for this local HTTPS server. Open [the local app](https://localhost:3000) or [captured messages](https://localhost:3000/dev/messages). Seeding adds five fictional practice rosters. Create a new family with the organizer invitation code to practice the full sign-in flow.
 
-Preview the Sweater Weather components, states, and motion in the [design gallery](https://localhost:3000/dev/design). Its controls demonstrate the components without changing family data, including a **Reduce motion** switch. The gallery is development-only and returns 404 on production builds. See the [design rulebook](design/DESIGN.md) for the product direction and [implementation coverage](docs/architecture.md#design-system) for the foundations available now.
+Preview the Sweater Weather components, states, and motion in the [design gallery](https://localhost:3000/dev/design). Its controls demonstrate the components without changing family data, including a **Reduce motion** switch. The gallery is development-only and returns 404 on production builds. See the [design rulebook](design/DESIGN.md) for the product direction and [implementation coverage](docs/architecture.md#design-system) for the current screen and component coverage.
 
 To check sharing on a real phone, use a practice family and send keys only to test recipients.
 

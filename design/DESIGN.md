@@ -259,7 +259,7 @@ components:
 
 ## Overview
 
-This rulebook describes the target product experience. See [implementation coverage](../docs/architecture.md#design-system) for the foundations available in this phase and the remaining screen integration.
+This rulebook describes the target product experience. See [implementation coverage](../docs/architecture.md#design-system) for current screen and component coverage.
 
 **Creative North Star: "The Family Sweater"**
 

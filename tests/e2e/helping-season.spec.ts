@@ -13,9 +13,11 @@ import {createSession, digest, secret} from "../../src/server/auth/session";
 import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server/draw/schema";
 import {drawSeal, sealText} from "../../src/server/draw/sealing";
 import {requireIssuedKey} from "../helpers/issued-key";
+import en from "../../messages/en.json" with {type: "json"};
+import es from "../../messages/es.json" with {type: "json"};
 
 // The helping, notices, family-chat and end-of-season screens at 390 by 844, in English and Spanish,
-// at the largest text size and with reduced motion. Screenshots land in test-results/design/<project>/.
+// at the largest text size and with reduced motion. E2E_EVIDENCE_DIR overrides test-results/design/.
 const phone = {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true} satisfies BrowserContextOptions;
 // The largest text size: the browser at 200%, so the 390px phone lays out at 195 CSS pixels.
 const largest = {...phone, viewport: {width: 195, height: 422}, deviceScaleFactor: 6} satisfies BrowserContextOptions;
@@ -106,7 +108,7 @@ async function shot(page: Page, name: string, {axe = true} = {}) {
     .map((element) => `${element.tagName.toLowerCase()}.${element.getAttribute("class") ?? ""}`.slice(0, 120)));
   expect(overflow, "nothing runs off the screen").toEqual([]);
   if (axe) expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
-  const folder = join(process.cwd(), "test-results", "design", test.info().project.name);
+  const folder = join(process.env.E2E_EVIDENCE_DIR ?? join(process.cwd(), "test-results", "design"), test.info().project.name);
   mkdirSync(folder, {recursive: true});
   await page.screenshot({path: join(folder, `${name}.png`)});
 }
@@ -138,6 +140,7 @@ for (const exit of ["navigation", "Done", "home"] as const) {
       if (exit === "home") await expect(helping.getByRole("link", {name: "Rosa", exact: true})).toBeVisible();
       else await expect(helping.getByRole("heading", {name: "Sign in", exact: true})).toBeVisible();
       await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
+      await shot(helping, `revoked-helping-${exit}`);
     } finally {
       await f.close();
     }
@@ -162,6 +165,7 @@ test("rejects stale claim actions after another tab switches the acting profile"
     await expect(switcher).toHaveURL(/\/en\/helping$/);
     await rosa.getByRole("button", {name: "I’m getting this", exact: true}).click();
     await expect(rosa.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
+    await shot(rosa, "stale-claim-rejected", {axe: false});
 
     await rosa.reload();
     await expect(rosa.getByRole("button", {name: "I’m getting this", exact: true})).toBeVisible();
@@ -199,7 +203,140 @@ test("rejects stale claim actions after another tab switches the acting profile"
   }
 });
 
+test("the notice badge reaches zero after reading the newest 100 while an older unread notice stays stored", async ({browser}) => {
+  test.setTimeout(120_000);
+  const f = await family(browser);
+  const database = connectDatabase(process.env.DATABASE_ADMIN_URL!);
+  try {
+    await database.db.delete(outbox).where(eq(outbox.familyId, f.familyId));
+    const ids = Array.from({length: 101}, () => randomUUID()).toSorted().reverse();
+    await database.db.insert(outbox).values(ids.map((id) => ({id, familyId: f.familyId, personId: f.ids.Rosa,
+      channel: "push" as const, language: "en" as const, template: "names-drawn", status: "captured" as const,
+      createdAt: new Date("2026-11-25T18:00:00Z")})));
+    const rosa = await f.signedIn("Rosa");
+    await rosa.goto("/en/account");
+    await rosa.getByRole("link", {name: "Notifications (100 unread)", exact: true}).click();
+    await expect(rosa.locator('[data-notice="unread"]')).toHaveCount(100);
+    for (let remaining = 100; remaining > 0; remaining--) {
+      await rosa.getByRole("button", {name: "Mark as read", exact: true}).first().click();
+      await expect(rosa.locator('[data-notice="unread"]')).toHaveCount(remaining - 1);
+      // WebKit limits history updates to 100 per ten seconds; pace this synthetic 100-tap loop.
+      await rosa.waitForTimeout(150);
+    }
+    await expect(rosa.locator('[data-notice="read"]')).toHaveCount(100);
+    await shot(rosa, "newest-100-notices-all-read");
+    await rosa.goto("/en/account");
+    await expect(rosa.getByRole("link", {name: "Notifications", exact: true})).toBeVisible();
+    await expect(rosa.getByRole("link", {name: /Notifications \(/})).toHaveCount(0);
+    const stored = await database.db.select().from(outbox).where(eq(outbox.familyId, f.familyId));
+    expect(stored).toHaveLength(101);
+    expect(stored.filter(({readAt}) => readAt === null).map(({id}) => id)).toEqual([ids[100]]);
+    await shot(rosa, "newest-100-zero-badge", {axe: false});
+    await test.info().attach("retained-notice-state", {body: JSON.stringify({stored: stored.length,
+      read: stored.filter(({readAt}) => readAt !== null).length, olderUnreadRetained: true}), contentType: "application/json"});
+  } finally {
+    await database.close();
+    await f.close();
+  }
+});
+
 for (const locale of ["en", "es"] as const) {
+  for (const value of ["50", "75"]) {
+    test(`rejects a stale ${value} budget after closing the exchange in ${locale}`, async ({browser}) => {
+      const f = await family(browser);
+      const database = connectDatabase(process.env.DATABASE_ADMIN_URL!);
+      try {
+        const organizer = await f.signedIn("Christian");
+        const closing = await organizer.context().newPage();
+        await organizer.goto(`/${locale}/lists`);
+        await organizer.locator("summary").click();
+        await organizer.locator('input[name="budget"]').fill(value);
+        await closing.goto(`/en/exchanges/${f.exchangeId}/manage`);
+        await closing.getByRole("button", {name: "Close exchange", exact: true}).click();
+        await closing.getByRole("button", {name: "Not yet", exact: true}).click();
+        await expect(closing.getByRole("dialog")).toBeHidden();
+        const [stillOpen] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
+        expect(stillOpen.status).toBe("drawn");
+        await closing.getByRole("button", {name: "Close exchange", exact: true}).click();
+        await closing.getByRole("button", {name: "Close Christmas 2026", exact: true}).click();
+        await expect(closing.getByRole("heading", {name: "That's a wrap", exact: true})).toBeVisible();
+        await organizer.locator('form').filter({has: organizer.locator('input[name="budget"]')}).getByRole("button").click();
+        await expect(organizer.getByRole("main").getByRole("alert")).toHaveText(locale === "en"
+          ? "You can’t make this change." : "No puedes hacer este cambio.");
+        const [closed] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
+        expect(closed).toMatchObject({status: "closed", budgetAmount: "50.00"});
+        const notices = await database.db.select().from(outbox).where(eq(outbox.familyId, f.familyId));
+        expect(notices.filter(({template}) => template === "budget-changed")).toHaveLength(1);
+        await shot(organizer, `closed-budget-rejected-${locale}-${value}`, {axe: false});
+      } finally {
+        await database.close();
+        await f.close();
+      }
+    });
+  }
+}
+
+for (const locale of ["en", "es"] as const) {
+  test(`explains helping without a phone and returns safely in ${locale}`, async ({browser}) => {
+    const f = await family(browser);
+    try {
+      const t = (locale === "en" ? en : es).helping;
+      const guest = await f.guest();
+      await guest.goto(`/${locale}/key/${await f.martaKey()}`);
+      await guest.getByRole("button", {name: locale === "en" ? "I'm helping Marta" : "Estoy ayudando a Marta", exact: true}).click();
+      await guest.getByRole("button", {name: new RegExp(`^${t.noPhoneTitle.replace("{name}", "Marta")}`)}).click();
+      await expect(guest.locator('[data-helping="choose"]').getByRole("status"))
+        .toHaveText(t.noPhoneBody.replaceAll("{name}", "Marta"));
+      await shot(guest, `helping-no-phone-${locale}`);
+      await guest.locator('[data-helping="choose"]').getByRole("button", {name: locale === "en" ? "Go back" : "Volver", exact: true}).click();
+      await expect(guest.getByRole("button", {name: new RegExp(`^${t.hereTitle.replace("{name}", "Marta")}`)})).toBeVisible();
+    } finally {
+      await f.close();
+    }
+  });
+
+  test(`copies a relative's key and edited topic drafts to the real browser clipboard in ${locale}`, async ({browser, browserName}) => {
+    test.skip(browserName !== "chromium", "Playwright exposes clipboard read/write permissions in Chromium.");
+    const f = await family(browser);
+    try {
+      const t = (locale === "en" ? en : es).helping;
+      const chat = (locale === "en" ? en : es).notify.groupChat;
+      const guest = await f.guest({...phone, permissions: ["clipboard-read", "clipboard-write"]});
+      await guest.goto(`/${locale}/key/${await f.martaKey()}`);
+      const privateKeyUrl = guest.url();
+      await guest.getByRole("button", {name: locale === "en" ? "I'm helping Marta" : "Estoy ayudando a Marta", exact: true}).click();
+      await guest.getByRole("button", {name: new RegExp(`^${t.sendTitle.replace("{name}", "Marta")}`)}).click();
+      await expect(guest.getByRole("status")).toHaveText(t.copied.replace("{name}", "Marta"));
+      expect(await guest.evaluate(() => navigator.clipboard.readText())).toBe(privateKeyUrl);
+      await shot(guest, `helping-key-copied-${locale}`);
+
+      const organizer = await f.signedIn("Christian", {...phone, permissions: ["clipboard-read", "clipboard-write"]});
+      await organizer.goto(`/${locale}/family/group-chat`);
+      const custom = locale === "en" ? "Christmas plans 🎁 — meet at Ana’s!" : "Planes de Navidad 🎁 — ¡nos vemos en casa de Ana!";
+      await organizer.getByRole("button", {name: chat.edit, exact: true}).click();
+      await organizer.getByRole("textbox", {name: chat.field, exact: true}).fill(custom);
+      await organizer.getByRole("button", {name: chat.doneEditing, exact: true}).click();
+      await organizer.getByText(chat.chip.wishlists, {exact: true}).click();
+      await expect(organizer.getByRole("radio", {name: chat.chip.wishlists, exact: true})).toBeChecked();
+      await expect(organizer.getByRole("region", {name: chat.topic.wishlists})).toContainText(locale === "en"
+        ? "Come add your wishlist" : "¡Agrega tu lista de deseos");
+      await organizer.getByText(chat.chip.draw, {exact: true}).click();
+      await expect(organizer.getByRole("radio", {name: chat.chip.draw, exact: true})).toBeChecked();
+      await expect(organizer.getByRole("region", {name: chat.topic.draw})).toContainText(custom);
+      await organizer.getByRole("button", {name: chat.copy, exact: true}).click();
+      await expect(organizer.getByRole("status")).toHaveText(chat.copied);
+      expect(await organizer.evaluate(() => navigator.clipboard.readText())).toBe(custom);
+      const whatsapp = new URL((await organizer.getByRole("link", {name: chat.whatsapp, exact: true}).getAttribute("href"))!);
+      expect(whatsapp.origin).toBe("https://wa.me");
+      expect(whatsapp.searchParams.get("text")).toBe(custom);
+      await shot(organizer, `edited-message-copied-${locale}`);
+      await test.info().attach("clipboard-and-share-output", {body: JSON.stringify({locale,
+        privateKeyCopiedExactly: true, copiedMessage: custom, whatsappMessage: whatsapp.searchParams.get("text")}), contentType: "application/json"});
+    } finally {
+      await f.close();
+    }
+  });
+
   test(`follows the helping reveal buttons in ${locale}`, async ({browser}) => {
     const f = await family(browser);
     try {
