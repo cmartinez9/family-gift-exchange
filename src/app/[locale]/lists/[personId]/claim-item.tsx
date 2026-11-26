@@ -7,6 +7,7 @@ import {Track} from "@/components/ui/card";
 import {BudgetMeasure, ItemCard, MineLine, StatusLine, WantsLine} from "@/components/ui/item-card";
 import {ClaimCard} from "@/components/ui/motion/claim";
 import {toast} from "@/components/ui/toast";
+import type {Feedback} from "../action-types";
 import {claimCommand} from "../actions";
 import {ItemThumb, type ListItemView} from "../item-view";
 
@@ -31,14 +32,20 @@ export function ClaimItem({actingAs, item, ownerName, budget, canClaim}: {
   const money = (amount: string | number) => format.number(Number(amount), {style: "currency", currency: "USD"});
 
   const run = (command: "claim" | "undo") => {
+    const previous = claimed;
     const next = command === "claim";
     setClaimed(next);
     startTransition(async () => {
-      const result = await claimCommand(actingAs, item.id, command, next);
-      if (!result.error) return;
-      setClaimed(!next);
-      if (result.error === "already-claimed") setLate(true);
-      else toast({message: t(`feedback.${result.error}`), icon: "alert"});
+      let error: Feedback | undefined;
+      try {
+        error = (await claimCommand(actingAs, item.id, command, next)).error;
+      } catch {
+        error = "could-not-save";
+      }
+      if (!error) return;
+      setClaimed(previous);
+      if (error === "already-claimed") setLate(true);
+      else toast({message: t(`feedback.${error}`), icon: "alert"});
     });
   };
 

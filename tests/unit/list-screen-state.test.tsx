@@ -7,7 +7,8 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import {ClaimItem} from "../../src/app/[locale]/lists/[personId]/claim-item";
 import {OwnList} from "../../src/app/[locale]/lists/[personId]/own-list";
-import {removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
+import {claimCommand, removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
+import type {FormState} from "../../src/app/[locale]/lists/action-types";
 import {ItemThumb, toItemView, type ListItemView} from "../../src/app/[locale]/lists/item-view";
 import {removeWithUndo} from "../../src/app/[locale]/lists/pending-removals";
 import {dismissToast, ToastHost} from "../../src/components/ui/toast";
@@ -224,6 +225,47 @@ it("shows claim controls only when the list permits claiming", async () => {
   expect(container.querySelector("button")).toBeNull();
   await render(card(true));
   expect([...container.querySelectorAll("button")].some((button) => button.textContent === en.lists.claim)).toBe(true);
+});
+
+it.each(["claim", "undo"] as const)("restores the previous claim state after a rejected %s and allows retry", async (command) => {
+  const response = Promise.withResolvers<FormState>();
+  vi.mocked(claimCommand).mockReturnValueOnce(response.promise).mockResolvedValueOnce({});
+  const initial: ListItemView = {...item, ...(command === "undo" ? {claim: "mine"} : {})};
+  await render(<NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <ClaimItem item={initial} ownerName="Willow" canClaim />
+    <ToastHost undoLabel="Undo" />
+  </NextIntlClientProvider>);
+  const label = command === "claim" ? en.lists.claim : en.lists.undoClaim;
+  const button = () => [...container.querySelectorAll<HTMLButtonElement>("article button")].find((entry) => entry.textContent === label)!;
+  const before = command === "claim" ? "open" : "mine";
+  const after = command === "claim" ? "mine" : "open";
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(before);
+  await click(button());
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(after);
+  expect(container.querySelector("article")?.getAttribute("aria-busy")).toBe("true");
+  expect(button().disabled).toBe(true);
+  await act(async () => response.reject(new Error("Offline")));
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(before);
+  expect(container.querySelector("article")?.getAttribute("aria-busy")).toBe("false");
+  expect(button().disabled).toBe(false);
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(en.lists.feedback["could-not-save"]);
+  await click(button());
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(after);
+  expect(claimCommand).toHaveBeenCalledTimes(2);
+  expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, command === "claim");
+  expect(claimCommand).toHaveBeenNthCalledWith(2, item.id, command, command === "claim");
+});
+
+it("keeps the taken-card response when another person claimed the item first", async () => {
+  vi.mocked(claimCommand).mockResolvedValueOnce({error: "already-claimed"});
+  await render(<NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <ClaimItem item={item} ownerName="Willow" canClaim />
+    <ToastHost undoLabel="Undo" />
+  </NextIntlClientProvider>);
+  await click(container.querySelector<HTMLButtonElement>("[data-claim-origin]")!);
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe("late");
+  expect(container.querySelector("article")?.textContent).toContain(en.lists.justGot);
+  expect(container.querySelector("article button")).toBeNull();
 });
 
 it("changes the rendered photo URL when a saved photo is replaced", async () => {
