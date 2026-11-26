@@ -22,7 +22,7 @@ Restrict pairing data to the draw module. Store only sealed recipients in assign
 
 ## PostgreSQL and migrations
 
-Drizzle schemas live in `src/server/db/schema.ts` and `src/server/draw/schema.ts`. Generate a migration with `pnpm db:generate --name <change>` and commit the SQL and Drizzle metadata together. Use a custom migration for grants and policies. Give new tenant tables a `family_id`, family-scoped foreign keys, and a fail-closed policy before granting them to a request role. Phase 1 owns schema changes for credentials and the invitation mechanism.
+The `schema` setting in [`drizzle.config.ts`](../drizzle.config.ts) owns the list of Drizzle schema files. Generate a migration with `pnpm db:generate --name <change>` and commit the SQL and Drizzle metadata together. Use a custom migration for grants and policies. Give new tenant tables a `family_id`, family-scoped foreign keys, and a fail-closed policy before granting them to a request role. Phase 1 owns schema changes for credentials and the invitation mechanism.
 
 For deployments, `DATABASE_URL` should connect as a runtime login allowed to assume `fge_app`, with neither table ownership nor RLS bypass. Use `DATABASE_ADMIN_URL` for migrations, with privileges to manage the schema and role. For local Compose and CI, the disposable database owner can run migrations and assume the same `fge_app` role that application queries use. The local viewer uses that local owner connection to inspect the latest 100 captured rows across practice families.
 

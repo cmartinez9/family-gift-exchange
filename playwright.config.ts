@@ -6,6 +6,7 @@ import {defineConfig, devices} from "@playwright/test";
 if (existsSync(".env.local")) loadEnvFile(".env.local");
 
 const origin = "https://localhost:3100";
+process.env.E2E_AUTH_SECRET ??= randomBytes(32).toString("base64url");
 process.env.E2E_ORGANIZER_INVITE_CODE ??= randomBytes(24).toString("base64url");
 
 export default defineConfig({
@@ -19,7 +20,7 @@ export default defineConfig({
   webServer: {
     env: {
       AUTH_ORIGIN: origin,
-      AUTH_SECRET: randomBytes(32).toString("base64url"),
+      AUTH_SECRET: process.env.E2E_AUTH_SECRET,
       ORGANIZER_INVITE_CODE: process.env.E2E_ORGANIZER_INVITE_CODE,
     },
     command: "pnpm build && node --import tsx scripts/playwright-server.ts",

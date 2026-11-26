@@ -2,6 +2,7 @@ import {createHash, generateKeyPairSync, randomUUID, sign} from "node:crypto";
 import {and, eq} from "drizzle-orm";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
+import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
 import {families, people} from "../../src/server/db/schema";
 import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
@@ -46,7 +47,7 @@ async function fixture(organizer = false) {
   if (organizer) return {familyId, viewer: manager, session};
   await withFamily(familyId, (tx) => saveMember(tx, manager, null, {name: "Member", language: "en", helperId: null, householdId: null}));
   const [{id: personId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(and(eq(people.familyId, familyId), eq(people.displayName, "Member"))));
-  const key = await withFamily(familyId, (tx) => issueKey(tx, manager, personId, "share", pepper, new Date()));
+  const key = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, manager, personId, "share", pepper, new Date())));
   const joined = (await withFamily(familyId, (tx) => redeemKey(tx, {familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: device(), currentViewer: null, now: new Date()}))).session!;
   return {familyId, viewer: (await resolve(joined.cookie))!, session: joined};
 }
@@ -329,7 +330,7 @@ it("surfaces reset throttling after the previous requests have been answered", a
   for (let i = 0; i < 3; i++) {
     await expect(forgotPin(familyId, viewer.personId)).resolves.toEqual({success: "resetRequested"});
   }
-  const key = await withFamily(familyId, (tx) => issueKey(tx, viewer, viewer.personId, "reset", pepper, new Date()));
+  const key = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, viewer, viewer.personId, "reset", pepper, new Date())));
   const session = (await withFamily(familyId, (tx) => redeemKey(tx, {
     familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: device(), currentViewer: null, now: new Date(),
   }))).session!;
@@ -348,7 +349,7 @@ it("keeps older member Face ID usable after lockdown while organizer recovery re
     await saveMember(tx, viewer, null, {name: "Member", language: "en", helperId: null, householdId: null});
   });
   const [{id: memberId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(eq(people.displayName, "Member")));
-  const key = await withFamily(familyId, (tx) => issueKey(tx, viewer, memberId, "share", pepper, before));
+  const key = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, viewer, memberId, "share", pepper, before)));
   const memberPhone = device();
   const member = (await withFamily(familyId, (tx) => redeemKey(tx, {
     familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: memberPhone, currentViewer: null, now: before,
@@ -374,7 +375,7 @@ it("requires a fresh key after a co-organizer lockdown even when unrelated older
   const before = new Date(Date.now() - 3_600_000);
   await withFamily(familyId, (tx) => saveMember(tx, viewer, null, {name: "Co-organizer", language: "en", helperId: null, householdId: null}));
   const [{id: personId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(eq(people.displayName, "Co-organizer")));
-  const key = await withFamily(familyId, (tx) => issueKey(tx, viewer, personId, "share", pepper, before));
+  const key = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, viewer, personId, "share", pepper, before)));
   const phone = device();
   const joined = (await withFamily(familyId, (tx) => redeemKey(tx, {
     familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: phone, currentViewer: null, now: before,
@@ -414,7 +415,7 @@ it("requires a fresh key after a co-organizer lockdown even when unrelated older
     pepper, device: device(), currentViewer: null, now: new Date(),
   }))).session!;
   const organizer = (await resolve(restored.cookie))!;
-  const coKey = await withFamily(familyId, (tx) => issueKey(tx, organizer, personId, "reset", pepper, new Date()));
+  const coKey = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, organizer, personId, "reset", pepper, new Date())));
   const joinedAgain = (await withFamily(familyId, (tx) => redeemKey(tx, {
     familyId, value: coKey.token!, typed: false, pin: replacementPin, confirmation: replacementPin,
     pepper, device: phone, currentViewer: null, now: new Date(),

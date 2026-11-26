@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {promisify} from "node:util";
 import {and, eq} from "drizzle-orm";
 import {afterEach, expect, it, vi} from "vitest";
+import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
 import {families, people} from "../../src/server/db/schema";
 import {createFamily, changeCoOrganizer, saveMember} from "../../src/server/auth/families";
@@ -50,7 +51,7 @@ async function fixture() {
     await tx(familyId, (t) => saveMember(t, viewer, null, {name, language: "en", helperId: null, householdId: null}));
     const [person] = await tx(familyId, (t) => t.select().from(people).where(eq(people.displayName, name)));
     const phone = device();
-    const key = joined ? await issue(viewer, person.id, "share", when) : null;
+    const key = joined ? requireIssuedKey(await issue(viewer, person.id, "share", when)) : null;
     const session = key ? (await redeem(key.token!, phone, when)).session! : null;
     return {id: person.id, phone, session};
   };
@@ -80,16 +81,16 @@ it.each(["unredeemed key", "PIN descendant", "appointment"])("locks down the fam
   let takeover;
   if (chain === "appointment") {
     await tx(f.familyId, (t) => changeCoOrganizer(t, intruderViewer, co.id, f.at(4)));
-    takeover = await f.issue((await resolve(co.session!.cookie))!, f.viewer.personId, "reset", f.at(5));
+    takeover = requireIssuedKey(await f.issue((await resolve(co.session!.cookie))!, f.viewer.personId, "reset", f.at(5)));
   } else {
-    const reset = await f.issue(intruderViewer, co.id, "reset", f.at(4));
+    const reset = requireIssuedKey(await f.issue(intruderViewer, co.id, "reset", f.at(4)));
     if (chain === "PIN descendant") {
       await f.redeem(reset.token!, device(), f.at(5), replacementPin);
       const descendant = (await f.login(co.id, device(), f.at(6), replacementPin)).session!;
-      takeover = await f.issue((await resolve(descendant.cookie))!, f.viewer.personId, "reset", f.at(7));
+      takeover = requireIssuedKey(await f.issue((await resolve(descendant.cookie))!, f.viewer.personId, "reset", f.at(7)));
     } else takeover = reset;
   }
-  const pending = await f.issue(f.viewer, safe.id, "reset", f.at(8));
+  const pending = requireIssuedKey(await f.issue(f.viewer, safe.id, "reset", f.at(8)));
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
     eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
@@ -142,7 +143,7 @@ it("preserves keys from historical issuing sessions during a member dispute", as
   const recipient = await f.add("Recipient", false);
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, formerCo.id, f.at(1)));
   const oldViewer = (await resolve(formerCo.session!.cookie))!;
-  const historical = await f.issue(oldViewer, recipient.id, "print", f.at(2));
+  const historical = requireIssuedKey(await f.issue(oldViewer, recipient.id, "print", f.at(2)));
   await tx(f.familyId, (t) => endSessions(t, oldViewer, f.at(3), true));
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, null, f.at(4)));
   const reporter = (await f.login(formerCo.id, device(), f.at(5))).session!;
@@ -167,7 +168,7 @@ it("applies family lockdown when the reported account is a co-organizer", async 
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
   const reporter = (await resolve(co.session!.cookie))!;
   const intruder = (await f.login(co.id, device(), f.at(3))).session!;
-  const key = await f.issue((await resolve(intruder.cookie))!, f.viewer.personId, "reset", f.at(4));
+  const key = requireIssuedKey(await f.issue((await resolve(intruder.cookie))!, f.viewer.personId, "reset", f.at(4)));
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
     eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
@@ -185,7 +186,7 @@ it("requires a fresh co-organizer key and keeps the old PIN invalid after recove
   const badPhone = device();
   const intruder = (await f.login(co.id, badPhone, f.at(3))).session!;
   const intruderViewer = (await resolve(intruder.cookie))!;
-  const takeover = await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(4));
+  const takeover = requireIssuedKey(await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(4)));
   const [before] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, co.id)));
   expect(before.newDevicesLocked).toBe(false);
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
@@ -206,7 +207,7 @@ it("requires a fresh co-organizer key and keeps the old PIN invalid after recove
   const ownerPhone = device();
   const owner = (await f.redeem(recovery.token!, ownerPhone, f.at(8), replacementPin)).session!;
   const organizer = (await resolve(owner.cookie))!;
-  const coKey = await f.issue(organizer, co.id, "reset", f.at(9));
+  const coKey = requireIssuedKey(await f.issue(organizer, co.id, "reset", f.at(9)));
   const recovered = (await f.redeem(coKey.token!, co.phone, f.at(10), replacementPin)).session!;
   const coViewer = (await resolve(recovered.cookie))!;
   expect(coViewer).toMatchObject({personId: co.id, isOrganizer: true});
@@ -263,8 +264,8 @@ it.each([
   const intruder = (await f.login(reporter.personId, device(), f.at(3))).session!;
   const intruderViewer = (await resolve(intruder.cookie))!;
   const recent = await f.add("Recent member", true, f.at(3.5));
-  const selfReset = await f.issue(intruderViewer, reporter.personId, "reset", f.at(4));
-  const takeover = await f.issue(intruderViewer, role === "organizer" ? co.id : f.viewer.personId, "reset", f.at(5));
+  const selfReset = requireIssuedKey(await f.issue(intruderViewer, reporter.personId, "reset", f.at(4)));
+  const takeover = requireIssuedKey(await f.issue(intruderViewer, role === "organizer" ? co.id : f.viewer.personId, "reset", f.at(5)));
   if (kind === "resetSent") await expect(tx(f.familyId, (t) => markKeySent(t, intruderViewer, selfReset.id!, f.at(5)))).resolves.toBe(true);
   const [key] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, selfReset.id!)));
   expect(key.usedSessionId).toBeNull();
@@ -341,7 +342,7 @@ it.each(["resetPreparedWithoutRequest", "resetSent"] as const)("roots a redeemed
   const intruder = (await f.login(f.viewer.personId, device(), f.at(3))).session!;
   const intruderViewer = (await resolve(intruder.cookie))!;
   await tx(f.familyId, (t) => changeCoOrganizer(t, intruderViewer, delegate.id, f.at(4)));
-  const reset = await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(5));
+  const reset = requireIssuedKey(await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(5)));
   if (kind === "resetSent") await expect(tx(f.familyId, (t) => markKeySent(t, intruderViewer, reset.id!, f.at(5.5)))).resolves.toBe(true);
   const redeemed = (await f.redeem(reset.token!, device(), f.at(6), replacementPin)).session!;
   const recovery = await tx(f.familyId, (t) => issueOrganizerKey(t, f.familyId, pepper, f.at(7)));
@@ -374,7 +375,7 @@ it("roots a member's key-issuance report at the manager who issued it", async ()
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
   const issuerSession = (await f.login(co.id, device(), f.at(3))).session!;
   const issuer = (await resolve(issuerSession.cookie))!;
-  const key = await f.issue(issuer, member.id, "print", f.at(4));
+  const key = requireIssuedKey(await f.issue(issuer, member.id, "print", f.at(4)));
   const redeemed = (await f.redeem(key.token!, member.phone, f.at(5))).session!;
   const reporter = (await resolve(redeemed.cookie))!;
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
@@ -399,7 +400,7 @@ it("locks down when a causal successor held organizer authority before delegatin
   const successorViewer = (await resolve(successor.cookie))!;
   await tx(f.familyId, (t) => changeCoOrganizer(t, successorViewer, independent.id, f.at(7)));
   const issuer = (await resolve(independent.session!.cookie))!;
-  const takeover = await f.issue(issuer, f.viewer.personId, "reset", f.at(8));
+  const takeover = requireIssuedKey(await f.issue(issuer, f.viewer.personId, "reset", f.at(8)));
   const [original] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, reported.id)));
   const [descendant] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, successor.id)));
   expect(original.hadOrganizerAccess).toBe(false);
@@ -422,8 +423,8 @@ it("accepts slow PIN entry only for the exact key and device bound into a typed-
   const f = await fixture();
   const first = await f.add("First", false);
   const second = await f.add("Second", false);
-  const one = await f.issue(f.viewer, first.id, "print");
-  const two = await f.issue(f.viewer, second.id, "print");
+  const one = requireIssuedKey(await f.issue(f.viewer, first.id, "print"));
+  const two = requireIssuedKey(await f.issue(f.viewer, second.id, "print"));
   const phone = device();
   const previewedAt = new Date();
   const proof = createCodePreview(pepper, f.familyId, {id: one.id!, personId: first.id}, one.code!, phone.hash);
