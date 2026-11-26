@@ -5,11 +5,12 @@ import {getLocale} from "next-intl/server";
 import {redirect} from "next/navigation";
 import {requireViewer} from "@/server/auth";
 import {clearSession} from "@/server/auth/request";
-import {actFor, disputeEvent, endSessions} from "@/server/auth/security";
+import {actFor, disputeEvent, disputeSession, endSessions} from "@/server/auth/security";
 import {revalidateViewer, uuidPattern} from "@/server/auth/session";
 import {lockFamily} from "@/server/auth/access";
 import {people} from "@/server/db/schema";
 import {withFamily} from "@/server/db/client";
+import {DrawError, repairDisputedReveals} from "@/server/draw";
 import type {AuthResult} from "../sign-in/actions";
 
 export async function switchProfile(personId: string): Promise<AuthResult> {
@@ -31,11 +32,30 @@ export async function reportEvent(eventId: string): Promise<AuthResult> {
   if (!uuidPattern.test(eventId)) return {error: "unavailable"};
   const viewer = await requireViewer();
   const recorded = await withFamily(viewer.familyId, (tx) => disputeEvent(tx, viewer, eventId, new Date()));
+  return finishReport(viewer, recorded);
+}
+
+export async function reportSession(sessionId: string): Promise<AuthResult> {
+  if (!uuidPattern.test(sessionId)) return {error: "unavailable"};
+  const viewer = await requireViewer();
+  const recorded = await withFamily(viewer.familyId, (tx) => disputeSession(tx, viewer, sessionId, new Date()));
+  return finishReport(viewer, recorded);
+}
+
+async function finishReport(viewer: Awaited<ReturnType<typeof requireViewer>>, recorded: Awaited<ReturnType<typeof disputeEvent>>): Promise<AuthResult> {
   if (!recorded) return {error: "unavailable"};
   if (recorded === "lockdown") {
     await clearSession();
     redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
   }
+  let repairError: AuthResult["error"];
+  try {
+    await repairDisputedReveals(viewer);
+  } catch (error) {
+    if (!(error instanceof DrawError) || (error.code !== "repairImpossible" && error.code !== "checkTimedOut")) throw error;
+    repairError = "repairRequired";
+  }
+  if (repairError) return {error: repairError};
   redirect(`/${await getLocale()}/account?reported=1`);
 }
 

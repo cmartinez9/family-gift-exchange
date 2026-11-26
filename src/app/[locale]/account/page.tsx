@@ -4,18 +4,21 @@ import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
 import {account} from "@/server/auth/security";
+import {ownRevealOpenings} from "@/server/draw";
 import {withFamily} from "@/server/db/client";
 import {changePin} from "../sign-in/actions";
 import {AuthForm, PinFields} from "../sign-in/controls";
 import {activityDateFormat, linkClass, sectionClass} from "../sign-in/styles";
-import {reportEvent, setLanguage, signOut, switchProfile} from "./actions";
+import {reportEvent, reportSession, setLanguage, signOut, switchProfile} from "./actions";
 
 export default async function AccountPage({searchParams}: {searchParams: Promise<{reported?: string; face?: string}>}) {
   const viewer = await requireViewer();
   const t = await getTranslations("auth");
   const lists = await getTranslations("lists");
+  const draw = await getTranslations("draw");
   const format = await getFormatter();
   const {name, helpers, activity} = await withFamily(viewer.familyId, (tx) => account(tx, viewer));
+  const openings = await ownRevealOpenings(viewer);
   const actingFor = helpers.find(({id}) => id === viewer.actingAs);
   const search = await searchParams;
   return (
@@ -36,6 +39,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           ))}
         </section>
       )}
+      <Link className={linkClass} href="/exchanges" prefetch={false}>{draw("title")}</Link>
       {viewer.isOrganizer && !actingFor && <Link className={linkClass} href="/family">{t("manageFamily")}</Link>}
       {search.face === "1" && (
         <details className="space-y-3">
@@ -43,6 +47,22 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           <AuthForm action={changePin} label={t("savePin")}><PinFields create /></AuthForm>
         </details>
       )}
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold">{t("revealActivity")}</h2>
+        {!openings.length && <p>{t("noRevealActivity")}</p>}
+        <ul className="space-y-4">
+          {openings.map(({exchangeId, exchangeName, version, sessionId, openedAt, deviceKind, disputed}) => {
+            return (
+              <li key={`${exchangeId}.${version}.${sessionId}`} className="border-b border-current/25 pb-3">
+                <p>{t("revealOpened", {exchange: exchangeName, device: t(`device.${deviceKind ?? "other"}` as Parameters<typeof t>[0])})}</p>
+                <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
+                {disputed ? <p>{t("alreadyReported")}</p>
+                  : <AuthForm action={reportSession.bind(null, sessionId)} label={t("notMe")} />}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">{t("activity")}</h2>
         {search.reported === "1" && <p role="status">{t("feedback.reported")}</p>}

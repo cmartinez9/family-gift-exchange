@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {and, asc, count, desc, eq, gt, inArray, isNull} from "drizzle-orm";
+import {and, asc, count, desc, eq, gt, inArray, isNull, sql} from "drizzle-orm";
 import type {Locale} from "@/i18n/routing";
 import type {FamilyTransaction} from "../db/database";
 import {claims, exchanges, families, households, keepApart, participants, people} from "../db/schema";
@@ -29,10 +29,14 @@ export async function createFamily(tx: FamilyTransaction, input: {
   return signInDevice(tx, familyId, personId, device, now);
 }
 
+function currentExchangeQuery(tx: FamilyTransaction, familyId: string) {
+  return tx.select({id: exchanges.id, status: exchanges.status}).from(exchanges)
+    .where(eq(exchanges.familyId, familyId))
+    .orderBy(sql`(${exchanges.status} = 'closed')`, desc(exchanges.giftDay), asc(exchanges.id)).limit(1);
+}
+
 async function currentExchange(tx: FamilyTransaction, familyId: string) {
-  // A closed exchange is history. Season rollover belongs to exchange setup.
-  const [row] = await tx.select({id: exchanges.id, status: exchanges.status}).from(exchanges)
-    .where(eq(exchanges.familyId, familyId)).orderBy(desc(exchanges.giftDay), asc(exchanges.id)).for("update");
+  const [row] = await currentExchangeQuery(tx, familyId).for("update");
   return row;
 }
 
@@ -66,8 +70,7 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     .orderBy(desc(sessions.createdAt));
   const groups = await tx.select({id: households.id, name: households.name}).from(households)
     .where(eq(households.familyId, familyId)).orderBy(households.name);
-  const [exchange] = await tx.select({id: exchanges.id, status: exchanges.status}).from(exchanges)
-    .where(eq(exchanges.familyId, familyId)).orderBy(desc(exchanges.giftDay), asc(exchanges.id));
+  const [exchange] = await currentExchangeQuery(tx, familyId);
   const pairs = exchange ? await tx.select({personA: keepApart.personA, personB: keepApart.personB})
     .from(keepApart).where(and(eq(keepApart.familyId, familyId), eq(keepApart.exchangeId, exchange.id))) : [];
   const requests = await tx.select({
@@ -80,6 +83,7 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     .orderBy(desc(authEvents.at)).limit(30);
   return {
     familyName: family.name, members, devices, groups, pairs, requests, sent, activity,
+    exchangeId: exchange?.id ?? null,
     canSendKeys: true,
     constraintsOpen: exchange?.status === "open" || exchange?.status === "setup",
   };
@@ -192,29 +196,6 @@ export async function saveHousehold(tx: FamilyTransaction, viewer: Viewer, id: s
     if (exchange?.status === "drawn" || exchange?.status === "locked") return "drawStarted";
     await tx.update(people).set({householdId: null}).where(and(eq(people.familyId, familyId), eq(people.householdId, id)));
     await tx.delete(households).where(and(eq(households.familyId, familyId), eq(households.id, id)));
-  }
-  return null;
-}
-
-export async function changeKeepApart(tx: FamilyTransaction, viewer: Viewer, first: string, second: string, remove: boolean) {
-  const {familyId} = viewer;
-  await lockFamily(tx, familyId);
-  if (!await isManager(tx, viewer)) return "forbidden";
-  if (first === second) return "differentPeople";
-  const exchange = await currentExchange(tx, familyId);
-  if (!exchange || (exchange.status !== "open" && exchange.status !== "setup")) return "drawStarted";
-  const [personA, personB] = [first, second].sort();
-  const values = {familyId, exchangeId: exchange.id, personA, personB};
-  if (remove) {
-    await tx.delete(keepApart).where(and(eq(keepApart.familyId, familyId), eq(keepApart.exchangeId, exchange.id),
-      eq(keepApart.personA, personA), eq(keepApart.personB, personB)));
-  } else {
-    const pair = await tx.select({id: participants.personId}).from(participants).where(and(
-      eq(participants.familyId, familyId), eq(participants.exchangeId, exchange.id), eq(participants.status, "in"),
-      inArray(participants.personId, [personA, personB]),
-    ));
-    if (pair.length !== 2) return "unavailable";
-    await tx.insert(keepApart).values({...values, reason: "custom"}).onConflictDoNothing();
   }
   return null;
 }

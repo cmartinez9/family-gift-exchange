@@ -12,10 +12,10 @@ import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/cl
 import {
   allowCodeTry, disputeUsedKey, inspectKey, issueKey, lockFamily, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
 } from "../../src/server/auth/access";
-import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, changeKeepApart, removeMember} from "../../src/server/auth/families";
+import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, removeMember} from "../../src/server/auth/families";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {findViewer, parseSession, digest, secret} from "../../src/server/auth/session";
-import {account, actFor, disputeEvent, endSessions, listKeyDisputes, listSessionDisputes} from "../../src/server/auth/security";
+import {account, actFor, disputeEvent, disputeSession, endSessions, listKeyDisputes, listSessionDisputes} from "../../src/server/auth/security";
 import {createCodePreview} from "../../src/server/auth/code-preview";
 import {day, fifteenMinutes} from "../../src/server/auth/pin";
 
@@ -519,7 +519,7 @@ it("rejects an expired viewer even when the request carries its earlier authenti
   await expect(resolve(joined.cookie)).resolves.toMatchObject({personId: f.personId});
 });
 
-it("manages households, pairs, co-organizers and helpers inside the family", async () => {
+it("manages households, co-organizers and helpers inside the family", async () => {
   const f = await fixture();
   const dependent = await f.add("Acorn", f.viewer.personId);
   const co = await f.add("Pinecone");
@@ -528,10 +528,6 @@ it("manages households, pairs, co-organizers and helpers inside the family", asy
   await expect(tx(f.familyId, (t) => saveMember(t, f.viewer, f.personId, {
     name: "Snowflake", language: "en", helperId: null, householdId: group.id,
   }))).resolves.toBeNull();
-  await expect(tx(f.familyId, (t) => changeKeepApart(t, f.viewer, f.personId, co, false))).resolves.toBeNull();
-  const before = await tx(f.familyId, (t) => readiness(t, f.viewer, now));
-  expect(before?.pairs).toHaveLength(1);
-  await expect(tx(f.familyId, (t) => changeKeepApart(t, f.viewer, co, f.personId, true))).resolves.toBeNull();
   await expect(tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co))).resolves.toBeNull();
   const coKey = requireIssuedKey(await tx(f.familyId, (t) => issueKey(t, f.viewer, co, "share", pepper, now)));
   const coSession = (await f.redeem(coKey.token!, makeDevice())).session!;
@@ -622,7 +618,7 @@ it("blocks in-flight claims until member removal commits", async () => {
     await removal;
     if (claim) await Promise.allSettled([claim]);
   }
-  await expect(claim).rejects.toMatchObject({code: "not-found"});
+  await expect(claim).rejects.toMatchObject({code: "forbidden"});
   expect(await tx(f.familyId, (t) => t.select().from(claims).where(and(
     eq(claims.familyId, f.familyId), eq(claims.itemId, item.id),
   )))).toEqual([]);
@@ -653,4 +649,19 @@ it("applies row-level family isolation to every auth table", async () => {
   }
   await expect(tx(one.familyId, (t) => t.insert(authEvents).values({familyId: two.familyId, personId: two.personId, kind: "keyUsed"})))
     .rejects.toMatchObject({cause: {code: "42501"}});
+});
+
+it("only lets a member dispute another session belonging to their own account", async () => {
+  const f = await fixture();
+  const foreign = await fixture();
+  const first = (await f.redeem((requireIssuedKey(await f.issue())).token!, makeDevice())).session!;
+  const second = (await f.login(pin, makeDevice())).session!;
+  const member = (await resolve(first.cookie))!;
+  await expect(tx(f.familyId, (t) => disputeSession(t, f.viewer, second.id, now))).resolves.toBe(false);
+  await expect(tx(foreign.familyId, (t) => disputeSession(t, foreign.viewer, second.id, now))).resolves.toBe(false);
+  await expect(tx(f.familyId, (t) => disputeSession(t, member, first.id, now))).resolves.toBe(false);
+  expect(await resolve(second.cookie)).not.toBeNull();
+  await expect(tx(f.familyId, (t) => disputeSession(t, member, second.id, now))).resolves.toBe(true);
+  expect(await resolve(second.cookie)).toBeNull();
+  expect(await resolve(first.cookie)).not.toBeNull();
 });

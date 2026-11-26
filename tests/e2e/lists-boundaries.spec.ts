@@ -201,6 +201,7 @@ test("lets a switched helper edit a relative's list while other members can only
     expect((await page.request.get(`${path}/items/new?kind=note`)).status()).toBe(404);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Little Acorn", exact: true}).click();
+    await expect(page.getByText("You're helping Little Acorn.", {exact: true})).toBeVisible();
     await page.getByRole("link", {name: lists.myList, exact: true}).click();
     await expect(page.getByText("You’re helping Little Acorn.", {exact: true})).toBeVisible();
     await addNote(page, path!, "Wooden train");

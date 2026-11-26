@@ -13,6 +13,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   uniqueIndex,
   uuid,
@@ -88,6 +89,7 @@ export const exchanges = pgTable("exchanges", {
   id: uuid("id").defaultRandom().notNull(),
   name: text("name").notNull(),
   giftDay: date("gift_day"),
+  giftTime: time("gift_time", {precision: 0}),
   place: text("place"),
   budgetAmount: numeric("budget_amount", {precision: 10, scale: 2}),
   listDeadline: date("list_deadline"),
@@ -96,6 +98,7 @@ export const exchanges = pgTable("exchanges", {
   rules: jsonb("rules").$type<Record<string, unknown>>().default({}).notNull(),
   seal: text("seal"),
   drawVersion: integer("draw_version").default(0).notNull(),
+  disputedRevealRepairedAt: instant("disputed_reveal_repaired_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
 ]);

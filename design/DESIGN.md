@@ -480,7 +480,7 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
 - **Don't** stitch instructions, buttons, labels or avatars.
 - **Don't** set text on knit.
 - **Don't** add a hold without a tap path and a reduced-motion path.
-- **Don't** show anything that hints at who has whom: not in a notice, the activity list, an animation, or the organizer's screens.
+- **Don't** expose pairings or clues to them in notices, the activity list, animations, or the organizer's screens. See the [disputed-reveal recovery policy](../docs/architecture.md#disputed-reveal-recovery) for inference limits during recovery.
 
 ## Open decisions
 - **Product pictures.** The gallery uses drawn stand-ins. Use fetched store photos in the app's item cards; whether to frame them differently is still open.

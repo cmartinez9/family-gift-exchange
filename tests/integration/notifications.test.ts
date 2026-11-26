@@ -92,9 +92,9 @@ afterEach(async () => {
 it("captures every event in both recipient languages and confines sensitive events to their intended recipients", async () => {
   await notify.drawEvents.namesDrawn(event);
   await notify.drawEvents.plansChanged({...event, personIds: members.map(({id}) => id).concat(outOfExchange.id, outsider.id)});
-  await setExchangeBudget({...device(organizers[0].id), isOrganizer: true}, exchangeId, "50");
+  await setExchangeBudget({...await signedInDevice(organizers[0].id), isOrganizer: true}, exchangeId, "50");
   for (const [index, itemId] of itemIds.entries()) {
-    const owner = device(members[1 - index].id);
+    const owner = await signedInDevice(members[1 - index].id);
     await editListItem(owner, owner.personId, itemId, {note: "Any color"});
   }
   await notify.requestPinReset({familyId, personId: outOfExchange.id});
@@ -148,7 +148,7 @@ it("notifies only ordinary claimers of edits and removals with generic localized
     const subscription = browserSubscription();
     subscriptions.push(subscription);
     await subscribePush(buyer, subscription);
-    const owner = device(members[1 - index].id);
+    const owner = await signedInDevice(members[1 - index].id);
     const ownerNotices = await listNotifications(owner);
     const item = await addListItem(owner, owner.personId, {kind: "note", title: `Private gift idea ${index}`});
     await editListItem(owner, owner.personId, item.id, {note: "Before claiming"});
@@ -194,7 +194,7 @@ it("notifies only ordinary claimers of edits and removals with generic localized
 });
 
 it("rolls back default callback messages with the item savepoint and budget transaction", async () => {
-  const owner = device(members[1].id);
+  const owner = await signedInDevice(members[1].id);
   const seen: (typeof outbox.$inferSelect)[][] = [];
   const rollbackEvents: ListEvents = {
     async claimedItemChanged(tx, event) {
@@ -216,7 +216,7 @@ it("rolls back default callback messages with the item savepoint and budget tran
   } finally {
     warning.mockRestore();
   }
-  await expect(setExchangeBudget({...device(organizers[0].id), isOrganizer: true}, exchangeId, "75", rollbackEvents))
+  await expect(setExchangeBudget({...await signedInDevice(organizers[0].id), isOrganizer: true}, exchangeId, "75", rollbackEvents))
     .rejects.toThrow("rollback");
   expect(seen[0]).toMatchObject([{personId: members[0].id, language: "en", template: "claimed-item-changed"}]);
   expect(seen[1].map(({personId}) => personId).toSorted())

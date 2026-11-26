@@ -1,10 +1,10 @@
 # Family Gift Exchange
 
-A phone-first family Christmas gift exchange being built with a blind draw and shared wishlists in English and Spanish. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
+A phone-first family Christmas gift exchange in English and Spanish, with shared wishlists, encrypted draws, and anonymous questions. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
 
 ## Join and return
 
-Choose **Start a family exchange** with an organizer invitation code from the app owner. Creating the family adds the organizer as a participant. In **Manage my family**, add the other people, households, and any pairs to keep apart in the future draw. You can appoint one co-organizer to help manage the family and prepare keys. For someone without their own device, assign a relative as their helper before they join; the relative signs in as themselves and switches to that person's profile under **People you help**.
+Choose **Start a family exchange** with an organizer invitation code from the app owner. Creating the family adds the organizer as a participant. In **Manage my family**, add the other people, households, and any pairs to keep apart before drawing. You can appoint one co-organizer to help manage the family and prepare keys. For someone without their own device, assign a relative as their helper before they join; the relative signs in as themselves and switches to that person's profile under **People you help**.
 
 From **Send keys**, prepare each person's private message, show a QR code in person, or print a key card. Share privately through your phone's share menu or WhatsApp. Cards include a family address and a six-character code for anyone who prefers typing to scanning. Open the key on the person's own device, confirm their name, and choose a four-digit PIN that avoids dates, years, and easy patterns. Face ID setup is offered immediately afterward; the device may use a fingerprint or screen lock instead.
 
@@ -12,13 +12,31 @@ After joining, return through the app address, the original message, or a home-s
 
 Review **Sign-in activity** for key use, new devices, and replacement keys. Use **That wasn't me** for activity you do not recognize; see [Account recovery](#account-recovery) for the effects of reporting access.
 
+## Run an exchange
+
+As an organizer, open **Exchanges** and choose the current exchange, then set its details and **Who's taking part?**. A family can have one active exchange; close it before starting another. Set households, helpers, and keep-apart pairs before drawing.
+
+**Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. A fresh draw tries one big loop first and permits separate valid loops when that is impossible; repairs can also produce separate valid loops. Past years do not restrict matches.
+
+Members choose **Open your person** to see their own recipient, then **Open {name}'s wishlist** to open that exact person's list, even when relatives share a name. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
+
+The first opening locks the draw. **Replace the entire draw** then requires the displayed confirmation phrase. A full redraw clears everyone's opened status and all questions, even when someone happens to draw the same person again.
+
+Use **Dropouts and late joiners** to remove or add someone after drawing. Local repairs preserve unaffected matches, opened status, and questions; changed matches must be opened again and lose their old questions. If a local repair cannot satisfy the rules, use a confirmed full redraw with an adjusted roster. After opening their recipient, a member can also use **Something wrong? → Try to fix my match** once per exchange to request the smallest valid change to their match.
+
+After opening your person, use **Ask your person** to send an anonymous question. The recipient answers under **Questions for you**; only the asker sees the answer. Helpers can use these controls for the profiles they manage.
+
+Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
+
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange**. Closing clears pairings and questions, retaining the exchange details and seal. There is no later reveal of everyone's pairings.
+
 ## Wishlists and gifts
 
 Open **Your list** from your account, then **Add an item** to paste a product link, upload a photo, or write an idea down. There is no per-list item limit. Links work without `https://`, and you can paste the text shared by a store app. **Preview link** fills in available product details; review them, add a note or your own photo, and choose **Save item**. If the store blocks previews or has no usable image, the item can still be saved with the store link and a photo you supply. Use **Edit item**, **Refresh preview**, **Move up**, **Move down**, or **Remove item** to maintain your list.
 
 Choose **Edit sizes and About me** to add sizing, preferences, or allergies. These fields save when you leave each field; wait for **Saved** before navigating away. Select **No clothes, please** if you do not want clothing. The directory's **List ready** label requires at least one item. It also requires tops, bottoms (or waist and inseam), and shoe sizes with a shoe size system, unless **No clothes, please** is selected. When helping a relative, switch to their profile in **People you help**, then edit **Your list** for them.
 
-**Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory currently lists people alphabetically; assigned-recipient highlighting awaits the draw integration. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget.
+**Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory lists people alphabetically. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget.
 
 On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
 
@@ -46,6 +64,8 @@ cp .env.example .env.local
 ```
 
 Set `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/family_gift_exchange` in `.env.local` for this local database. Generate separate random values for `AUTH_SECRET` and `ORGANIZER_INVITE_CODE` (for example, run `openssl rand -hex 32` separately for each). Keep the auth secret stable across deployments. Give the organizer invitation code only to people the app owner invites to create a family.
+
+For draw development, set `DRAW_DATABASE_URL` to the same disposable local database and generate an `ASSIGNMENT_ENCRYPTION_KEY` with `openssl rand -base64 32`. Keep that key for as long as you need to open the draws it sealed.
 
 ```sh
 pnpm db:migrate
@@ -83,3 +103,5 @@ A co-organizer can prepare a replacement for the organizer during ordinary recov
 A report involving current or recorded organizer or co-organizer authority signs out the entire family, including the reporter, and voids outstanding keys. Co-organizer appointments, passkey enrollments, and PINs set or changed from the earliest disputed session onward are invalidated. Credentials directly implicated in the disputed access are also revoked even if older, and the disputed administrators' PINs are cleared even if older. The organizer must recover through the operator command, then issue a new private key for a disputed co-organizer and any other account whose PIN was cleared. Other members can return with preserved PINs or unaffected Face ID; existing restrictions on new-device PIN sign-in still apply. Returning members see a notice that everyone was signed out for safety.
 
 Reports without administrator involvement revoke linked access and unredeemed keys issued from that access, preserving earlier independent keys and credentials. Reporting a used key from its link or code without signing in only records the time and reporting device in account and organizer activity; ask the organizer for a new private key.
+
+**My account** also lists other sessions that opened your person, with device and time. Report an unrecognized opening with **That wasn't me**. The app attempts to repair exposed matches before sealed access resumes. If repair cannot complete, the account remains available and the exchange shows recovery guidance, including a route to the organizer's confirmed redraw. See the [disputed-reveal recovery policy](docs/architecture.md#disputed-reveal-recovery) for the secrecy limits and fallback in small or constrained groups.

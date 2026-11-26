@@ -1,3 +1,4 @@
+import {sql} from "drizzle-orm";
 import {boolean, foreignKey, index, integer, pgTable, primaryKey, text, uniqueIndex, uuid} from "drizzle-orm/pg-core";
 import {familyId, instant, people} from "../db/schema";
 
@@ -144,7 +145,7 @@ export const authEvents = pgTable("auth_events", {
   id: uuid("id").defaultRandom().notNull(),
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
-    "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
+    "signIn", "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
     "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed",
   ]}).notNull(),
   deviceKind: text("device_kind"),
@@ -176,6 +177,7 @@ export const sessionDisputes = pgTable("session_disputes", {
   eventId: uuid("event_id").notNull(),
   personId: uuid("person_id").notNull(),
   disputedSessionId: uuid("disputed_session_id"),
+  affectedSessionIds: uuid("affected_session_ids").array().default(sql`'{}'::uuid[]`).notNull(),
   reportedBySessionId: uuid("reported_by_session_id").notNull(),
   at: instant("at").defaultNow().notNull(),
 }, (table) => [

@@ -58,12 +58,14 @@ export default async function FamilyPage() {
   if (!board) notFound();
   const t = await getTranslations("auth");
   const lists = await getTranslations("lists");
+  const draw = await getTranslations("draw");
   const format = await getFormatter();
   const chat = await getTranslations("notify.groupChat");
   const visibleMembers = new Map(board.members.map(({id, name}) => [id, name]));
   const coOrganizer = board.members.find(({role}) => role === "co_organizer");
   return (
     <main className={sectionClass}>
+      <Link className={linkClass} href="/exchanges" prefetch={false}>{draw("title")}</Link>
       <h1 className="text-2xl font-semibold">{board.familyName}</h1>
       <nav className="flex flex-wrap gap-4" aria-label={t("manageFamily")}>
         <Link href="/account" className={linkClass}>{t("openAccount")}</Link>
@@ -135,11 +137,11 @@ export default async function FamilyPage() {
           .map(({personA, personB}) => (
             <div key={`${personA}.${personB}`}>
               <p>{t("pairNames", {first: visibleMembers.get(personA)!, second: visibleMembers.get(personB)!})}</p>
-              {board.constraintsOpen && <AuthForm action={updatePair.bind(null, [personA, personB])} label={t("removePair")} />}
+              {board.constraintsOpen && board.exchangeId && <AuthForm action={updatePair.bind(null, board.exchangeId, [personA, personB])} label={t("removePair")} />}
             </div>
           ))}
-        {board.constraintsOpen && board.members.length >= 2 && (
-          <AuthForm action={updatePair.bind(null, null)} label={t("addPair")}>
+        {board.constraintsOpen && board.exchangeId && board.members.length >= 2 && (
+          <AuthForm action={updatePair.bind(null, board.exchangeId, null)} label={t("addPair")}>
             {(["first", "second"] as const).map((key) => (
               <label key={key} className="block">{t(key)}
                 <select name={key} className={inputClass} defaultValue="" required>

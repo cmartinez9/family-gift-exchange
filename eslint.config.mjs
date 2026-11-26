@@ -11,8 +11,8 @@ export default defineConfig(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          regex: "(^|/)draw/schema(?:\\.[cm]?ts)?$",
-          message: "Access to pairing tables belongs inside src/server/draw.",
+          regex: "(^|/)draw/(?!index(?:\\.[cm]?ts)?$)",
+          message: "Import the draw module through src/server/draw/index.",
         }],
       }],
     },

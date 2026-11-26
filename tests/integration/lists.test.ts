@@ -1,8 +1,12 @@
 import {randomUUID} from "node:crypto";
-import {eq, sql} from "drizzle-orm";
+import {and, eq, sql} from "drizzle-orm";
 import sharp from "sharp";
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
+import {signInDevice} from "../../src/server/auth/access";
+import {actFor, disputeSession} from "../../src/server/auth/security";
+import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
+import {sessions} from "../../src/server/auth/schema";
 import {exchanges, families, items, people} from "../../src/server/db/schema";
 import {
   addListItem, editListItem, getListExchangeCard, getListPhoto, getWishlist, listFamilyWishlists, moveListItem,
@@ -10,6 +14,7 @@ import {
 } from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 import type {ListPhotoStorage} from "../../src/server/lists/photo-storage";
+import type {ListViewer} from "../../src/server/lists/access";
 
 vi.mock("server-only", () => ({}));
 
@@ -33,8 +38,15 @@ const helper = viewer(helperId, lookedAfterId);
 const owner = viewer(ownerId);
 const buyer = viewer(buyerId);
 const outsider = viewer(outsiderId, outsiderId, otherFamilyId);
-const addWritten = (actor: ReturnType<typeof viewer>, id: string, title: string) =>
+const largeListActor = viewer(largeListPersonId);
+const addWritten = (actor: ListViewer, id: string, title: string) =>
   addListItem(actor, id, {kind: "note", title});
+
+function signal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return {promise, resolve};
+}
 
 beforeAll(async () => {
   await withFamily(familyId, async (tx) => {
@@ -47,10 +59,19 @@ beforeAll(async () => {
       {id: largeListPersonId, familyId, displayName: "Snowdrop"},
     ]);
     await tx.insert(people).values({id: lookedAfterId, familyId, displayName: "Acornkin", helperId});
+    for (const actor of [organizer, helper, owner, buyer, largeListActor]) {
+      const session = await signInDevice(tx, familyId, actor.personId, {hash: digest(secret()), kind: "iphone", network: null}, new Date());
+      actor.sessionId = session.id;
+      if (actor.actingAs !== actor.personId) {
+        await actFor(tx, {...actor, actingAs: actor.personId}, actor.actingAs);
+      }
+    }
   });
   await withFamily(otherFamilyId, async (tx) => {
     await tx.insert(families).values({id: otherFamilyId, name: "Other gift fixture"});
     await tx.insert(people).values({id: outsiderId, familyId: otherFamilyId, displayName: "Snowmote"});
+    const session = await signInDevice(tx, otherFamilyId, outsiderId, {hash: digest(secret()), kind: "iphone", network: null}, new Date());
+    outsider.sessionId = session.id;
   });
 });
 
@@ -69,10 +90,10 @@ describe("wishlist access and claims", () => {
     await expect(addWritten(organizer, ownerId, "Not an organizer permission")).rejects.toMatchObject({
       code: "forbidden",
     });
-    await expect(addWritten(viewer(buyerId, lookedAfterId), lookedAfterId, "Invalid helper")).rejects.toMatchObject({
+    await expect(addWritten({...buyer, actingAs: lookedAfterId}, lookedAfterId, "Invalid helper")).rejects.toMatchObject({
       code: "forbidden",
     });
-    await expect(addWritten(viewer(helperId), lookedAfterId, "Switch to helping first")).rejects.toMatchObject({
+    await expect(addWritten({...helper, actingAs: helperId}, lookedAfterId, "Switch to helping first")).rejects.toMatchObject({
       code: "forbidden",
     });
     const item = await addWritten(helper, lookedAfterId, "Model train");
@@ -164,6 +185,82 @@ describe("wishlist access and claims", () => {
   });
 });
 
+describe("live list authorization", () => {
+  it.each(["disputed session", "changed profile", "expired session"])("rejects a save after a %s during photo storage and cleans up the upload", async (change) => {
+    const personId = change === "changed profile" ? helperId : ownerId;
+    const targetId = change === "changed profile" ? lookedAfterId : ownerId;
+    const session = await withFamily(familyId, (tx) => signInDevice(
+      tx, familyId, personId, {hash: digest(secret()), kind: "computer", network: null}, new Date(),
+    ));
+    let actor = (await withFamily(familyId, (tx) => findViewer(tx, parseSession(session.cookie)!)))!;
+    if (change === "changed profile") {
+      await withFamily(familyId, (tx) => actFor(tx, actor, targetId));
+      actor = (await withFamily(familyId, (tx) => findViewer(tx, parseSession(session.cookie)!)))!;
+    }
+    const stored = signal();
+    const resume = signal();
+    const files = new Map<string, Uint8Array<ArrayBuffer>>();
+    const storage: ListPhotoStorage = {
+      async put(key, bytes) { files.set(key, Uint8Array.from(bytes)); stored.resolve(); await resume.promise; },
+      async get(key) { return files.get(key) ?? null; },
+      async remove(key) { files.delete(key); },
+    };
+    const title = `Interrupted save: ${change}`;
+    const image = await sharp({create: {width: 2, height: 2, channels: 3, background: "#aabbcc"}}).webp().toBuffer();
+    const outcome = addListItem(actor, targetId, {kind: "link", link: "https://gift.example.com/book"}, {
+      storage, resolve: async () => ({url: "https://gift.example.com/book", title, price: null, store: "gift.example.com", icon: "store", image}),
+    }).then((value) => ({value}), (error: unknown) => ({error}));
+    await stored.promise;
+    try {
+      expect(files.size).toBe(1);
+      if (change === "disputed session") {
+        await expect(withFamily(familyId, (tx) => disputeSession(tx, owner, actor.sessionId, new Date()))).resolves.toBe(true);
+      } else if (change === "changed profile") {
+        await expect(withFamily(familyId, (tx) => actFor(tx, actor, personId))).resolves.toBe(true);
+      } else {
+        await withFamily(familyId, (tx) => tx.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
+          .where(and(eq(sessions.familyId, familyId), eq(sessions.id, actor.sessionId))));
+      }
+    } finally {
+      resume.resolve();
+    }
+    expect(await outcome).toMatchObject({error: {code: "forbidden"}});
+    expect(files.size).toBe(0);
+    expect(await withFamily(familyId, (tx) => tx.select().from(items).where(and(
+      eq(items.familyId, familyId), eq(items.ownerId, targetId), eq(items.title, title),
+    )))).toEqual([]);
+    await expect(getWishlist(actor, targetId)).rejects.toMatchObject({code: "forbidden"});
+    await expect(saveAboutField(actor, targetId, "likes", "Changed after authorization"))
+      .rejects.toMatchObject({code: "forbidden"});
+    await expect(addWritten(change === "changed profile" ? helper : owner, targetId, `Allowed save: ${change}`))
+      .resolves.toMatchObject({title: `Allowed save: ${change}`});
+  });
+
+  it("rechecks a queued list request after a session dispute commits under the family lock", async () => {
+    const session = await withFamily(familyId, (tx) => signInDevice(
+      tx, familyId, ownerId, {hash: digest(secret()), kind: "computer", network: null}, new Date(),
+    ));
+    const actor = (await withFamily(familyId, (tx) => findViewer(tx, parseSession(session.cookie)!)))!;
+    let outcome!: Promise<unknown>;
+    await withFamily(familyId, async (tx) => {
+      const blocker = (await tx.execute<{pid: number}>(sql`SELECT pg_backend_pid() AS pid`)).rows[0].pid;
+      expect(await disputeSession(tx, owner, actor.sessionId, new Date())).toBe(true);
+      outcome = addWritten(actor, ownerId, "Queued unauthorized save").then((value) => ({value}), (error: unknown) => ({error}));
+      let waiting = false;
+      const until = Date.now() + 3000;
+      while (!waiting && Date.now() < until) {
+        waiting = await withFamily(familyId, async (check) => (await check.execute<{waiting: boolean}>(sql`
+          SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE ${blocker} = ANY(pg_blocking_pids(pid))) AS waiting
+        `)).rows[0].waiting);
+        if (!waiting) await new Promise((done) => setTimeout(done, 10));
+      }
+      expect(waiting).toBe(true);
+    });
+    expect(await outcome).toMatchObject({error: {code: "forbidden"}});
+    expect((await getWishlist(owner, ownerId)).items.some(({title}) => title === "Queued unauthorized save")).toBe(false);
+  });
+});
+
 describe("list editing", () => {
   it("normalizes item fields and reorders using the saved list order", async () => {
     const lower = await addListItem(helper, lookedAfterId, {kind: "note", title: "  Blue mittens  ", price: "10,25"});
@@ -184,7 +281,7 @@ describe("list editing", () => {
         familyId, ownerId: largeListPersonId, kind: "note" as const, title: `Fixture item ${position}`, position,
       })),
     ).execute());
-    const actor = viewer(largeListPersonId);
+    const actor = largeListActor;
     const added = await Promise.all([
       addWritten(actor, largeListPersonId, "Additional item A"), addWritten(actor, largeListPersonId, "Additional item B"),
     ]);
