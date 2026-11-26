@@ -5,10 +5,11 @@ import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simple
 import {withFamily} from "../../src/server/db/client";
 import {families} from "../../src/server/db/schema";
 import {createFamily, readiness} from "../../src/server/auth/families";
-import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
+import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
 import {authEvents, passkeys, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent} from "../../src/server/auth/security";
-import type {Viewer} from "../../src/server/auth";
+import {getViewer, type Viewer} from "../../src/server/auth";
+import {requestDevice, setSession} from "../../src/server/auth/request";
 import {issueKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
 import {authenticationFinish, authenticationStart, registrationFinish, registrationStart} from "../../src/server/auth/webauthn";
 import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
@@ -260,6 +261,43 @@ it("revokes the full credential chain and a PIN successor linked through a retai
     expect(stored.revokedAt).toEqual(at);
     await expect(credential.authenticate(device())).resolves.toBeNull();
   }
+  await expect(unrelatedCredential.authenticate(device())).resolves.toHaveProperty("session");
+});
+
+it("keeps enrollment linked to its authorizing session when only the device cookie changes", async () => {
+  const {familyId, viewer, session: reporter} = await fixture();
+  const originalEnrollmentDevice = device();
+  const firstCredential = await enroll(familyId, viewer.personId, originalEnrollmentDevice);
+  const unrelatedCredential = await enroll(familyId, viewer.personId, originalEnrollmentDevice);
+  const browserToken = secret();
+  const reportedDevice = {...device(), hash: digest(browserToken)};
+  const reported = (await firstCredential.authenticate(reportedDevice))!.session;
+  await setSession(familyId, reported.cookie);
+  cookieValues.set("__Host-fge-device", browserToken);
+  await expect(requestDevice()).resolves.toMatchObject({hash: reportedDevice.hash});
+  cookieValues.delete("__Host-fge-device");
+  const enrollmentDevice = await requestDevice();
+  expect(enrollmentDevice.hash).not.toBe(reportedDevice.hash);
+  expect(cookieValues.get(sessionCookie)).toBe(reported.cookie);
+  const authorizer = (await getViewer())!;
+  expect(authorizer.sessionId).toBe(reported.id);
+  const added = await enroll(familyId, viewer.personId, enrollmentDevice, authorizer);
+  const [storedCredential] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, added.id)));
+  expect(storedCredential.deviceHash).toBe(reportedDevice.hash);
+  expect(storedCredential.deviceHash).not.toBe(enrollmentDevice.hash);
+  const remote = (await added.authenticate(enrollmentDevice))!.session;
+  const view = await withFamily(familyId, (tx) => account(tx, viewer));
+  const event = view.activity.find(({kind, sessionId}) => kind === "newDevice" && sessionId === reported.id)!;
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, event.id, at))).resolves.toBe(true);
+  for (const session of [reported, remote]) {
+    await expect(resolve(session.cookie)).resolves.toBeNull();
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: at, trusted: false});
+  }
+  await expect(resolve(reporter.cookie)).resolves.toMatchObject({personId: viewer.personId});
+  await expect(firstCredential.authenticate(device())).resolves.toBeNull();
+  await expect(added.authenticate(device())).resolves.toBeNull();
   await expect(unrelatedCredential.authenticate(device())).resolves.toHaveProperty("session");
 });
 

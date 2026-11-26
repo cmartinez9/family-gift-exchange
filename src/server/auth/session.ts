@@ -40,6 +40,7 @@ async function sessionIdentity(tx: FamilyTransaction, familyId: string, id: stri
     personId: people.id,
     role: people.role,
     tokenHash: sessions.tokenHash,
+    deviceHash: sessions.deviceHash,
     actingAs: target.id,
     helperId: target.helperId,
   }).from(sessions)
@@ -66,10 +67,10 @@ export async function findViewer(tx: FamilyTransaction, session: NonNullable<Ret
   return row && matchesHash(token, row.tokenHash) ? viewerIdentity(row, familyId, id) : null;
 }
 
-export async function revalidateViewer(tx: FamilyTransaction, viewer: Viewer): Promise<Viewer | null> {
+export async function revalidateViewer(tx: FamilyTransaction, viewer: Viewer): Promise<(Viewer & {deviceHash: string}) | null> {
   const {familyId, sessionId, personId} = viewer;
   const row = await sessionIdentity(tx, familyId, sessionId);
-  return row?.personId === personId ? viewerIdentity(row, familyId, sessionId) : null;
+  return row?.personId === personId ? {...viewerIdentity(row, familyId, sessionId), deviceHash: row.deviceHash} : null;
 }
 
 export async function createSession(

@@ -89,9 +89,10 @@ export async function registrationFinish(viewer: Viewer, device: Device, respons
   const {familyId, personId} = viewer;
   return withFamily(familyId, async (tx) => {
     await lockFamily(tx, familyId);
-    if (!await revalidateViewer(tx, viewer)) return false;
+    const session = await revalidateViewer(tx, viewer);
+    if (!session) return false;
     const [inserted] = await tx.insert(passkeys).values({
-      familyId, personId, deviceHash: device.hash, id: credential.id,
+      familyId, personId, deviceHash: session.deviceHash, id: credential.id,
       publicKey: Buffer.from(credential.publicKey).toString("base64url"), counter: String(credential.counter),
     }).onConflictDoNothing().returning({id: passkeys.id});
     return Boolean(inserted);
