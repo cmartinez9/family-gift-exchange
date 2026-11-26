@@ -259,7 +259,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
 
   return (
     <Screen>
-      <EnterPin title={t("title")} lead={t("lead", {name: entry.name})} organizer={organizer} onLocked={setLocked}
+      <EnterPin title={t("title")} lead={t("lead", {name: entry.name})} organizer={organizer} onLocked={setLocked} suspended={open}
         submit={(data) => enterPin(familyId, entry.personId, {}, data)}
         note={result.success
           ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>

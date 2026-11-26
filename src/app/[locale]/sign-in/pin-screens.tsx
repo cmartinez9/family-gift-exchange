@@ -35,17 +35,21 @@ function Refusal({problem, version}: {problem: Problem; version: number}) {
 
 const settle = () => (prefersReducedMotion() ? 60 : 260);
 
-function usePinCompletion(onComplete: (pin: string) => void) {
+function usePinCompletion(onComplete: (pin: string) => void, suspended = false) {
   const timer = useRef<number | undefined>(undefined);
   const cancel = useCallback(() => {
     window.clearTimeout(timer.current);
     timer.current = undefined;
   }, []);
-  useEffect(() => cancel, [cancel]);
+  useEffect(() => {
+    if (suspended) cancel();
+    return cancel;
+  }, [cancel, suspended]);
   return {
     cancel,
     schedule(pin: string) {
       cancel();
+      if (suspended) return;
       timer.current = window.setTimeout(() => {
         timer.current = undefined;
         onComplete(pin);
@@ -159,7 +163,7 @@ export type PinRefusal = AuthResult;
  * Enter your PIN (10.2, 10.5): four digits, then the server says yes (and redirects) or why not.
  * A rest after too many tries hands over to `onLocked`.
  */
-export function EnterPin({title, lead, submit, left, note, onLocked, organizer}: {
+export function EnterPin({title, lead, submit, left, note, onLocked, organizer, suspended = false}: {
   title: string; lead: string;
   submit: (data: FormData) => Promise<AuthResult | void>;
   /** The keypad's bottom-left key: "Forgot?". */
@@ -168,6 +172,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
   note?: ReactNode;
   onLocked: (minutes: number) => void;
   organizer: string;
+  suspended?: boolean;
 }) {
   const t = useTranslations("getIn.enter");
   const pinText = useTranslations("getIn.pin");
@@ -210,15 +215,16 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
     });
   }
 
-  const completion = usePinCompletion(send);
+  const completion = usePinCompletion(send, suspended);
 
   return (
     <>
       <PageTitle title={title} lead={lead} />
       <div className="flex flex-1 flex-col px-edge pt-6 pb-[34px]">
         <PinPad fill value={pin} slotsLabel={pinText("slots", {count: pin.length})} deleteLabel={pinText("delete")}
-          bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending} left={left}
+          bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending || suspended} left={left}
           onChange={(next) => {
+            if (pending || suspended) return;
             completion.cancel();
             if (next.length) setBad(false);
             if (next.length === 1) setProblem(null);

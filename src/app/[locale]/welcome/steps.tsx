@@ -2,6 +2,7 @@
 
 import {useActionState, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
+import {unstable_rethrow} from "next/navigation";
 import {useRouter} from "@/i18n/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, IconButton, TextButton, TextLink} from "@/components/ui/button";
@@ -18,11 +19,11 @@ import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
 import {sizePresets} from "@/server/lists/validation";
 import {previewItemLink, saveProfileField} from "../lists/actions";
-import type {PreviewCard, PreviewState} from "../lists/action-types";
+import type {FormState, PreviewCard, PreviewState} from "../lists/action-types";
 import {shoeOptions} from "../lists/[personId]/profile/profile-form";
 import {preparePhoto} from "../lists/item-form";
 import {WelcomeSteps} from "../sign-in/get-in";
-import {addFirstThing} from "./actions";
+import {addFirstThing, type FirstThingState} from "./actions";
 import {shoeLabel} from "./shoe-label";
 
 /** The design's six chips; the stored value for 2XL is the preset's XXL. */
@@ -56,17 +57,43 @@ export function SizesStep({ownerId, initial, profileHref}: {
   const [systemOpen, setSystemOpen] = useState(false);
   const [changingSystem, startSystemChange] = useTransition();
   const [, start] = useTransition();
+  const saved = useRef<Record<string, string>>({...initial.sizes, noClothes: String(initial.noClothes)});
+  const latest = useRef(new Map<string, number>());
+  const request = useRef(0);
+  const queue = useRef(Promise.resolve());
   const failed = t("failed");
 
-  function save(field: string, value: string, group: "size" | "noClothes" = "size") {
-    start(async () => {
-      const result = await saveProfileField(ownerId, field, value, group);
-      if (result.error) toast({message: failed, icon: "alert"});
-    });
+  function show(field: string, value: string, group: "size" | "noClothes") {
+    if (group === "noClothes") setNoClothes(value === "true");
+    else setSizes((current) => ({...current, [field]: value}));
   }
-  function pick(kind: string, value: string) {
-    setSizes((current) => ({...current, [kind]: value}));
-    save(kind, value);
+  async function persist(field: string, value: string, group: "size" | "noClothes" = "size") {
+    let result: FormState;
+    try {
+      result = await saveProfileField(ownerId, field, value, group);
+    } catch (error) {
+      unstable_rethrow(error);
+      result = {error: "could-not-save"};
+    }
+    if (result.error) {
+      toast({message: failed, icon: "alert"});
+      return false;
+    }
+    saved.current[field] = value;
+    return true;
+  }
+  function save(field: string, value: string, group: "size" | "noClothes" = "size") {
+    const version = ++request.current;
+    latest.current.set(field, version);
+    show(field, value, group);
+    start(async () => {
+      queue.current = queue.current.then(async () => {
+        if (!await persist(field, value, group) && latest.current.get(field) === version) {
+          show(field, saved.current[field] ?? "", group);
+        }
+      });
+      await queue.current;
+    });
   }
   function step(direction: 1 | -1) {
     const options = shoeOptions[system ?? ""] ?? ADULT_SHOES;
@@ -74,7 +101,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
     const first = system === "eu" ? "38" : system === "us-kids" ? "1C" : "7.5";
     const next = index < 0 ? options.indexOf(first) : Math.max(0, Math.min(options.length - 1, index + direction));
     haptic("tick");
-    pick("shoes", options[next]);
+    save("shoes", options[next]);
   }
   const system = sizes.shoeSystem as ShoeSystem | undefined;
   const shoe = sizes.shoes;
@@ -83,19 +110,12 @@ export function SizesStep({ownerId, initial, profileHref}: {
     setSystemOpen(false);
     if (value === system) return;
     startSystemChange(async () => {
-      try {
-        const cleared = await saveProfileField(ownerId, "shoes", "", "size");
-        if (cleared.error) {
-          toast({message: failed, icon: "alert"});
-          return;
-        }
+      queue.current = queue.current.then(async () => {
+        if (!await persist("shoes", "")) return;
         setSizes((current) => ({...current, shoes: ""}));
-        const result = await saveProfileField(ownerId, "shoeSystem", value, "size");
-        if (result.error) toast({message: failed, icon: "alert"});
-        else setSizes((current) => ({...current, shoeSystem: value}));
-      } catch {
-        toast({message: failed, icon: "alert"});
-      }
+        if (await persist("shoeSystem", value)) setSizes((current) => ({...current, shoeSystem: value}));
+      });
+      await queue.current;
     });
   }
 
@@ -115,7 +135,6 @@ export function SizesStep({ownerId, initial, profileHref}: {
             </div>
             <Switch checked={noClothes} label={t("noClothes")} onCheckedChange={(on) => {
               haptic("light");
-              setNoClothes(on);
               save("noClothes", String(on), "noClothes");
             }} />
           </div>
@@ -132,13 +151,13 @@ export function SizesStep({ownerId, initial, profileHref}: {
             <div className="flex flex-col gap-2">
               <GroupHead id="tops" title={t("tops")} />
               <ChoiceChips round legend={t("tops")} legendClassName="sr-only" name="tops" value={sizes.tops ?? null}
-                options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => pick("tops", value)} />
+                options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => save("tops", value)} />
             </div>
             <div className="flex flex-col gap-2">
               <GroupHead id="bottoms" title={t("bottoms")}
                 right={<TextLink href={profileHref} transition="push" className="min-h-12 px-0 text-ink">{t("waistLength")}</TextLink>} />
               <ChoiceChips round legend={t("bottoms")} legendClassName="sr-only" name="bottoms" value={sizes.bottoms ?? null}
-                options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => pick("bottoms", value)} />
+                options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => save("bottoms", value)} />
             </div>
             <div className="flex flex-col gap-2" role="group" aria-labelledby="shoes">
               <GroupHead id="shoes" title={t("shoes")}
@@ -146,8 +165,11 @@ export function SizesStep({ownerId, initial, profileHref}: {
                   {system ? t(`system.${system}`) : t("systemNone")}
                 </TextButton>} />
               {system === "other" ? (
-                <TextField label={t("shoes")} defaultValue={shoe ?? ""} maxLength={40} surface="white" disabled={changingSystem}
-                  onBlur={(event) => pick("shoes", event.currentTarget.value)} />
+                <TextField label={t("shoes")} value={shoe ?? ""} maxLength={40} surface="white" disabled={changingSystem}
+                  onChange={(event) => {
+                    latest.current.set("shoes", ++request.current);
+                    show("shoes", event.target.value, "size");
+                  }} onBlur={(event) => save("shoes", event.currentTarget.value)} />
               ) : <div className="flex items-center gap-2.5">
                 <IconButton icon="minus" label={t("smaller")} disabled={changingSystem} onClick={() => step(-1)} />
                 <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title",
@@ -191,7 +213,14 @@ export function AddStep({ownerId}: {ownerId: string}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("words");
   const [title, setTitle] = useState("");
-  const [state, submit, pending] = useActionState(addFirstThing.bind(null, ownerId), {});
+  const [state, submit, pending] = useActionState(async (previous: FirstThingState, form: FormData): Promise<FirstThingState> => {
+    try {
+      return await addFirstThing(ownerId, previous, form);
+    } catch (error) {
+      unstable_rethrow(error);
+      return {error: "could-not-save"};
+    }
+  }, {});
   const camera = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<{file: File; url: string} | null>(null);
   const [preparing, setPreparing] = useState(false);

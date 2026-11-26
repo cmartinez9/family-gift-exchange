@@ -119,6 +119,38 @@ it("cancels a pending sign-in when leaving the PIN screen", async () => {
   expect(submit).not.toHaveBeenCalled();
 });
 
+it("cancels PIN completion and blocks input while the used-key recovery sheet is open", async () => {
+  vi.useFakeTimers();
+  actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+  await render(<KeyAlreadyOpened familyId="family" value="key" typed={false} organizer="Rosa"
+    entry={{personId: "person", name: "Ana", familyName: "Family", available: false, usedAt: "2030-01-01"}} />);
+  const {sheet, finish} = prepareSheet();
+  await type("4268");
+  await advance(100);
+  await click(en.getIn.enter.forgot);
+  expect(sheet.open).toBe(true);
+  expect(button("4").disabled).toBe(true);
+  expect(button(en.getIn.pin.delete).disabled).toBe(true);
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true}));
+    window.dispatchEvent(new KeyboardEvent("keydown", {key: "9", bubbles: true}));
+  });
+  await advance(500);
+  expect(actions.enterPin).not.toHaveBeenCalled();
+  expect(container.querySelector('[data-filled][role="img"]')?.getAttribute("aria-label")).toBe("4 of 4 digits typed");
+  expect(sheet.open).toBe(true);
+  await click(en.ui.close);
+  await finish();
+  expect(button("4").disabled).toBe(false);
+  await advance(260);
+  expect(actions.enterPin).not.toHaveBeenCalled();
+  await click(en.getIn.pin.delete);
+  await click("8");
+  await advance(260);
+  expect(actions.enterPin).toHaveBeenCalledTimes(1);
+  expect(container.querySelector("h1")?.textContent).toBe(en.getIn.locked.title);
+});
+
 it("lets both PIN creation entries be corrected before checking them", async () => {
   vi.useFakeTimers();
   const save = vi.fn().mockResolvedValue(undefined);
@@ -262,6 +294,67 @@ it.each(["us-women", "us-men"])("clamps %s at the adult maximum instead of stepp
   expect(lists.saveProfileField).toHaveBeenLastCalledWith("person", "shoes", "13", "size");
 });
 
+async function chooseSize(field: string, value: string) {
+  await act(async () => container.querySelector<HTMLInputElement>(`input[name="${field}"][value="${value}"]`)!.click());
+}
+
+it.each(["returned", "transport"])("restores the saved size after a %s failure so the same choice can be retried", async (failure) => {
+  if (failure === "transport") lists.saveProfileField.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  else lists.saveProfileField.mockResolvedValueOnce({error: "could-not-save"});
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {tops: "S"}}} profileHref="/profile" />);
+  await chooseSize("tops", "M");
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe("S");
+  await chooseSize("tops", "M");
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe("M");
+  expect(lists.saveProfileField.mock.calls).toEqual([
+    ["person", "tops", "M", "size"], ["person", "tops", "M", "size"],
+  ]);
+});
+
+it.each(["returned", "transport"])("restores the clothing preference after a %s failure", async (failure) => {
+  if (failure === "transport") lists.saveProfileField.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  else lists.saveProfileField.mockResolvedValueOnce({error: "could-not-save"});
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {}}} profileHref="/profile" />);
+  await click(en.getIn.sizes.noClothes);
+  expect(button(en.getIn.sizes.noClothes).getAttribute("aria-checked")).toBe("false");
+  await click(en.getIn.sizes.noClothes);
+  expect(button(en.getIn.sizes.noClothes).getAttribute("aria-checked")).toBe("true");
+  expect(lists.saveProfileField).toHaveBeenCalledTimes(2);
+});
+
+it.each([false, true])("keeps newer choices visible and rolls failed writes back to the last saved size (earlier save: %s)", async (earlierSaved) => {
+  const first = Promise.withResolvers<object>();
+  const second = Promise.withResolvers<object>();
+  lists.saveProfileField.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {tops: "S"}}} profileHref="/profile" />);
+  await chooseSize("tops", "M");
+  await chooseSize("tops", "L");
+  expect(lists.saveProfileField).toHaveBeenCalledTimes(1);
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe("L");
+  await act(async () => first.resolve(earlierSaved ? {status: "saved"} : {error: "could-not-save"}));
+  expect(lists.saveProfileField).toHaveBeenCalledTimes(2);
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe("L");
+  await act(async () => second.resolve({error: "could-not-save"}));
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe(earlierSaved ? "M" : "S");
+  await chooseSize("tops", "L");
+  expect(lists.saveProfileField).toHaveBeenCalledTimes(3);
+  expect(container.querySelector<HTMLInputElement>('input[name="tops"]:checked')?.value).toBe("L");
+});
+
+it("does not overwrite a custom shoe size edited while an older save fails", async () => {
+  const first = Promise.withResolvers<object>();
+  lists.saveProfileField.mockReturnValueOnce(first.promise);
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {shoeSystem: "other", shoes: "Small"}}} profileHref="/profile" />);
+  const field = container.querySelector<HTMLInputElement>('[aria-labelledby="shoes"] input')!;
+  await editField('[aria-labelledby="shoes"] input', "Medium");
+  await act(async () => { field.dispatchEvent(new FocusEvent("focusout", {bubbles: true})); });
+  await editField('[aria-labelledby="shoes"] input', "Large");
+  await act(async () => first.resolve({error: "could-not-save"}));
+  expect(field.value).toBe("Large");
+  await act(async () => { field.dispatchEvent(new FocusEvent("focusout", {bubbles: true})); });
+  expect(lists.saveProfileField).toHaveBeenLastCalledWith("person", "shoes", "Large", "size");
+});
+
 it("clears the stored shoe size before changing systems and waits for a new selection", async () => {
   const persisted: Record<string, string> = {shoeSystem: "us-women", shoes: "7.5"};
   const cleared = Promise.withResolvers<void>();
@@ -296,6 +389,25 @@ it("keeps the old system if clearing its saved size fails", async () => {
   expect(lists.saveProfileField).toHaveBeenCalledExactlyOnceWith("person", "shoes", "", "size");
   expect(button(en.getIn.sizes.system["us-women"]).disabled).toBe(false);
   expect(container.querySelector('[aria-labelledby="shoes"] [aria-live="polite"]')?.textContent).toBe("7½");
+});
+
+it("waits for earlier size writes before clearing shoes for a new system", async () => {
+  const first = Promise.withResolvers<object>();
+  lists.saveProfileField.mockReturnValueOnce(first.promise);
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {shoeSystem: "us-women", shoes: "7.5"}}} profileHref="/profile" />);
+  await click(en.getIn.sizes.bigger);
+  const {finish} = prepareSheet();
+  await click(en.getIn.sizes.system["us-women"]);
+  await chooseSize("shoeSystem", "eu");
+  await finish();
+  expect(lists.saveProfileField).toHaveBeenCalledTimes(1);
+  await act(async () => first.resolve({status: "saved"}));
+  expect(lists.saveProfileField.mock.calls).toEqual([
+    ["person", "shoes", "8", "size"],
+    ["person", "shoes", "", "size"],
+    ["person", "shoeSystem", "eu", "size"],
+  ]);
+  expect(container.querySelector('[aria-labelledby="shoes"] [aria-live="polite"]')?.textContent).toBe(en.getIn.sizes.pickOne);
 });
 
 it.each([
@@ -473,7 +585,8 @@ it("ignores a stale preview rejection after a newer link has loaded", async () =
   expect(container.querySelector("h2")?.textContent).toBe("A sweater");
 });
 
-it("preserves a written title after a failed save and submits it again", async () => {
+it.each(["returned", "transport"])("preserves a written title after a %s save failure and submits it again", async (failure) => {
+  if (failure === "transport") welcome.addFirstThing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
   await render(<AddStep ownerId="person" />);
   await editField('input[name="title"]', "Gift card for coffee");
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -486,8 +599,9 @@ it("preserves a written title after a failed save and submits it again", async (
   ]);
 });
 
-it("preserves the link note and preference when retrying a failed save", async () => {
+it.each(["returned", "transport"])("preserves the link note and preference when retrying a %s save failure", async (failure) => {
   vi.useFakeTimers();
+  if (failure === "transport") welcome.addFirstThing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
   lists.previewItemLink.mockResolvedValue(preview);
   await render(<AddStep ownerId="person" />);
   await click(en.getIn.add.paste);
@@ -515,7 +629,34 @@ async function selectPhoto(file: File) {
   await act(async () => { input.dispatchEvent(new Event("change", {bubbles: true})); });
 }
 
-it("prepares a large camera photo and submits the smaller file", async () => {
+it.each(["words", "photo", "link"])("preserves framework redirects when submitting a %s draft", async (mode) => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let navigation: unknown;
+  try {
+    redirect("/en/sign-in");
+  } catch (error) {
+    navigation = error;
+  }
+  welcome.addFirstThing.mockRejectedValueOnce(navigation);
+  const caught = vi.fn();
+  await render(<NavigationBoundary onError={caught}><AddStep ownerId="person" /></NavigationBoundary>);
+  if (mode === "link") {
+    lists.previewItemLink.mockResolvedValue(preview);
+    await click(en.getIn.add.paste);
+    await editLink("https://shop.example/gift");
+    await advance(500);
+  } else {
+    if (mode === "photo") await selectPhoto(new File(["photo"], "photo.jpg", {type: "image/jpeg"}));
+    await editField('input[name="title"]', "A sweater");
+  }
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
+  expect(caught).toHaveBeenCalledExactlyOnceWith(navigation);
+  expect(container.textContent).toBe("Navigation handled");
+});
+
+it.each(["returned", "transport"])("prepares a large camera photo and preserves it after a %s save failure", async (failure) => {
+  if (failure === "transport") welcome.addFirstThing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
   const decoded = Promise.withResolvers<void>();
   vi.stubGlobal("Image", class {
     naturalWidth = 4000;
