@@ -650,7 +650,7 @@
       "asked": "{organizer} has been asked",
       "when": "Today, {time}",
       "body": "{organizer} will send you a new key in your chat. Open it and make a new PIN.",
-      "only": "Only {organizer} can reset a PIN, and you'll see when it happens.",
+      "only": "Only {organizer} or a co-organizer can reset a PIN, and you'll see when it happens.",
       "done": "Done",
       "keep": "I remember it now"
     },

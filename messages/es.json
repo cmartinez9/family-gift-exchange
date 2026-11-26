@@ -650,7 +650,7 @@
       "asked": "Ya le avisamos a {organizer}",
       "when": "Hoy, {time}",
       "body": "{organizer} te mandará una llave nueva por tu chat. Ábrela y crea un PIN nuevo.",
-      "only": "Solo {organizer} puede restablecer un PIN, y verás cuando lo haga.",
+      "only": "Solo {organizer} o un coorganizador puede restablecer un PIN, y verás cuando ocurra.",
       "done": "Listo",
       "keep": "Ya me acordé"
     },
