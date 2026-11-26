@@ -24,7 +24,7 @@ export const exchangeStatus = pgEnum("exchange_status", ["setup", "open", "drawn
 export const participantStatus = pgEnum("participant_status", ["in", "out"]);
 export const keepApartReason = pgEnum("keep_apart_reason", ["partner", "custom"]);
 export const itemKind = pgEnum("item_kind", ["link", "photo", "note"]);
-export const messageChannel = pgEnum("message_channel", ["email", "push"]);
+export const messageChannel = pgEnum("message_channel", ["push"]);
 export const messageStatus = pgEnum("message_status", ["captured", "pending", "sent", "failed"]);
 
 export const families = pgTable("families", {

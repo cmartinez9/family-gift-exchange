@@ -6,7 +6,7 @@ import {redirect} from "next/navigation";
 import {withFamily} from "@/server/db/client";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
-  allowCodeTry, inspectKey, keyCodePattern, lockFamily, parseLinkKey,
+  allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, parseLinkKey,
   redeemKey, requestPinReset, signInWithPin,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
@@ -86,6 +86,12 @@ export async function forgotPin(familyId: string, personId: string): Promise<Aut
   const device = await requestDevice();
   await withFamily(familyId, (tx) => requestPinReset(tx, familyId, personId, device, new Date()));
   return {success: "resetRequested"};
+}
+
+export async function reportUsedKey(familyId: string, value: string, typed: boolean): Promise<AuthResult> {
+  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean") return {error: "unavailable"};
+  const device = await requestDevice();
+  return withFamily(familyId, (tx) => disputeUsedKey(tx, familyId, value, typed, authenticatorSecret(), device, new Date()));
 }
 
 export type CodeResult = AuthResult & {

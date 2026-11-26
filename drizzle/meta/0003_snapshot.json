@@ -2541,7 +2541,6 @@
       "name": "message_channel",
       "schema": "public",
       "values": [
-        "email",
         "push"
       ]
     },

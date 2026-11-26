@@ -73,13 +73,13 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     personId: pinResetRequests.personId, deviceKind: pinResetRequests.deviceKind, at: pinResetRequests.requestedAt,
   }).from(pinResetRequests).where(and(eq(pinResetRequests.familyId, familyId), isNull(pinResetRequests.answeredAt)))
     .orderBy(desc(pinResetRequests.requestedAt));
-  const activity = await tx.select({personId: authEvents.personId, kind: authEvents.kind, at: authEvents.at})
+  const activity = await tx.select({personId: authEvents.personId, kind: authEvents.kind, at: authEvents.at, deviceKind: authEvents.deviceKind})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId),
-      inArray(authEvents.kind, ["resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"])))
+      inArray(authEvents.kind, ["keyDisputed", "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"])))
     .orderBy(desc(authEvents.at)).limit(30);
   return {
     familyName: family.name, members, devices, groups, pairs, requests, sent, activity,
-    canSendKeys: await isManager(tx, viewer, true),
+    canSendKeys: true,
     constraintsOpen: exchange?.status === "open" || exchange?.status === "setup",
   };
 }
@@ -159,7 +159,7 @@ export async function removeMember(tx: FamilyTransaction, viewer: Viewer, person
 export async function changeCoOrganizer(tx: FamilyTransaction, viewer: Viewer, personId: string | null) {
   const {familyId} = viewer;
   await lockFamily(tx, familyId);
-  if (!await isManager(tx, viewer, true)) return "forbidden";
+  if (!await isManager(tx, viewer)) return "forbidden";
   if (personId) {
     const person = await activePerson(tx, familyId, personId);
     if (!person || person.helperId || person.role === "organizer") return "unavailable";

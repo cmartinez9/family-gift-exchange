@@ -2,7 +2,7 @@ CREATE TYPE "public"."exchange_status" AS ENUM('setup', 'open', 'drawn', 'locked
 CREATE TYPE "public"."item_kind" AS ENUM('link', 'photo', 'note');--> statement-breakpoint
 CREATE TYPE "public"."keep_apart_reason" AS ENUM('partner', 'custom');--> statement-breakpoint
 CREATE TYPE "public"."language" AS ENUM('en', 'es');--> statement-breakpoint
-CREATE TYPE "public"."message_channel" AS ENUM('email', 'push');--> statement-breakpoint
+CREATE TYPE "public"."message_channel" AS ENUM('push');--> statement-breakpoint
 CREATE TYPE "public"."message_status" AS ENUM('captured', 'pending', 'sent', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."participant_status" AS ENUM('in', 'out');--> statement-breakpoint
 CREATE TYPE "public"."person_role" AS ENUM('organizer', 'co_organizer', 'member');--> statement-breakpoint

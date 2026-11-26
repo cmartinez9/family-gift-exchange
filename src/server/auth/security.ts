@@ -47,7 +47,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   await lockFamily(tx, familyId);
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
-  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked") return false;
+  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed") return false;
   let targetId = event.sessionId;
   if (event.keyId) {
     const [key] = await tx.update(personalKeys).set({revokedAt: now}).where(and(
@@ -83,4 +83,11 @@ export async function listSessionDisputes(tx: FamilyTransaction, familyId: strin
   return tx.select({sessionId: sessionDisputes.disputedSessionId, at: sessionDisputes.at})
     .from(sessionDisputes).where(and(eq(sessionDisputes.familyId, familyId), eq(sessionDisputes.personId, personId)))
     .orderBy(desc(sessionDisputes.at));
+}
+
+export async function listKeyDisputes(tx: FamilyTransaction, familyId: string, personId: string) {
+  return tx.select({keyId: authEvents.keyId, sessionId: authEvents.sessionId, deviceKind: authEvents.deviceKind, at: authEvents.at})
+    .from(authEvents).where(and(
+      eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.kind, "keyDisputed"),
+    )).orderBy(desc(authEvents.at));
 }

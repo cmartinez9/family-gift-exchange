@@ -162,9 +162,9 @@ export default async function FamilyPage() {
         <section>
           <h2 className="text-xl font-semibold">{t("familyActivity")}</h2>
           <ul className="space-y-2">
-            {board.activity.map(({personId, kind, at}, index) => (
+            {board.activity.map(({personId, kind, at, deviceKind}, index) => (
               <li key={`${at.toISOString()}.${index}`}>
-                <strong>{visibleMembers.get(personId)}</strong> {t(`event.${kind}`)} <time dateTime={at.toISOString()}>{format.dateTime(at, activityDateFormat)}</time>
+                <strong>{visibleMembers.get(personId)}</strong> {t(`event.${kind}`)} {deviceKind && t(`device.${deviceKind}` as Parameters<typeof t>[0])} <time dateTime={at.toISOString()}>{format.dateTime(at, activityDateFormat)}</time>
               </li>
             ))}
           </ul>

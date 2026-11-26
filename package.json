@@ -22,7 +22,8 @@
     "test:all": "pnpm lint && pnpm typecheck && pnpm check:i18n && pnpm test:unit && pnpm test:integration && pnpm test:e2e",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
-    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts"
+    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
+    "admin:organizer-key": "node --env-file-if-exists=.env.local --import tsx scripts/organizer-key.ts"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",

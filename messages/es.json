@@ -136,7 +136,8 @@
       "resetPrepared": "Se preparó una llave nueva después de tu solicitud para restablecer el PIN.",
       "resetPreparedWithoutRequest": "Se preparó una llave nueva sin una solicitud para restablecer el PIN.",
       "resetSent": "Se envió una llave nueva para restablecer tu PIN.",
-      "resetUsed": "Se usó una llave nueva para reemplazar tu PIN."
+      "resetUsed": "Se usó una llave nueva para reemplazar tu PIN.",
+      "keyDisputed": "Alguien con tu llave usada reportó que no fue quien la usó por primera vez."
     },
     "feedback": {
       "pinLength": "Escribe cuatro dígitos.",
@@ -164,7 +165,8 @@
       "differentPeople": "Elige a dos personas distintas.",
       "shareUnavailable": "El menú para compartir no está disponible aquí. Prueba con WhatsApp o copia el mensaje.",
       "faceAgain": "Vuelve a iniciar sesión con Face ID antes de cambiar tu PIN.",
-      "pinChanged": "Tu PIN nuevo está listo."
+      "pinChanged": "Tu PIN nuevo está listo.",
+      "keyDisputed": "Reportado. Tu cuenta no ha cambiado. Pídele una llave privada nueva al organizador."
     }
   }
 }

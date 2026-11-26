@@ -129,7 +129,7 @@ export const authEvents = pgTable("auth_events", {
   id: uuid("id").defaultRandom().notNull(),
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
-    "keyPrepared", "keySent", "keyUsed", "newDevice", "pinLocked", "newDevicesLocked",
+    "keyPrepared", "keySent", "keyUsed", "keyDisputed", "newDevice", "pinLocked", "newDevicesLocked",
     "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed",
   ]}).notNull(),
   deviceKind: text("device_kind"),

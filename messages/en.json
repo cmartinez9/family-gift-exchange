@@ -136,7 +136,8 @@
       "resetPrepared": "A new key was prepared after your PIN reset request.",
       "resetPreparedWithoutRequest": "A new key was prepared without a PIN reset request.",
       "resetSent": "A new key was sent to reset your PIN.",
-      "resetUsed": "A new key was used to replace your PIN."
+      "resetUsed": "A new key was used to replace your PIN.",
+      "keyDisputed": "Someone with your used key reported that its first use was not them."
     },
     "feedback": {
       "pinLength": "Enter four digits.",
@@ -164,7 +165,8 @@
       "differentPeople": "Choose two different people.",
       "shareUnavailable": "The share menu isn't available here. Try WhatsApp or copy the message.",
       "faceAgain": "Sign in with Face ID again before changing your PIN.",
-      "pinChanged": "Your new PIN is ready."
+      "pinChanged": "Your new PIN is ready.",
+      "keyDisputed": "Reported. Your account has not been changed. Ask the organizer for a new private key."
     }
   }
 }

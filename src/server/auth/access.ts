@@ -3,7 +3,7 @@ import {and, count, eq, gt, isNull, ne} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {families, people, participants} from "../db/schema";
 import type {Viewer} from "./index";
-import {authEvents, authLimits, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
+import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
 import {createSession, digest, secret, seasonSeconds, uuidPattern} from "./session";
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
 
@@ -36,10 +36,10 @@ export async function activePerson(tx: FamilyTransaction, familyId: string, pers
   return person;
 }
 
-export async function isManager(tx: FamilyTransaction, viewer: Viewer, primary = false) {
+export async function isManager(tx: FamilyTransaction, viewer: Viewer) {
   if (!viewer.isOrganizer || viewer.actingAs !== viewer.personId) return false;
   const person = await activePerson(tx, viewer.familyId, viewer.personId);
-  return person?.role === "organizer" || (!primary && person?.role === "co_organizer");
+  return person?.role === "organizer" || person?.role === "co_organizer";
 }
 
 const credentialFor = (familyId: string, personId: string) =>
@@ -98,9 +98,28 @@ export async function issueKey(
 ) {
   const {familyId} = viewer;
   await lockFamily(tx, familyId);
-  if (!await isManager(tx, viewer, true)) return {error: "forbidden"} as const;
+  if (!await isManager(tx, viewer)) return {error: "forbidden"} as const;
   const person = await activePerson(tx, familyId, personId);
   if (!person || person.helperId || (viewer.personId === personId && kind !== "reset")) return {error: "unavailable"} as const;
+  return prepareKey(tx, familyId, person, viewer.personId, kind, pepper, now);
+}
+
+export async function issueOrganizerKey(tx: FamilyTransaction, familyId: string, pepper: string, now: Date) {
+  if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
+  const managers = await tx.select().from(people).where(and(
+    eq(people.familyId, familyId), isNull(people.removedAt), ne(people.role, "member"),
+  ));
+  if (managers.some(({role}) => role === "co_organizer")) return {error: "coOrganizerAvailable"} as const;
+  const organizer = managers.find(({role}) => role === "organizer");
+  if (!organizer || organizer.helperId) return {error: "unavailable"} as const;
+  return prepareKey(tx, familyId, organizer, organizer.id, "reset", pepper, now);
+}
+
+async function prepareKey(
+  tx: FamilyTransaction, familyId: string, person: typeof people.$inferSelect, issuedBy: string,
+  kind: KeyKind, pepper: string, now: Date,
+) {
+  const personId = person.id;
   const joined = await credential(tx, familyId, personId);
   if (Boolean(joined) !== (kind === "reset")) return {error: "unavailable"} as const;
 
@@ -114,7 +133,7 @@ export async function issueKey(
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeCode();
     const [inserted] = await tx.insert(personalKeys).values({
-      familyId, id, personId, issuedBy: viewer.personId, tokenHash: digest(token),
+      familyId, id, personId, issuedBy, tokenHash: digest(token),
       codeHash: keyedHash(pepper, "key-code", `${familyId}.${code}`), kind, createdAt: now, expiresAt,
     }).onConflictDoNothing().returning({id: personalKeys.id});
     if (!inserted) continue;
@@ -134,18 +153,37 @@ export async function issueKey(
 
 export async function markKeySent(tx: FamilyTransaction, viewer: Viewer, keyId: string, now: Date) {
   await lockFamily(tx, viewer.familyId);
-  if (!await isManager(tx, viewer, true)) return false;
+  if (!await isManager(tx, viewer)) return false;
   const [key] = await tx.update(personalKeys).set({sentAt: now}).where(and(
     eq(personalKeys.familyId, viewer.familyId), eq(personalKeys.id, keyId), eq(personalKeys.issuedBy, viewer.personId),
     isNull(personalKeys.sentAt), isNull(personalKeys.revokedAt),
   )).returning({personId: personalKeys.personId, kind: personalKeys.kind});
   if (!key) return false;
   const {familyId} = viewer;
-  if (key.kind === "reset") await answerResetRequests(tx, familyId, key.personId, now);
   await tx.insert(authEvents).values({
     familyId, personId: key.personId, keyId, kind: key.kind === "reset" ? "resetSent" : "keySent", at: now,
   });
   return true;
+}
+
+export async function disputeUsedKey(
+  tx: FamilyTransaction, familyId: string, value: string, typed: boolean, pepper: string, device: Device, now: Date,
+) {
+  if (!(typed ? keyCodePattern : keyTokenPattern).test(value)) return {error: "unavailable"} as const;
+  if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
+  if (typed && !await allowCodeTry(tx, familyId, device, now)) return {error: "tryLater"} as const;
+  const key = await lookupKey(tx, familyId, pepper, value, typed);
+  if (!key?.usedAt) return {error: "unavailable"} as const;
+  const person = await activePerson(tx, familyId, key.personId);
+  if (!person || person.helperId) return {error: "unavailable"} as const;
+  const [existing] = await tx.select({id: authEvents.id}).from(authEvents).where(and(
+    eq(authEvents.familyId, familyId), eq(authEvents.keyId, key.id), eq(authEvents.kind, "keyDisputed"),
+  )).limit(1);
+  if (!existing) await tx.insert(authEvents).values({
+    familyId, personId: key.personId, keyId: key.id, sessionId: key.usedSessionId,
+    kind: "keyDisputed", deviceKind: device.kind, at: now,
+  });
+  return {success: "keyDisputed"} as const;
 }
 
 export async function signInDevice(tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date) {
@@ -199,6 +237,14 @@ export async function redeemKey(
   const pinHash = await hashPin(pepper, pin);
   await tx.insert(pinCredentials).values({familyId, personId: person.id, pinHash, joinedAt: now})
     .onConflictDoUpdate({target: [pinCredentials.familyId, pinCredentials.personId], set: {pinHash, ...clearedAttempts}});
+  if (key.kind === "reset") {
+    await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+      eq(sessions.familyId, familyId), eq(sessions.personId, person.id),
+    ));
+    await tx.update(passkeys).set({revokedAt: now}).where(and(
+      eq(passkeys.familyId, familyId), eq(passkeys.personId, person.id),
+    ));
+  }
   const session = await signInDevice(tx, familyId, person.id, device, now);
   await tx.update(personalKeys).set({usedAt: now, usedSessionId: session.id}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.id, key.id),

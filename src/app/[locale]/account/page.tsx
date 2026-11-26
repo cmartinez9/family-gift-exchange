@@ -45,7 +45,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
               <p>{t(`event.${kind}`)} {deviceKind && t(`device.${deviceKind}` as Parameters<typeof t>[0])}</p>
               <time dateTime={at.toISOString()}>{format.dateTime(at, activityDateFormat)}</time>
               {disputed ? <p>{t("alreadyReported")}</p> : sessionId !== viewer.sessionId
-                && kind !== "pinLocked" && kind !== "newDevicesLocked" && (
+                && kind !== "pinLocked" && kind !== "newDevicesLocked" && kind !== "keyDisputed" && (
                   <AuthForm action={reportEvent.bind(null, id)} label={t("notMe")} />
                 )}
             </li>

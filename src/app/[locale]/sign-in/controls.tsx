@@ -5,7 +5,7 @@ import {startAuthentication, startRegistration} from "@simplewebauthn/browser";
 import {useFormatter, useTranslations} from "next-intl";
 import {Link, useRouter} from "@/i18n/navigation";
 import {
-  beginFaceId, finishFaceIdEnrollment, finishFaceIdSignIn, forgotPin, previewCode, useKey, type AuthResult, type CodeResult,
+  beginFaceId, finishFaceIdEnrollment, finishFaceIdSignIn, forgotPin, previewCode, reportUsedKey, useKey, type AuthResult, type CodeResult,
 } from "./actions";
 
 import {activityDateFormat, buttonClass, inputClass, linkClass} from "./styles";
@@ -109,12 +109,19 @@ export function KeyClaim({familyId, value, typed, entry}: KeyClaimProps) {
   const t = useTranslations("auth");
   const format = useFormatter();
   const [choice, setChoice] = useState<"me" | "helper" | null>(null);
+  const [dispute, setDispute] = useState<AuthResult>({});
+  const [pending, transition] = useTransition();
   const returnUrl = `/sign-in?family=${familyId}&person=${entry.personId}`;
   if (entry.usedAt) {
     return (
       <div className="space-y-3">
         <p>{t("usedKeyWhen", {at: format.dateTime(new Date(entry.usedAt), activityDateFormat)})}</p>
         {entry.usedDevice && <p>{t("usedKeyDevice", {device: t(`device.${entry.usedDevice}` as Parameters<typeof t>[0])})}</p>}
+        <button type="button" className={buttonClass} disabled={pending || Boolean(dispute.success)}
+          onClick={() => transition(async () => setDispute(await reportUsedKey(familyId, value, typed)))}>
+          {t("notMe")}
+        </button>
+        <AuthFeedback state={dispute} />
         <Link className={linkClass} href={returnUrl}>{t("returningSignIn", {name: entry.name})}</Link>
         <ResetButton familyId={familyId} personId={entry.personId} />
       </div>
