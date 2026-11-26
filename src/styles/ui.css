@@ -1,6 +1,6 @@
 /*
  * Sweater Weather: component and motion styles that utilities cannot express.
- * Timings and easings come from design/DESIGN.md and the prototype (fge-ui-final/prototype).
+ * Token ownership and design rules: docs/architecture.md#design-system.
  */
 
 /* ---------------- yarn blocks: the colour says what the card is ---------------- */

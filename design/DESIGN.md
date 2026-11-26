@@ -259,11 +259,13 @@ components:
 
 ## Overview
 
+This rulebook describes the target product experience. See [implementation coverage](../docs/architecture.md#design-system) for the foundations available in this phase and the remaining screen integration.
+
 **Creative North Star: "The Family Sweater"**
 
 The app is one Christmas sweater the family knits together. The ground is a flat, drenched sweater red. Everything you read and press sits on flat yarn blocks: borderless cards with 32px corners, each in one of the sweater's yarns, and the yarn says what the card is. Only a few things are stitched, drawn as real V-shaped knit stitches: the countdown, a greeting, your person's name, and the pictures of the season (snowflake, gift, lock, tree). Everything else is plain, readable Rubik.
 
-This replaces the round-3 system's ribbed cuff. The captain called the cuffed card "ai slop because of the border" and picked "the yarn blocks". Nothing in the final system has an edge band, a border, or a shadow.
+This replaces the round-3 system's ribbed cuff. The captain called the cuffed card "ai slop because of the border" and picked "the yarn blocks". Cards have no edge band, border, or shadow.
 
 The density is low and calm, built for Rosa, 64, on her iPhone. Each screen has one clear next step. The one authored moment is the reveal: you hold the knitted gift, it unravels row by row, the yarn knits your person's name stitch by stitch, and the ground turns pine. After that, the name stays knitted on a pine "pass" at the top of Home and Family, the way a boarding pass stays on top in Apple Wallet.
 
@@ -272,7 +274,7 @@ The density is low and calm, built for Rosa, 64, on her iPhone. Each screen has 
 - Yarn-block cards; colour carries meaning, and words always say it too.
 - One type scale, one 20px edge, one icon set, one sheet, one toast, one mode banner.
 - Stitched lettering only for names, numbers and moments.
-- No shadows, borders or edge bands. Depth comes from colour, a scrim, and things hanging on yarn.
+- No card shadows, borders or edge bands. Depth comes from colour, a scrim, and things hanging on yarn.
 - Motion behaves like yarn: rows unravel, stitches knit, tags swing on a strand.
 
 ## Colors
@@ -329,10 +331,12 @@ Each card has a track one step darker (`--card-track`, `--card-track-next`, `--c
 | Label | 13 / 800 caps / +0.06em | Only Home's season label and list counts ("4 THINGS") |
 | Keypad | 30 / 500 | PIN digits |
 
-Nothing else. The generator refuses any size off this scale (`t()` in `build/sys.mjs` throws). The only exceptions are the "largest text size" frame (13.5), which shows what Dynamic Type does, and the outside-the-app chat mock (1.1).
+Use the named typography utilities in [`src/styles/tokens.css`](../src/styles/tokens.css). Text must remain readable when enlarged; allow wrapping and growth rather than shrinking it to fit.
 
 ### The stitched alphabet
-A knit chart 6 cells wide and 9 rows tall (I is 4, the exclamation mark 2), one empty column between letters. Glyphs exist for 0 to 9 and A B C D E H I K L M N O R S T W Y and !. Any family name that needs another letter needs it drawn on the same grid before the build ships (the real family's names decide this).
+
+The supported glyphs and their grid live in [`STITCHED_ALPHABET`](../src/components/ui/knit/knit.ts). `StitchedText` and `UnravelReveal` display names with unsupported characters in heavy Rubik instead. Extend that alphabet on the same grid when adding more stitched letters.
+
 - **Cells in use:** 10.5px for the Home countdown, 10px for greetings ("HI ROSA!", "ALL SET!"), 11.5px for the revealed name, 7.5px for the name on your person's page, 6.4px on the pass, 8.5px for "TODAY".
 - **Colour:** yarn white on red or pine. Never ink, never on a yarn-white or gold card.
 
@@ -345,13 +349,13 @@ A knit chart 6 cells wide and 9 rows tall (I is 4, the exclamation mark 2), one 
 
 ## Layout
 
-One 390 by 844 phone column.
+The reference frame is 390 by 844. The web shell is a fluid phone column; its width limit and safe-area insets are defined in [`src/styles/tokens.css`](../src/styles/tokens.css).
 
-- **One edge:** everything sits 20px from the screen edge: titles, cards, buttons, sheets' content. Cards are 350px wide.
+- **One edge:** everything sits 20px from the screen edge: titles, cards, buttons, sheets' content. Cards are 350px wide at the reference width and adapt with the viewport.
 - **Rhythm:** a 4px base. 8px inside a group, 12px between cards, 24px between groups and before a section heading, 16px under a heading.
-- **Top:** status bar (47px), then the screen's top row: Home's season label and avatar, a step bar in onboarding and setup, or a back row on pushed pages.
+- **Top:** the phone owns the status bar; the shell respects its safe area. The screen's top row is Home's season label and avatar, a step bar in onboarding and setup, or a back row on pushed pages.
 - **Bottom:** the main action sits 34px above the bottom, over the home indicator. Tab screens keep content clear of the floating tab bar (72px, 26px from the bottom).
-- **Spanish:** wraps onto more lines; never shrinks. Checked on 13.1 to 13.4.
+- **Spanish:** let it wrap onto more lines; never shrink it to fit.
 
 ## Navigation
 
@@ -373,6 +377,9 @@ A pine card at the top of Home and Family: "You're giving to", the name stitched
 A 72px picture (18px corners), the item title, the store and price, then one of: a note on a track, a "really wants this" line, a status line ("Someone is getting this"), an action ("I'm getting this", 48px ink pill), or a budget measure. Your own items show a 48px heart disc for "Really want this". On a claim, a knitted tag hangs from the card's top right on a yarn strand; the item title keeps 52px clear for it.
 
 ### Buttons
+
+Heights below are minimums. Labels wrap and pills grow on narrow cards.
+
 - **On the ground:** white pill, 64px, ink 20px label, optional 22px icon. One per screen.
 - **Alternative on the ground:** transparent pill with a 2px border at 60% white, 60px.
 - **In a card:** ink pill, 52px, 18px label.
@@ -432,7 +439,7 @@ Interface motion is quick and explains where you went; the moments are slow and 
 
 **Opening a key:** the link preview grows into the app in 460ms, then "HI ROSA!" knits in.
 
-**Reduced motion** (follows the phone's setting; a switch in the prototype): every page change is a 160ms crossfade; the gift opens at once on press or tap; stitched words appear without knitting; the claim tag fades in; toasts and sheets fade. Feedback that confirms an action stays.
+**Reduced motion** (follows the phone's setting; preview it in the [design gallery](../README.md#run-locally)): every page change is a 160ms crossfade; the gift opens at once on press or tap; stitched words appear without knitting; the claim tag fades in; toasts and sheets fade. Feedback that confirms an action stays.
 
 ### Haptics (where the phone allows)
 | Moment | Haptic |
@@ -453,8 +460,8 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
 - Every hold has a visible tap path, and the hold works from the keyboard.
 - Every ceremony has "Skip the animation" and a reduced-motion version.
 - State is always in words as well as colour.
-- At the largest text size the tab bar stacks icon over label, and cards keep their colour meaning (13.5).
-- Focus: a 3px yarn-white ring, 3px offset (ink inside sheets).
+- At the largest text size, stack tab icons over labels and keep cards' colour meaning.
+- Focus: a 3px yarn-white ring, 3px offset (ink on light cards and inside sheets).
 
 ## Do's and Don'ts
 
@@ -476,5 +483,5 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
 - **Don't** show anything that hints at who has whom: not in a notice, the activity list, an animation, or the organizer's screens.
 
 ## Open decisions
-- **Product pictures.** Item cards show drawn stand-ins for the store photo a real link preview fetches. The build should use the fetched photo on an 18px-cornered tile; whether to frame it differently is still open.
-- **The rest of the stitched alphabet.** Letters beyond the ones listed must be drawn for the real family's names.
+- **Product pictures.** The gallery uses drawn stand-ins. Use fetched store photos in the app's item cards; whether to frame them differently is still open.
+- **More stitched glyphs.** Choose which additional letters to draw for the family's names; see [The stitched alphabet](#the-stitched-alphabet) for the fallback.

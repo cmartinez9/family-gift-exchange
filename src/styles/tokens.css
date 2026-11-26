@@ -3,9 +3,9 @@
 
 /*
  * Sweater Weather: the design tokens.
- * Source of truth: design/design.json and design/DESIGN.md. tests/unit/design-tokens.test.ts checks
- * that every token in design.json is declared here:
- *   colors      --color-<name>             typography  --text-<role>, --text-<role>--line-height, --font-weight
+ * Token ownership and drift checks: docs/architecture.md#design-system.
+ * Custom-property namespaces:
+ *   colors      --color-<name>             typography  --text-<role>, --text-<role>--line-height, --text-<role>--font-weight
  *   card tokens --card-*                   spacing     --space-<name>
  *   motion      --motion-<name>            radii       --radius-<name> (from DESIGN.md)
  */
