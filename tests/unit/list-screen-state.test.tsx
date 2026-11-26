@@ -268,6 +268,71 @@ it("keeps the taken-card response when another person claimed the item first", a
   expect(container.querySelector("article button")).toBeNull();
 });
 
+it("refreshes a reservation undone in another tab when a different item is claimed", async () => {
+  const reservations = new Map<string, "mine">();
+  let entries: ListItemView[] = [{...item, id: "a"}, {...item, id: "b", title: "Book"}];
+  const list = () => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    {entries.map((entry) => <ClaimItem key={entry.id} item={entry} ownerName="Willow" canClaim />)}
+  </NextIntlClientProvider>;
+  const card = (id: string) => container.querySelectorAll<HTMLElement>("article")[id === "a" ? 0 : 1];
+  vi.mocked(claimCommand).mockImplementation(async (id) => {
+    reservations.set(id, "mine");
+    entries = entries.map((entry) => ({...entry, claim: reservations.get(entry.id)}));
+    root.render(list());
+    return {};
+  });
+  await render(list());
+  await click(card("a").querySelector<HTMLButtonElement>("[data-claim-origin]")!);
+  expect(card("a").getAttribute("data-claim")).toBe("mine");
+  reservations.delete("a");
+  await click(card("b").querySelector<HTMLButtonElement>("[data-claim-origin]")!);
+  expect(card("a").getAttribute("data-claim")).toBe("open");
+  expect(card("a").querySelector("[data-claimed]")?.getAttribute("data-claimed")).toBe("false");
+  expect(card("b").getAttribute("data-claim")).toBe("mine");
+});
+
+it("shows a reservation made in another tab after receiving refreshed item data", async () => {
+  const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <ClaimItem item={entry} ownerName="Willow" canClaim />
+  </NextIntlClientProvider>;
+  await render(card(item));
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe("open");
+  await render(card({...item, claim: "mine"}));
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe("mine");
+  expect(container.querySelector("[data-claimed]")?.getAttribute("data-claimed")).toBe("true");
+});
+
+it.each([undefined, "mine", "someone"] as const)("clears stale late feedback when refreshed claim data is %s", async (claim) => {
+  vi.mocked(claimCommand).mockResolvedValueOnce({error: "already-claimed"});
+  const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <ClaimItem item={entry} ownerName="Willow" canClaim />
+  </NextIntlClientProvider>;
+  await render(card(item));
+  await click(container.querySelector<HTMLButtonElement>("[data-claim-origin]")!);
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe("late");
+  await render(card({...item, claim}));
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(claim ?? "open");
+  expect(container.querySelector("article [role=status]")).toBeNull();
+  expect(container.querySelector("article")?.textContent).not.toContain(en.lists.justGot);
+});
+
+it.each(["claim", "undo"] as const)("keeps refreshed server data after an older %s request fails", async (command) => {
+  const response = Promise.withResolvers<FormState>();
+  vi.mocked(claimCommand).mockReturnValueOnce(response.promise);
+  const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
+    <ClaimItem item={entry} ownerName="Willow" canClaim />
+    <ToastHost undoLabel="Undo" />
+  </NextIntlClientProvider>;
+  await render(card({...item, claim: command === "undo" ? "mine" : undefined}));
+  const label = command === "claim" ? en.lists.claim : en.lists.undoClaim;
+  const button = [...container.querySelectorAll<HTMLButtonElement>("article button")].find((entry) => entry.textContent === label)!;
+  await click(button);
+  await render(card({...item, claim: command === "claim" ? "mine" : undefined}));
+  await act(async () => response.reject(new Error("Offline")));
+  expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(command === "claim" ? "mine" : "open");
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(en.lists.feedback["could-not-save"]);
+});
+
 it("changes the rendered photo URL when a saved photo is replaced", async () => {
   const projected = {...item, kind: "photo" as const, hasPhoto: true, updatedAt: new Date("2032-12-24T12:00:00Z")};
   await render(<ItemThumb item={toItemView(projected, "en")} />);

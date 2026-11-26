@@ -26,21 +26,21 @@ export function ClaimItem({actingAs, item, ownerName, budget, canClaim}: {
 }) {
   const t = useTranslations("lists");
   const format = useFormatter();
-  const [claimed, setClaimed] = useState(item.claim === "mine");
-  const [late, setLate] = useState(false);
+  const [state, setState] = useState({item, claimed: item.claim === "mine", late: false});
+  const {claimed, late} = state;
+  if (state.item !== item) setState({item, claimed: item.claim === "mine", late: false});
   const [pending, startTransition] = useTransition();
   const money = (amount: string | number) => format.number(Number(amount), {style: "currency", currency: "USD"});
 
   const run = (command: "claim" | "undo") => {
     const previous = claimed;
     const next = command === "claim";
-    setClaimed(next);
+    setState((current) => ({...current, claimed: next}));
     startTransition(async () => {
       const {error} = await runListAction(() => claimCommand(actingAs, item.id, command, next));
       if (!error) return;
-      setClaimed(previous);
-      if (error === "already-claimed") setLate(true);
-      else toast({message: t(`feedback.${error}`), icon: "alert"});
+      setState((current) => current.item === item ? {...current, claimed: previous, late: error === "already-claimed"} : current);
+      if (error !== "already-claimed") toast({message: t(`feedback.${error}`), icon: "alert"});
     });
   };
 
