@@ -1,4 +1,4 @@
-import {and, desc, eq, isNull, ne, or} from "drizzle-orm";
+import {and, desc, eq, inArray, isNull, ne, or} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
@@ -70,14 +70,14 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, disputedSessionId),
   ));
   if (!target) return true;
+  const credentials = await tx.update(passkeys).set({revokedAt: now}).where(and(
+    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId),
+    target.passkeyId ? or(eq(passkeys.id, target.passkeyId), eq(passkeys.deviceHash, target.hash)) : undefined,
+  )).returning({id: passkeys.id});
   await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId),
-    or(eq(sessions.deviceHash, target.hash), target.passkeyId ? eq(sessions.passkeyId, target.passkeyId) : undefined),
+    or(eq(sessions.deviceHash, target.hash), inArray(sessions.passkeyId, credentials.map(({id}) => id))),
     ne(sessions.id, sessionId),
-  ));
-  await tx.update(passkeys).set({revokedAt: now}).where(and(
-    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId),
-    target.passkeyId ? eq(passkeys.id, target.passkeyId) : undefined,
   ));
   await tx.update(pinCredentials).set({newDevicesLocked: true}).where(and(
     eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId),

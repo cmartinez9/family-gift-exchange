@@ -1,15 +1,16 @@
 import {createHash, generateKeyPairSync, randomUUID, sign} from "node:crypto";
 import {and, eq} from "drizzle-orm";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
-import type {AuthenticationResponseJSON} from "@simplewebauthn/server";
+import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {withFamily} from "../../src/server/db/client";
 import {families} from "../../src/server/db/schema";
 import {createFamily, readiness} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {authEvents, passkeys, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent} from "../../src/server/auth/security";
+import type {Viewer} from "../../src/server/auth";
 import {issueKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
-import {authenticationFinish, authenticationStart} from "../../src/server/auth/webauthn";
+import {authenticationFinish, authenticationStart, registrationFinish, registrationStart} from "../../src/server/auth/webauthn";
 import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
@@ -44,7 +45,7 @@ async function fixture() {
   return {familyId, viewer};
 }
 
-async function enroll(familyId: string, personId: string, enrollmentDevice: Device) {
+async function enroll(familyId: string, personId: string, enrollmentDevice: Device, viewer?: Viewer) {
   const id = secret();
   const {publicKey, privateKey} = generateKeyPairSync("ec", {namedCurve: "prime256v1"});
   const jwk = publicKey.export({format: "jwk"});
@@ -52,9 +53,29 @@ async function enroll(familyId: string, personId: string, enrollmentDevice: Devi
     Buffer.from([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20]),
     Buffer.from(jwk.x!, "base64url"), Buffer.from([0x22, 0x58, 0x20]), Buffer.from(jwk.y!, "base64url"),
   ]);
-  await withFamily(familyId, (tx) => tx.insert(passkeys).values({
-    familyId, personId, id, deviceHash: enrollmentDevice.hash, publicKey: cose.toString("base64url"), counter: "0",
-  }));
+  if (viewer) {
+    const options = await registrationStart(viewer, enrollmentDevice);
+    const clientData = Buffer.from(JSON.stringify({type: "webauthn.create", challenge: options!.challenge, origin}));
+    const credentialId = Buffer.from(id, "base64url");
+    const authenticatorData = Buffer.concat([
+      createHash("sha256").update(new URL(origin).hostname).digest(), Buffer.from([0x45]),
+      Buffer.alloc(4 + 16), Buffer.from([0, credentialId.length]), credentialId, cose,
+    ]);
+    const attestation = Buffer.concat([
+      Buffer.from([0xa3, 0x63]), Buffer.from("fmt"), Buffer.from([0x64]), Buffer.from("none"),
+      Buffer.from([0x67]), Buffer.from("attStmt"), Buffer.from([0xa0, 0x68]), Buffer.from("authData"),
+      Buffer.from([0x58, authenticatorData.length]), authenticatorData,
+    ]);
+    const response: RegistrationResponseJSON = {
+      id, rawId: id, type: "public-key", clientExtensionResults: {},
+      response: {clientDataJSON: clientData.toString("base64url"), attestationObject: attestation.toString("base64url")},
+    };
+    await expect(registrationFinish(viewer, enrollmentDevice, response)).resolves.toBe(true);
+  } else {
+    await withFamily(familyId, (tx) => tx.insert(passkeys).values({
+      familyId, personId, id, deviceHash: enrollmentDevice.hash, publicKey: cose.toString("base64url"), counter: "0",
+    }));
+  }
   let counter = 0;
   return {
     id,
@@ -126,6 +147,70 @@ it("revokes credentials conservatively when a disputed session has no recorded p
   )));
   await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, new Date()))).resolves.toBe(true);
   await expect(credential.authenticate(device())).resolves.toBeNull();
+});
+
+it("revokes a passkey enrolled on the reported browser and its sessions while preserving unrelated access", async () => {
+  const {familyId, viewer} = await fixture();
+  const originalDevice = device();
+  const authenticating = await enroll(familyId, viewer.personId, originalDevice);
+  const unrelated = await enroll(familyId, viewer.personId, originalDevice);
+  const reportedDevice = device();
+  const reported = (await authenticating.authenticate(reportedDevice))!.session;
+  const reportedViewer = (await resolve(reported.cookie))!;
+  const added = await enroll(familyId, viewer.personId, reportedDevice, reportedViewer);
+  const remoteDevice = device();
+  const remote = (await added.authenticate(remoteDevice))!.session;
+  const reporter = (await authenticating.authenticate(device()))!.session;
+  const reporterViewer = (await resolve(reporter.cookie))!;
+  const other = (await unrelated.authenticate(device()))!.session;
+  const view = await withFamily(familyId, (tx) => account(tx, reporterViewer));
+  const event = view.activity.find(({kind, sessionId}) => kind === "newDevice" && sessionId === reported.id)!;
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, reporterViewer, event.id, at))).resolves.toBe(true);
+  for (const session of [reported, remote]) {
+    await expect(resolve(session.cookie)).resolves.toBeNull();
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: at, trusted: false});
+  }
+  for (const session of [reporter, other]) {
+    await expect(resolve(session.cookie)).resolves.toMatchObject({personId: viewer.personId});
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: null, trusted: true});
+  }
+  for (const blockedDevice of [reportedDevice, remoteDevice]) {
+    await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, blockedDevice, new Date())))
+      .resolves.toEqual({error: "newDevicesLocked"});
+  }
+  await expect(authenticating.authenticate(device())).resolves.toBeNull();
+  await expect(added.authenticate(device())).resolves.toBeNull();
+  await expect(unrelated.authenticate(device())).resolves.toHaveProperty("session");
+});
+
+it("revokes existing passkey sessions after a PIN-authenticated enrollment browser is reported", async () => {
+  const {familyId, viewer} = await fixture();
+  const reportedDevice = device();
+  const reported = (await withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, reportedDevice, new Date()))).session!;
+  const reportedViewer = (await resolve(reported.cookie))!;
+  const credential = await enroll(familyId, viewer.personId, reportedDevice, reportedViewer);
+  const remoteDevice = device();
+  const remote = (await credential.authenticate(remoteDevice))!.session;
+  const [{id: eventId}] = await withFamily(familyId, (tx) => tx.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, reported.id), eq(authEvents.kind, "newDevice"),
+  )));
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, at))).resolves.toBe(true);
+  for (const session of [reported, remote]) {
+    await expect(resolve(session.cookie)).resolves.toBeNull();
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: at, trusted: false});
+  }
+  const [reporter] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, viewer.sessionId)));
+  expect(reporter).toMatchObject({revokedAt: null, trusted: true});
+  await expect(credential.authenticate(device())).resolves.toBeNull();
+  for (const blockedDevice of [reportedDevice, remoteDevice]) {
+    await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, blockedDevice, new Date())))
+      .resolves.toEqual({error: "newDevicesLocked"});
+  }
 });
 
 it("surfaces reset throttling after the previous requests have been answered", async () => {
