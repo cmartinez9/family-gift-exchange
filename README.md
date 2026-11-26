@@ -83,21 +83,19 @@ Wishlist photos and preview images use a private Vercel Blob store when `BLOB_RE
 
 ## Deploy on Vercel
 
-Use Vercel Hobby, a Neon Free database, and a private Vercel Blob store. Set `DATABASE_ADMIN_URL` to Neon's direct owner URL (`NEON_DATABASE_URL_UNPOOLED` if supplied by the integration), in Vercel Development only. Load it into your local operator shell for migrations and organizer recovery. Use `psql` 16 or later over TLS and supply `FGE_RUNTIME_PASSWORD` through the environment for the first run. Use a strong random password for `fge_runtime`, such as a hex string from 32 random bytes.
+Use Vercel Hobby, a Neon Free database, and a private Vercel Blob store. Set `DATABASE_ADMIN_URL` to Neon's direct owner URL (`NEON_DATABASE_URL_UNPOOLED` if supplied by the integration), in Vercel Development only. Load it into your local operator shell for migrations and organizer recovery. Use `psql` 16 or later over TLS and supply `FGE_RUNTIME_PASSWORD` for `fge_runtime` and `FGE_DRAW_PASSWORD` for `fge_draw_runtime` through the environment when creating each login. Generate a separate strong random password for each, such as a hex string from 32 random bytes.
 
 ```sh
 pnpm db:migrate
 psql -X "$DATABASE_ADMIN_URL" -f scripts/provision-runtime.sql
 ```
 
-Rerun the SQL after migrations to reapply the role grants with the existing password. Build `DATABASE_URL` from Neon's pooled host, the database name, and the `fge_runtime` credentials, with `sslmode=verify-full`. Set it as Sensitive in Vercel Preview and Production and as encrypted in Development.
+Rerun the SQL after migrations to reapply the role grants with the existing passwords. Build `DATABASE_URL` with the `fge_runtime` credentials and `DRAW_DATABASE_URL` with the separate `fge_draw_runtime` credentials. Use Neon's pooled host, the database name, and `sslmode=verify-full` for both. Set both variables as Sensitive in Vercel Preview and Production and as encrypted in Development.
 
 - Set `BLOB_READ_WRITE_TOKEN` from the private Blob store.
-- Generate separate random values for `AUTH_SECRET`, `ASSIGNMENT_ENCRYPTION_KEY`, `ORGANIZER_INVITE_CODE`, and `CRON_SECRET` (for example, with `openssl rand -hex 32` for each). Keep `AUTH_SECRET` and `ASSIGNMENT_ENCRYPTION_KEY` stable across deployments.
+- Generate separate random values for `AUTH_SECRET`, `ORGANIZER_INVITE_CODE`, and `CRON_SECRET` (for example, with `openssl rand -hex 32` for each). Generate `ASSIGNMENT_ENCRYPTION_KEY` with `openssl rand -base64 32`. Keep `AUTH_SECRET` and `ASSIGNMENT_ENCRYPTION_KEY` stable across deployments.
 - Set `AUTH_ORIGIN` to the canonical HTTPS app address for the environment. Personal links and passkeys use this origin.
 - Generate `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` with `pnpm exec web-push generate-vapid-keys` and set `VAPID_SUBJECT` to the public HTTPS app origin. See [notification configuration](docs/architecture.md#notifications).
-
-`DRAW_DATABASE_URL`, the login for the draw module's database role, arrives with the draw phase.
 
 ## Test
 
