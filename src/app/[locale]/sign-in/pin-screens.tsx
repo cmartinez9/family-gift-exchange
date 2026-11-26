@@ -2,7 +2,6 @@
 
 import {useCallback, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
-import {unstable_rethrow} from "next/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -11,6 +10,7 @@ import {PageTitle} from "@/components/ui/page-header";
 import {PinPad} from "@/components/ui/pin";
 import {pinProblem} from "@/lib/pin-policy";
 import type {AuthResult} from "./actions";
+import {tryAuthAction} from "./client-action";
 
 type Problem = {title: string; sub?: string};
 
@@ -34,15 +34,6 @@ function Refusal({problem, version}: {problem: Problem; version: number}) {
 }
 
 const settle = () => (prefersReducedMotion() ? 60 : 260);
-
-async function tryPin(action: () => Promise<AuthResult | void>) {
-  try {
-    return await action();
-  } catch (error) {
-    unstable_rethrow(error);
-    return {error: "connectionFailed"};
-  }
-}
 
 function usePinCompletion(onComplete: (pin: string) => void) {
   const timer = useRef<number | undefined>(undefined);
@@ -126,7 +117,7 @@ export function MakePin({save, top}: {
     }
     haptic("success");
     start(async () => {
-      const result = await tryPin(() => save(typed));
+      const result = await tryAuthAction(() => save(typed));
       if (result?.error) {
         first.current = "";
         setPhase("make");
@@ -204,7 +195,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
 
   function send(typed: string) {
     start(async () => {
-      const result = await tryPin(() => submit(pinForm(typed)));
+      const result = await tryAuthAction(() => submit(pinForm(typed)));
       if (!result?.error) return;
       haptic("error");
       setPin("");

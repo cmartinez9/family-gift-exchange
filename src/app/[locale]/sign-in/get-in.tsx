@@ -25,6 +25,7 @@ import {
   type AuthResult, type CodeResult,
 } from "./actions";
 import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
+import {tryAuthAction} from "./client-action";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -266,7 +267,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
         <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
-          const response = await forgotPin(familyId, entry.personId);
+          const response = await tryAuthAction(() => forgotPin(familyId, entry.personId));
           setResult(response);
           if (response.success) {
             setResetRequested(true);
@@ -275,7 +276,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         })}>{forgot("ask", {organizer})}</Button>
         <p className="text-body text-muted-ink">{t("askSub", {organizer})}</p>
         <Button variant="soft" disabled={pending || keyReported} onClick={() => start(async () => {
-          const response = await reportUsedKey(familyId, value, typed);
+          const response = await tryAuthAction(() => reportUsedKey(familyId, value, typed));
           setResult(response);
           if (response.success) {
             setKeyReported(true);
@@ -353,7 +354,7 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
       ? <Button onClick={() => router.replace(doneHref)}>{t("done")}</Button>
       : <>
         <Button disabled={pending} onClick={() => start(async () => {
-          const response = await forgotPin(familyId, personId);
+          const response = await tryAuthAction(() => forgotPin(familyId, personId));
           if (response.success) haptic("success");
           setResult({...response, at: new Date()});
         })}>{t("ask", {organizer})}</Button>
@@ -394,7 +395,7 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
       {remaining === 0 && <Button disabled={pending} onClick={onRetry}>{t("retry")}</Button>}
       {!result.success && (
         <Button variant={remaining === 0 ? "outline" : "ground"} disabled={pending} onClick={() => start(async () => {
-          const response = await forgotPin(familyId, personId);
+          const response = await tryAuthAction(() => forgotPin(familyId, personId));
           if (response.success) haptic("success");
           setResult({...response, at: new Date()});
         })}>{t("ask", {organizer})}</Button>
@@ -457,7 +458,7 @@ export function CodeEntry({familyId, backHref, sender, organizer}: {
         const submitted = code;
         const request = ++version.current;
         start(async () => {
-          const response = await previewCode(familyId, submitted);
+          const response = await tryAuthAction(() => previewCode(familyId, submitted));
           if (request === version.current) setResult({...response, code: submitted});
         });
       }}>

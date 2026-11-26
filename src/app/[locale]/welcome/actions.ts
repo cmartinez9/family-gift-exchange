@@ -19,23 +19,23 @@ function text(form: FormData, name: string) {
  * Onboarding's one thing (2.7 to 2.9): a few words, a pasted link (its preview already fetched and
  * signed), or a photo. It stays on onboarding instead of opening the list, so All set comes next.
  */
-export async function addFirstThing(_: FirstThingState, form: FormData): Promise<FirstThingState> {
+export async function addFirstThing(ownerId: string, _: FirstThingState, form: FormData): Promise<FirstThingState> {
   const viewer = await requireViewer();
   const kind = text(form, "kind");
   try {
     if (kind === "note") {
-      await addListItem(viewer, viewer.actingAs, {kind: "note", title: text(form, "title")});
+      await addListItem(viewer, ownerId, {kind: "note", title: text(form, "title")});
     } else if (kind === "link") {
       const link = text(form, "link");
       if (!link) throw new ListError("invalid-item");
       const draft = readLinkDraft(viewer, link, text(form, "draft"));
-      await addListItem(viewer, viewer.actingAs, {
+      await addListItem(viewer, ownerId, {
         kind: "link", link, note: text(form, "note"), starred: form.get("starred") === "on",
       }, draft ? {resolve: async () => draft} : undefined);
     } else if (kind === "photo") {
       const file = form.get("photo");
       if (!file || typeof file === "string" || file.size === 0 || file.size > MAX_PHOTO_INPUT) throw new ListError("invalid-photo");
-      await addListItem(viewer, viewer.actingAs, {
+      await addListItem(viewer, ownerId, {
         kind: "photo", title: text(form, "title"), upload: Buffer.from(await file.arrayBuffer()),
       });
     } else {

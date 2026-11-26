@@ -191,7 +191,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("words");
   const [title, setTitle] = useState("");
-  const [state, submit, pending] = useActionState(addFirstThing, {});
+  const [state, submit, pending] = useActionState(addFirstThing.bind(null, ownerId), {});
   const camera = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<{file: File; url: string} | null>(null);
   const [preparing, setPreparing] = useState(false);

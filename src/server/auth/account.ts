@@ -61,12 +61,16 @@ export async function signedInDevices(tx: FamilyTransaction, viewer: Viewer, now
     eq(sessions.familyId, viewer.familyId), eq(sessions.personId, viewer.personId),
     isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
   )).orderBy(desc(sessions.createdAt));
-  const faces = await tx.select({deviceHash: passkeys.deviceHash}).from(passkeys).where(and(
+  const faces = await tx.select({id: passkeys.id, deviceHash: passkeys.deviceHash}).from(passkeys).where(and(
     eq(passkeys.familyId, viewer.familyId), eq(passkeys.personId, viewer.personId), isNull(passkeys.revokedAt),
   ));
   const withFace = new Set(faces.map(({deviceHash}) => deviceHash));
+  const faceIds = new Set(faces.map(({id}) => id));
   return rows
-    .map(({id, kind, at, deviceHash}) => ({id, kind, at, current: id === viewer.sessionId, faceId: withFace.has(deviceHash)}))
+    .map(({id, kind, at, deviceHash, passkeyId}) => ({
+      id, kind, at, current: id === viewer.sessionId,
+      faceId: withFace.has(deviceHash) || (passkeyId !== null && faceIds.has(passkeyId)),
+    }))
     .sort((a, b) => Number(b.current) - Number(a.current));
 }
 
@@ -106,14 +110,8 @@ export async function listCount(tx: FamilyTransaction, familyId: string, ownerId
 
 /** Whether this browser has Face ID for the signed-in person. */
 export async function faceIdOnDevice(tx: FamilyTransaction, viewer: Viewer) {
-  const [session] = await tx.select({deviceHash: sessions.deviceHash}).from(sessions)
-    .where(and(eq(sessions.familyId, viewer.familyId), eq(sessions.id, viewer.sessionId)));
-  if (!session) return false;
-  const [credential] = await tx.select({id: passkeys.id}).from(passkeys).where(and(
-    eq(passkeys.familyId, viewer.familyId), eq(passkeys.personId, viewer.personId),
-    eq(passkeys.deviceHash, session.deviceHash), isNull(passkeys.revokedAt),
-  )).limit(1);
-  return Boolean(credential);
+  const devices = await signedInDevices(tx, viewer, new Date());
+  return devices.some(({current, faceId}) => current && faceId);
 }
 
 /**

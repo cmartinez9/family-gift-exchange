@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from "next-intl";
 import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
-import {KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
+import {CodeEntry, KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
 import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
@@ -355,6 +355,87 @@ async function editLink(value: string) {
   await editField('input[name="link"]', value);
 }
 
+const recoveryFlows = [
+  ["forgot", "forgotPin", "Ask Rosa for a new key"],
+  ["locked", "forgotPin", "Ask Rosa for a new PIN"],
+  ["request", "forgotPin", "Ask Rosa for a new key"],
+  ["report", "reportUsedKey", en.getIn.used.never],
+  ["code", "previewCode", en.auth.checkCode],
+] as const;
+type RecoveryFlow = typeof recoveryFlows[number][0];
+
+async function prepareRecovery(flow: RecoveryFlow, onError?: (error: Error) => void) {
+  const screen = flow === "code"
+    ? <CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" />
+    : flow === "request" || flow === "report"
+      ? <KeyAlreadyOpened familyId="family" value="key" typed={false} organizer="Rosa"
+        entry={{personId: "person", name: "Ana", familyName: "Family", available: false, usedAt: "2030-01-01"}} />
+      : <SignInWithPin familyId="family" personId="person" name="Ana" organizer="Rosa" backHref="/sign-in" />;
+  await render(onError ? <NavigationBoundary onError={onError}>{screen}</NavigationBoundary> : screen);
+  let finish = () => Promise.resolve();
+  if (flow === "request" || flow === "report") {
+    finish = prepareSheet().finish;
+    await click(en.getIn.enter.forgot);
+  } else if (flow === "forgot") {
+    await click(en.getIn.enter.forgot);
+  } else if (flow === "locked") {
+    actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+    await type("4268");
+    await advance(260);
+  } else {
+    await editField('input[name="code"]', "AAAAAA");
+  }
+  return async (label: string) => {
+    if (flow === "code") await act(async () => { container.querySelector("form")!.requestSubmit(); });
+    else await click(label);
+    await finish();
+  };
+}
+
+it.each(recoveryFlows)("shows %s transport failures and allows another attempt", async (flow, action, label) => {
+  vi.useFakeTimers();
+  actions[action].mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue({error: "tryLater"});
+  const submit = await prepareRecovery(flow);
+  await submit(label);
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.connectionFailed);
+  expect(button(label).disabled).toBe(false);
+  await submit(label);
+  expect(actions[action]).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.tryLater);
+});
+
+it.each(recoveryFlows)("preserves redirects from %s recovery actions", async (flow, action, label) => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let navigation: unknown;
+  try {
+    redirect("/en/sign-in");
+  } catch (error) {
+    navigation = error;
+  }
+  actions[action].mockRejectedValue(navigation);
+  const caught = vi.fn();
+  const submit = await prepareRecovery(flow, caught);
+  await submit(label);
+  expect(caught).toHaveBeenCalledExactlyOnceWith(navigation);
+  expect(container.textContent).toBe("Navigation handled");
+});
+
+it("ignores a code-preview transport failure after the entered code changes", async () => {
+  const first = Promise.withResolvers<object>();
+  actions.previewCode.mockReturnValueOnce(first.promise).mockResolvedValue({error: "unavailable"});
+  await render(<CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" />);
+  await editField('input[name="code"]', "AAAAAA");
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
+  await editField('input[name="code"]', "BBBBBB");
+  await act(async () => first.reject(new TypeError("Failed to fetch")));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button(en.auth.checkCode).disabled).toBe(false);
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
+  expect(actions.previewCode).toHaveBeenLastCalledWith("family", "BBBBBB");
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.unavailable);
+});
+
 const preview: PreviewState = {card: {url: "https://shop.example/gift", title: "A sweater", store: "Shop", icon: "shop", price: null}};
 
 it("shows a rejected link preview as a failure and recovers after the link is edited", async () => {
@@ -400,8 +481,8 @@ it("preserves a written title after a failed save and submits it again", async (
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.add.failed);
     expect(container.querySelector<HTMLInputElement>('input[name="title"]')?.value).toBe("Gift card for coffee");
   }
-  expect(welcome.addFirstThing.mock.calls.map((call) => (call[1] as FormData).get("title"))).toEqual([
-    "Gift card for coffee", "Gift card for coffee",
+  expect(welcome.addFirstThing.mock.calls.map((call) => [call[0], (call[2] as FormData).get("title")])).toEqual([
+    ["person", "Gift card for coffee"], ["person", "Gift card for coffee"],
   ]);
 });
 
@@ -420,11 +501,11 @@ it("preserves the link note and preference when retrying a failed save", async (
     expect(container.querySelector<HTMLInputElement>('input[name="note"]')?.value).toBe("Blue, size M");
   }
   expect(welcome.addFirstThing.mock.calls.map((call) => {
-    const form = call[1] as FormData;
-    return [form.get("link"), form.get("note"), form.get("starred")];
+    const form = call[2] as FormData;
+    return [call[0], form.get("link"), form.get("note"), form.get("starred")];
   })).toEqual([
-    ["https://shop.example/gift", "Blue, size M", "on"],
-    ["https://shop.example/gift", "Blue, size M", "on"],
+    ["person", "https://shop.example/gift", "Blue, size M", "on"],
+    ["person", "https://shop.example/gift", "Blue, size M", "on"],
   ]);
 });
 
@@ -456,14 +537,15 @@ it("prepares a large camera photo and submits the smaller file", async () => {
   expect(drawImage).toHaveBeenCalledTimes(1);
   await editField('input[name="title"]', "A sweater");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
-  const data = welcome.addFirstThing.mock.calls[0][1] as FormData;
+  const data = welcome.addFirstThing.mock.calls[0][2] as FormData;
+  expect(welcome.addFirstThing.mock.calls[0][0]).toBe("person");
   expect(data.get("kind")).toBe("photo");
   expect(data.get("title")).toBe("A sweater");
   expect(data.getAll("photo")).toHaveLength(1);
   expect(data.get("photo")).toMatchObject({name: "photo.jpg", type: "image/jpeg", size: 100_000});
   expect(container.querySelector<HTMLInputElement>('input[name="title"]')?.value).toBe("A sweater");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
-  const retried = welcome.addFirstThing.mock.calls[1][1] as FormData;
+  const retried = welcome.addFirstThing.mock.calls[1][2] as FormData;
   expect(retried.get("title")).toBe("A sweater");
   expect(retried.get("photo")).toEqual(data.get("photo"));
   await render(<p>Another screen</p>);
@@ -480,7 +562,7 @@ it("shows preparation failures without uploading the original", async () => {
   await click(en.getIn.hello.helperBack);
   await editField('input[name="title"]', "A sweater");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
-  const data = welcome.addFirstThing.mock.calls[0][1] as FormData;
+  const data = welcome.addFirstThing.mock.calls[0][2] as FormData;
   expect(data.get("kind")).toBe("note");
   expect(data.get("photo")).toBeNull();
 });
