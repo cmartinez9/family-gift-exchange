@@ -737,7 +737,7 @@
       "drawTools": "El sorteo",
       "participationHint": "Un cambio solo vuelve a tejer los círculos que toca. Nadie sabe quién.",
       "dropoutTitle": "¿{name} no puede participar este año?",
-      "dropoutBody": "Quien le tenía recibe otra persona y ve “Cambio de planes”. A nadie más le afecta, y nadie sabe quién.",
+      "dropoutBody": "Quien le iba a regalar recibe otra persona. Algunas personas más también podrían recibir a alguien diferente. Todas verán “Cambio de planes”. Nadie sabrá quién le tocó a quién.",
       "dropoutConfirm": "Sí, sacar a {name}",
       "keepIn": "Dejar a {name}",
       "joinTitle": "¿Agregar a {name} al sorteo?",

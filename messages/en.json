@@ -737,7 +737,7 @@
       "drawTools": "The draw",
       "participationHint": "A change only re-knits the loops it touches. Nobody learns who.",
       "dropoutTitle": "{name} can’t take part this year?",
-      "dropoutBody": "Whoever had them gets a new person and sees “Change of plans”. Nobody else is affected, and nobody learns who.",
+      "dropoutBody": "Whoever had them gets a new person. A few others may get a new person too. They’ll all see “Change of plans”. Nobody learns who has whom.",
       "dropoutConfirm": "Yes, take {name} out",
       "keepIn": "Keep {name} in",
       "joinTitle": "Add {name} to the draw?",
