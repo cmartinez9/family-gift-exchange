@@ -77,9 +77,25 @@ Set `AUTH_ORIGIN=https://localhost:3000` for this local HTTPS server. Open [the 
 
 Preview the Sweater Weather components, states, and motion in the [design gallery](https://localhost:3000/dev/design). Its controls demonstrate the components without changing family data, including a **Reduce motion** switch. The gallery is development-only and returns 404 on production builds. See the [design rulebook](design/DESIGN.md) for the product direction and [implementation coverage](docs/architecture.md#design-system) for the foundations available now.
 
-On Vercel, set `AUTH_ORIGIN` to the canonical HTTPS address members use. This sets the origin for personal links and the scope of passkeys. See [Architecture](docs/architecture.md#notifications) for device-notification and reminder configuration. To check sharing on a real phone, use a practice family and send keys only to test recipients.
+To check sharing on a real phone, use a practice family and send keys only to test recipients.
 
-Wishlist photos and preview images use a private Vercel Blob store when `BLOB_READ_WRITE_TOKEN` is set. Configure that token on Vercel; local filesystem storage is unavailable there. Without the token, local development uses temporary photo storage by default. Set `LIST_PHOTO_DIR` to a persistent local directory to retain images across temporary-directory cleanup; a local production server also requires this setting when no Blob token is provided. If photo storage is unavailable, photo uploads fail and link items can still be saved without preview images. Photo access goes through signed-in, family-scoped app routes.
+Wishlist photos and preview images use a private Vercel Blob store when `BLOB_READ_WRITE_TOKEN` is set. Without the token, local development uses temporary photo storage by default. Set `LIST_PHOTO_DIR` to a persistent local directory to retain images across temporary-directory cleanup; a local production server also requires this setting when no Blob token is provided. If photo storage is unavailable, photo uploads fail and link items can still be saved without preview images. Photo access goes through signed-in, family-scoped app routes.
+
+## Deploy on Vercel
+
+Use Vercel Hobby, a Neon Free database, and a private Vercel Blob store. Set `DATABASE_ADMIN_URL` to Neon's direct owner URL (`NEON_DATABASE_URL_UNPOOLED` if supplied by the integration), in Vercel Development only. Load it into your local operator shell for migrations and organizer recovery. Use `psql` 16 or later over TLS and supply `FGE_RUNTIME_PASSWORD` for `fge_runtime` and `FGE_DRAW_PASSWORD` for `fge_draw_runtime` through the environment when creating each login. Generate a separate strong random password for each, such as a hex string from 32 random bytes.
+
+```sh
+pnpm db:migrate
+psql -X "$DATABASE_ADMIN_URL" -f scripts/provision-runtime.sql
+```
+
+Rerun the SQL after migrations to reapply the role grants with the existing passwords. Build `DATABASE_URL` with the `fge_runtime` credentials and `DRAW_DATABASE_URL` with the separate `fge_draw_runtime` credentials. Use Neon's pooled host, the database name, and `sslmode=verify-full` for both. Set both variables as Sensitive in Vercel Preview and Production and as encrypted in Development.
+
+- Set `BLOB_READ_WRITE_TOKEN` from the private Blob store.
+- Generate separate random values for `AUTH_SECRET`, `ORGANIZER_INVITE_CODE`, and `CRON_SECRET` (for example, with `openssl rand -hex 32` for each). Generate `ASSIGNMENT_ENCRYPTION_KEY` with `openssl rand -base64 32`. Keep `AUTH_SECRET` and `ASSIGNMENT_ENCRYPTION_KEY` stable across deployments.
+- Set `AUTH_ORIGIN` to the canonical HTTPS app address for the environment. Personal links and passkeys use this origin.
+- Generate `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` with `pnpm exec web-push generate-vapid-keys` and set `VAPID_SUBJECT` to the public HTTPS app origin. See [notification configuration](docs/architecture.md#notifications).
 
 ## Test
 
