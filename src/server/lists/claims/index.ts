@@ -86,6 +86,7 @@ export async function getGettingList(viewer: ListViewer) {
     await requireListActor(tx, viewer);
     const rows = await tx.select({
       itemId: items.id, title: items.title, ownerId: items.ownerId, ownerName: people.displayName,
+      kind: items.kind, price: items.price, store: items.store, hasPhoto: sql<boolean>`${items.imageKey} is not null`,
       bought: sql<boolean>`${claims.boughtAt} is not null`,
       wrapped: sql<boolean>`${claims.wrappedAt} is not null`,
     }).from(claims).innerJoin(items, and(

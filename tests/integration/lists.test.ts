@@ -144,7 +144,8 @@ describe("wishlist access and claims", () => {
     await expect(setClaimTick(other, item.id, "bought", true)).rejects.toMatchObject({code: "not-found"});
     await Promise.all([setClaimTick(winner, item.id, "bought", true), setClaimTick(winner, item.id, "wrapped", true)]);
     expect(await getGettingList(winner)).toContainEqual({
-      itemId: item.id, title: item.title, ownerId, ownerName: "Frostpaw", bought: true, wrapped: true,
+      itemId: item.id, title: item.title, ownerId, ownerName: "Frostpaw", kind: item.kind, price: item.price,
+      store: item.store, hasPhoto: false, bought: true, wrapped: true,
     });
     expect((await getGettingList(other)).some((entry) => entry.itemId === item.id)).toBe(false);
     await undoClaim(winner, item.id);

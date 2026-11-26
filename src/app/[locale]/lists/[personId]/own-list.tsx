@@ -1,0 +1,246 @@
+"use client";
+
+import {useCallback, useEffect, useRef, useState, useTransition} from "react";
+import {useFormatter, useTranslations} from "next-intl";
+import {Button, ButtonLink, TextButton} from "@/components/ui/button";
+import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {EmptyBlock} from "@/components/ui/blocks";
+import {HeartToggle, ItemCard} from "@/components/ui/item-card";
+import {KnitIn} from "@/components/ui/motion/knit-in";
+import {haptic} from "@/components/ui/motion/haptic";
+import {AppLink} from "@/components/ui/navigation";
+import {Link} from "@/i18n/navigation";
+import {Sheet} from "@/components/ui/sheet";
+import {toast} from "@/components/ui/toast";
+import {DURATION} from "@/components/ui/motion/easing";
+import type {ItemKind} from "@/server/lists/validation";
+import {itemCommand, removeItem, setItemStar} from "../actions";
+import {ItemForm} from "../item-form";
+import {ItemThumb, missesPicture, type ListItemView} from "../item-view";
+
+const ADD_OPTIONS = [
+  {kind: "note", icon: "pencil", title: "newNote", sub: "addNoteSub"},
+  {kind: "link", icon: "link", title: "newLink", sub: "addLinkSub"},
+  {kind: "photo", icon: "camera", title: "addPhotoTitle", sub: "addPhotoSub"},
+] as const;
+
+/**
+ * Your own list (or the list of someone you help): words first, one big "Add something", your sizes, then
+ * each thing with its heart. Tapping a thing opens it in a sheet over the list. Taking something off has
+ * Undo instead of a confirm: it disappears at once and is only removed once the Undo has passed.
+ */
+export function OwnList({ownerId, items, sizes, closeLabel}: {
+  ownerId: string;
+  items: readonly ListItemView[];
+  /** The "My sizes" row's line, or null when there are none yet. */
+  sizes: string | null;
+  closeLabel: string;
+}) {
+  const t = useTranslations("lists");
+  const format = useFormatter();
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [stars, setStars] = useState<Readonly<Record<string, boolean>>>({});
+  const [, startTransition] = useTransition();
+  const pending = useRef(new Map<string, number>());
+
+  // a removal waiting out its Undo still happens if you leave the list or put the phone away
+  useEffect(() => {
+    const waiting = pending.current;
+    const flush = () => {
+      for (const [itemId, timer] of waiting) {
+        window.clearTimeout(timer);
+        void removeItem(ownerId, itemId);
+      }
+      waiting.clear();
+    };
+    const hide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", hide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", hide);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [ownerId]);
+
+  const shown = items.filter((item) => !hidden.has(item.id));
+  const editingItem = items.find((item) => item.id === editing);
+  const goldId = shown.find(missesPicture)?.id;
+  const editHref = (itemId: string) => `/lists/${ownerId}/items/${itemId}/edit`;
+  const open = (itemId: string) => {
+    setRound((count) => count + 1);
+    setEditing(itemId);
+  };
+
+  const takeOff = useCallback((item: ListItemView) => {
+    setEditing(null);
+    setHidden((current) => new Set(current).add(item.id));
+    haptic("soft");
+    const commit = window.setTimeout(() => {
+      pending.current.delete(item.id);
+      void removeItem(ownerId, item.id).then((result) => {
+        if (!result.error) return;
+        setHidden((current) => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+        toast({message: t(`feedback.${result.error}`), icon: "alert"});
+      });
+    }, DURATION.toastStayUndo + 300);
+    pending.current.set(item.id, commit);
+    toast({
+      message: t("tookOff", {title: item.title}),
+      icon: "undo",
+      undo: () => {
+        window.clearTimeout(commit);
+        pending.current.delete(item.id);
+        setHidden((current) => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+      },
+    });
+  }, [ownerId, t]);
+
+  const star = (item: ListItemView, on: boolean) => {
+    haptic("tick");
+    setStars((current) => ({...current, [item.id]: on}));
+    startTransition(async () => {
+      const result = await setItemStar(ownerId, item.id, on);
+      if (result.error) {
+        setStars((current) => ({...current, [item.id]: !on}));
+        toast({message: t(`feedback.${result.error}`), icon: "alert"});
+      }
+    });
+  };
+
+  const command = (item: ListItemView, name: "up" | "down" | "refresh") => {
+    setEditing(null);
+    startTransition(async () => {
+      const result = await itemCommand(ownerId, item.id, name);
+      if (result?.error) toast({message: t(`feedback.${result.error}`), icon: "alert"});
+    });
+  };
+
+  const addOptions = (
+    <Rows>
+      {ADD_OPTIONS.map(({kind, icon, title, sub}) => (
+        <AppLink key={kind} href={`/lists/${ownerId}/items/new?kind=${kind}`} transition="push"
+          className="fge-press block w-full" onClick={() => setAdding(false)}>
+          <ListRow as="span" lead={<IconDisc icon={icon} size={52} iconSize={24} />} title={t(title)} sub={t(sub)}
+            trail={<Chevron />} className="min-h-[76px]" />
+        </AppLink>
+      ))}
+    </Rows>
+  );
+
+  return (
+    <>
+      <div className="flex flex-col gap-card-gap px-edge pt-5 pb-6">
+        {shown.length > 0 && (
+          <Button icon="plus" onClick={() => {
+            haptic("soft");
+            setAdding(true);
+          }}>{t("addSomething")}</Button>
+        )}
+        {shown.length > 0 && (
+          <Card flush className="px-[18px] py-1">
+            <AppLink href={`/lists/${ownerId}/profile`} transition="push" className="fge-press block rounded-[24px]">
+              <ListRow as="span" lead={<IconDisc icon="shirt" />} title={t("mySizes")} sub={sizes ?? t("sizesEmpty")} trail={<Chevron />} />
+            </AppLink>
+          </Card>
+        )}
+        {shown.length === 0 && (
+          <div className="pt-3">
+            <EmptyBlock title={t("emptyTitle")} actions={<>
+              <ButtonLink variant="card" transition="push" href={`/lists/${ownerId}/items/new?kind=note`} icon="pencil">{t("newNote")}</ButtonLink>
+              <div className="grid grid-cols-[1.25fr_1fr] gap-2">
+                <ButtonLink variant="soft" transition="push" href={`/lists/${ownerId}/items/new?kind=link`} icon="link">{t("newLink")}</ButtonLink>
+                <ButtonLink variant="soft" transition="push" href={`/lists/${ownerId}/items/new?kind=photo`} icon="camera">{t("photoShort")}</ButtonLink>
+              </div>
+            </>}>
+              {t("emptyLead")}
+            </EmptyBlock>
+          </div>
+        )}
+        <KnitIn as="ul" className="flex flex-col gap-card-gap">
+          {shown.map((item) => {
+            const gold = item.id === goldId;
+            const starred = stars[item.id] ?? item.starred;
+            return (
+              <li key={item.id}>
+                <article aria-label={item.title}>
+                <ItemCard tone={gold ? "next" : "info"} titleAs="h2"
+                  picture={<ItemThumb item={item} on={gold ? "next" : "info"} camera={missesPicture(item)} />}
+                  title={(
+                    <Link href={editHref(item.id)} aria-label={t("editNamedItem", {title: item.title})}
+                      className="break-words after:absolute after:inset-0 after:rounded-item after:content-['']"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        haptic("soft");
+                        open(item.id);
+                      }}>
+                      <span aria-hidden="true" className="hyphens-auto">{item.title}</span>
+                    </Link>
+                  )}
+                  store={item.store ?? undefined}
+                  price={item.price !== null ? format.number(Number(item.price), {style: "currency", currency: "USD"}) : undefined}
+                  heart={<span className="relative z-[1]"><HeartToggle on={starred} label={t("star")} onToggle={() => star(item, !starred)} /></span>}
+                  note={item.note ? <span className="whitespace-pre-wrap break-words">{item.note}</span> : undefined}
+                  after={gold ? (
+                    <div className="relative z-[1] flex flex-col items-start">
+                      <p className="pt-3 text-body">{t("noPicture", {store: item.store ?? ""})}</p>
+                      <Button variant="small" icon="camera" className="mt-2.5" onClick={() => open(item.id)}>{t("newPhoto")}</Button>
+                    </div>
+                  ) : undefined}
+                  className="[&_h2]:break-words" />
+                </article>
+              </li>
+            );
+          })}
+        </KnitIn>
+      </div>
+
+      <Sheet open={adding} onClose={() => setAdding(false)} title={t("addSomething")} closeLabel={closeLabel}>
+        {addOptions}
+      </Sheet>
+
+      <Sheet open={Boolean(editingItem)} onClose={() => setEditing(null)} title={t("editItem")} closeLabel={closeLabel}>
+        {editingItem && (
+          <ItemForm key={`${editingItem.id}-${round}`} ownerId={ownerId} kind={editingItem.kind as ItemKind} mode="sheet"
+            initial={{...editingItem, starred: stars[editingItem.id] ?? editingItem.starred}}
+            onSaved={() => {
+              setEditing(null);
+              toast(t("saved"));
+            }}
+            onRemove={() => takeOff(editingItem)}
+            footer={<ItemOrder item={editingItem} items={shown} onCommand={command} />} />
+        )}
+      </Sheet>
+    </>
+  );
+}
+
+/** Moving a thing up or down the list, and fetching a link's picture again: quiet text buttons. */
+function ItemOrder({item, items, onCommand}: {
+  item: ListItemView; items: readonly ListItemView[]; onCommand: (item: ListItemView, name: "up" | "down" | "refresh") => void;
+}) {
+  const t = useTranslations("lists");
+  const index = items.findIndex(({id}) => id === item.id);
+  const first = index <= 0, last = index === items.length - 1;
+  if (first && last && !item.url) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-x-2">
+      {!first && <TextButton onClick={() => onCommand(item, "up")}>{t("moveUp")}</TextButton>}
+      {!last && <TextButton onClick={() => onCommand(item, "down")}>{t("moveDown")}</TextButton>}
+      {item.url && <TextButton onClick={() => onCommand(item, "refresh")}>{t("refresh")}</TextButton>}
+    </div>
+  );
+}

@@ -172,9 +172,9 @@ export function ItemCard({tone = "info", picture, title, titleAs: Title = "h3", 
         {picture}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <Title className={cn("text-item-title", tag && "pr-[52px]")}>{title}</Title>
-          {store && (
+          {(store || price) && (
             <p className="text-body text-[var(--fg-muted)]">
-              {store}{price && <> · <span className="font-bold text-[var(--fg)]">{price}</span></>}
+              {store}{store && price && " · "}{price && <span className="font-bold text-[var(--fg)]">{price}</span>}
             </p>
           )}
           {details}

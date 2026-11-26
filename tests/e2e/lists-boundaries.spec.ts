@@ -66,6 +66,8 @@ async function ownList(page: Page) {
 
 async function addNote(page: Page, path: string, title: string) {
   await page.goto(`${path}/items/new?kind=note`);
+  // type once the form has hydrated, as a person would after the page appears
+  await page.waitForLoadState("networkidle");
   await page.getByLabel(lists.title).fill(title);
   await page.getByRole("textbox", {name: lists.note, exact: true}).fill(`Notes for ${title}`);
   await page.getByRole("button", {name: lists.saveItem}).click();
@@ -107,10 +109,11 @@ test("rejects code and private links, then saves a real store preview without a 
     await input.fill(publicUrl.href.replace(/^https:\/\//, ""));
     await input.blur();
     const preview = page.getByRole("region", {name: lists.previewTitle});
-    const photo = preview.locator('img[width="400"]');
+    // the fetched picture fills the form's photo tile
+    const photo = page.locator("form img");
     await expect(photo).toBeVisible({timeout: 15_000});
     await expect.poll(() => photo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
-    await expect(preview.getByText(lists.photoFallback, {exact: true})).toHaveCount(0);
+    await expect(preview.getByText(lists.noPicture.split("{store}")[0], {exact: false})).toHaveCount(0);
     await expect(page.getByLabel(lists.title)).not.toHaveValue("");
     const normalized = new URL(publicUrl);
     normalized.searchParams.delete("utm_source");
@@ -120,11 +123,11 @@ test("rejects code and private links, then saves a real store preview without a 
     await page.getByRole("textbox", {name: lists.note, exact: true}).fill("Any color, please");
     await page.getByRole("button", {name: lists.saveItem}).click();
     const card = page.getByRole("article", {name: title, exact: true});
-    await expect(card.locator('img[width="400"]')).toBeVisible();
+    await expect(card.locator("img")).toBeVisible();
     await expect(card.getByText("Any color, please", {exact: true})).toBeVisible();
     await page.reload();
-    await expect(card.locator('img[width="400"]')).toBeVisible();
-    const photoUrl = await card.locator('img[width="400"]').getAttribute("src");
+    await expect(card.locator("img")).toBeVisible();
+    const photoUrl = await card.locator("img").getAttribute("src");
     expect((await page.request.get(photoUrl!)).headers()["content-type"]).toBe("image/webp");
     await screenshot(page, "live-product-saved");
   } finally {
@@ -140,7 +143,6 @@ test("saves the 301st wishlist item and restricts the single budget to the organ
     const member = await joinMember(page, browser, "Firleaf");
     contexts.push(member.context);
     await page.goto("/en/lists");
-    await page.locator("summary").filter({hasText: lists.budget}).click();
     const budget = page.getByLabel(lists.budget, {exact: true});
     await budget.fill("45,50");
     const requestPromise = page.waitForRequest((request) => request.method() === "POST");
@@ -175,9 +177,9 @@ test("saves the 301st wishlist item and restricts the single budget to the organ
     const card = page.getByRole("article", {name: "Wish 301: telescope", exact: true});
     await expect(card.getByText("Notes for Wish 301: telescope")).toBeVisible();
     await card.screenshot({path: test.info().outputPath("wish-301.png")});
-    await page.goto("/en/lists");
-    await expect(page.getByText("301 items · List not ready yet", {exact: true})).toBeVisible();
-    await screenshot(page, "unlimited-wishlist-directory");
+    await member.page.goto("/en/lists");
+    await expect(member.page.getByRole("link", {name: /^Winterberry/}).getByText(`301 things · ${lists.notReady}`, {exact: true})).toBeVisible();
+    await screenshot(member.page, "unlimited-wishlist-directory");
   } finally {
     await cleanup(familyId, contexts);
   }
@@ -193,25 +195,28 @@ test("lets a switched helper edit a relative's list while other members can only
     const member = await joinMember(page, browser, "Firleaf");
     contexts.push(member.context);
     await page.goto("/en/lists");
-    const path = await page.getByRole("link", {name: "Little Acorn", exact: true}).getAttribute("href");
+    const path = await page.getByRole("link", {name: /^Little Acorn/}).getAttribute("href");
     await page.goto(path!);
     await expect(page.getByRole("link", {name: lists.editProfile})).toHaveCount(0);
     expect((await page.request.get(`${path}/items/new?kind=note`)).status()).toBe(404);
     await page.goto("/en/account");
+    const switched = page.waitForResponse((response) => response.request().method() === "POST");
     await page.getByRole("button", {name: "Help Little Acorn", exact: true}).click();
+    await switched;
     // Helping starts on Little Acorn's own list.
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Little Acorn");
     await expect(page.getByText("You’re helping Little Acorn.", {exact: true})).toBeVisible();
     await addNote(page, path!, "Wooden train");
-    await page.getByRole("link", {name: lists.editProfile}).click();
+    await page.getByRole("link", {name: new RegExp(lists.mySizes)}).click();
     await page.getByLabel(lists.size.shoes, {exact: true}).fill("2Y");
+    const saved = page.waitForResponse((response) => response.request().method() === "POST");
     await page.getByLabel(lists.size.shoes, {exact: true}).blur();
-    await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
-    await page.getByRole("link", {name: lists.backToList}).click();
+    expect((await saved).ok()).toBe(true);
+    await page.getByRole("link", {name: lists.namedList.replace("{name}", "Little Acorn")}).click();
     await member.page.goto(path!);
     const card = member.page.getByRole("article", {name: "Wooden train", exact: true});
-    await expect(card.getByText("Notes for Wooden train")).toBeVisible();
+    await expect(card.getByText("Notes for Wooden train").filter({visible: true})).toBeVisible();
     await expect(member.page.getByText("2Y", {exact: true})).toBeVisible();
     await expect(card.getByRole("link", {name: lists.editItem, exact: true})).toHaveCount(0);
     expect((await member.page.request.get(`${path}/profile`)).status()).toBe(404);
@@ -257,7 +262,8 @@ test("resolves competing anonymous claims and releases only unpurchased gifts wh
       await race(p).getByRole("button", {name: lists.claim, exact: true}).click();
       // Wait for the server action before reloading so navigation cannot cancel the claim.
       await expect(race(p).getByText(lists.mine, {exact: true})
-        .or(race(p).getByText(lists.feedback["already-claimed"], {exact: true}))).toBeVisible();
+        .or(race(p).getByText(lists.justGot, {exact: true}))).toBeVisible();
+      await expect(race(p)).toHaveAttribute("aria-busy", "false");
     }));
     await first.page.reload();
     await second.page.reload();
@@ -270,7 +276,7 @@ test("resolves competing anonymous claims and releases only unpurchased gifts wh
     await expect(race(loser).getByText(firstWon ? "Snowfinch" : "Firleaf", {exact: false})).toHaveCount(0);
     await screenshot(loser, "competing-claim-anonymous");
     await race(winner).getByRole("button", {name: lists.undoClaim, exact: true}).click();
-    await expect(race(winner).getByRole("button", {name: lists.claim, exact: true})).toBeVisible();
+    await expect(race(winner).getByRole("button", {name: lists.claim, exact: true})).toBeEnabled();
 
     for (const title of ["Pending book", "Purchased scarf"]) {
       await first.page.reload();

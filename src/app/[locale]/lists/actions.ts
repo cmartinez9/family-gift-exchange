@@ -54,8 +54,12 @@ export async function previewItemLink(ownerId: string, input: string): Promise<P
   }
 }
 
+/**
+ * Saves a new or edited item. A page form returns to the list, which toasts "Added" or "Saved"; a form in
+ * a sheet over the list (`stay`) refreshes the list and reports back instead.
+ */
 export async function saveItem(
-  ownerId: string, itemId: string | null, kind: ItemKind, _previous: FormState, form: FormData,
+  ownerId: string, itemId: string | null, kind: ItemKind, stay: boolean, _previous: FormState, form: FormData,
 ): Promise<FormState> {
   const viewer = await requireViewer();
   try {
@@ -74,13 +78,51 @@ export async function saveItem(
   } catch (error) {
     return {error: feedback(error)};
   }
-  return returnToList(ownerId);
+  if (stay) {
+    await refreshLists();
+    return {status: "saved"};
+  }
+  return returnToList(ownerId, itemId ? "saved" : "added");
 }
 
-async function returnToList(ownerId: string): Promise<never> {
+async function refreshLists() {
   const locale = await getLocale();
   revalidatePath(`/${locale}/lists`, "layout");
-  redirect(`/${locale}/lists/${ownerId.toLowerCase()}`);
+  revalidatePath(`/${locale}`);
+}
+
+/** Back to the list; `done` names the toast the list shows once it arrives. */
+async function returnToList(ownerId: string, done?: "added" | "saved"): Promise<never> {
+  const locale = await getLocale();
+  await refreshLists();
+  redirect(`/${locale}/lists/${ownerId.toLowerCase()}${done ? `?done=${done}` : ""}`);
+}
+
+/** The heart on your own item: "Really want this". */
+export async function setItemStar(ownerId: string, itemId: string, starred: boolean): Promise<FormState> {
+  const viewer = await requireViewer();
+  try {
+    await editListItem(viewer, ownerId, itemId, {starred});
+  } catch (error) {
+    return {error: feedback(error)};
+  }
+  await refreshLists();
+  return {status: "saved"};
+}
+
+/**
+ * Takes an item off the list. The list hides it at once and offers Undo; this runs only once the Undo
+ * has passed, so nothing needs restoring.
+ */
+export async function removeItem(ownerId: string, itemId: string): Promise<FormState> {
+  const viewer = await requireViewer();
+  try {
+    await removeListItem(viewer, ownerId, itemId);
+  } catch (error) {
+    return {error: feedback(error)};
+  }
+  await refreshLists();
+  return {status: "saved"};
 }
 
 export async function itemCommand(
@@ -111,8 +153,7 @@ export async function claimCommand(
   } catch (error) {
     return {error: feedback(error)};
   }
-  const locale = await getLocale();
-  revalidatePath(`/${locale}/lists`, "layout");
+  await refreshLists();
   return {};
 }
 
