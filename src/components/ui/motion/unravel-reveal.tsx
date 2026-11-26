@@ -56,20 +56,19 @@ type Phase = "ready" | "holding" | "short" | "paused" | "watching" | "revealed";
  * Every hold has a tap path ("Or tap here to open it", 1100ms) and works from the keyboard (Space or
  * Enter held down). Reduced motion: the gift opens at once.
  */
-export function UnravelReveal({name, labels, next, revealed: initiallyRevealed = false, onStart, onRevealed, titleAs: Title = "h1"}: {
+export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs: Title = "h1"}: {
   /** The name to knit. A name the stitched alphabet cannot draw yet is shown in heavy Rubik. */
   name: string;
   labels: RevealLabels;
   /** What comes after: the main button on the ground, and a line under it. */
   next: ReactNode;
-  revealed?: boolean;
   /** The reveal owns the screen once you start: fade the step bar away here. */
   onStart?: () => void;
   onRevealed?: () => void;
   /** The heading's level; the reveal is normally the whole screen. */
   titleAs?: "h1" | "h2" | "h3" | "h4";
 }) {
-  const [phase, setPhase] = useState<Phase>(initiallyRevealed ? "revealed" : "ready");
+  const [phase, setPhase] = useState<Phase>("ready");
   const [announce, setAnnounce] = useState("");
   const stage = useRef<HTMLDivElement>(null);
   const gift = useRef<HTMLButtonElement>(null);
@@ -77,7 +76,7 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
   const ring = useRef<SVGCircleElement>(null);
   const progress = useRef<HTMLSpanElement>(null);
   const nameSvg = useRef<SVGSVGElement>(null);
-  const state = useRef({p: initiallyRevealed ? 1 : 0, row: 0, held: false, opened: initiallyRevealed, done: initiallyRevealed, end: null as [number, number] | null});
+  const state = useRef({p: 0, row: 0, held: false, opened: false, done: false, end: null as [number, number] | null});
   const frames = useRef({yarn: 0, hold: 0, tap: 0, knit: 0});
   const timers = useRef<number[]>([]);
   const callbacks = useRef({onStart, onRevealed});
@@ -275,7 +274,7 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
 
   useEffect(() => {
     const all = frames.current, pending = timers.current;
-    if (!state.current.done) all.yarn = requestAnimationFrame(drawYarn);
+    all.yarn = requestAnimationFrame(drawYarn);
     return () => {
       cancelAnimationFrame(all.yarn);
       cancelAnimationFrame(all.hold);
@@ -290,7 +289,6 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
   const hint = {ready: labels.readyHint, holding: labels.holdingHint, short: labels.holdLonger, paused: labels.letGo,
     watching: labels.watchingHint, revealed: labels.watchingHint}[phase];
   const revealed = phase === "revealed";
-  const shownAtStart = initiallyRevealed;
   const giftRows = MOTIFS.gift.map((row, rowIndex) => {
     const byColor: Record<string, string> = {};
     [...row].forEach((character, column) => {
@@ -301,21 +299,21 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
 
   return (
     <div ref={stage} className="fge-reveal relative min-h-[720px] flex-1 overflow-hidden text-snow-white" data-reveal={phase}>
-      <div data-pine="" className="absolute inset-0 bg-pine" style={{opacity: shownAtStart ? 1 : 0}} />
+      <div data-pine="" className="absolute inset-0 bg-pine" style={{opacity: 0}} />
 
-      <div data-reveal-head="" className="absolute inset-x-edge flex flex-col gap-2" style={{top: HEAD_TOP, opacity: shownAtStart ? 0 : 1}}
+      <div data-reveal-head="" className="absolute inset-x-edge flex flex-col gap-2" style={{top: HEAD_TOP}}
         aria-hidden={revealed}>
         <Title className="text-title">{title}</Title>
         <p className="text-lead" aria-live="polite">{hint}</p>
       </div>
 
-      <svg data-yarn="" aria-hidden="true" className="pointer-events-none absolute inset-0 size-full" style={{opacity: shownAtStart ? 0 : 1}}>
+      <svg data-yarn="" aria-hidden="true" className="pointer-events-none absolute inset-0 size-full">
         <path ref={yarn} d="" fill="none" stroke="var(--color-yarn-white)" strokeWidth={4.5} strokeLinecap="round" />
         <circle ref={ring} data-ring="" cx={0} cy={GIFT_TOP - 52} r={11} fill="none" stroke="var(--color-gold)" strokeWidth={5} />
       </svg>
 
       <button ref={gift} type="button" aria-label={labels.gift} className="fge-gift absolute left-1/2 -translate-x-1/2 p-0"
-        style={{top: GIFT_TOP, width: GW, height: GH, visibility: shownAtStart ? "hidden" : undefined}}
+        style={{top: GIFT_TOP, width: GW, height: GH}}
         onPointerDown={(event) => {
           event.preventDefault();
           try {
@@ -341,7 +339,7 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
         }}>
         <svg width={GW} height={round2(GH)} viewBox={`0 0 ${GW} ${round2(GH)}`} aria-hidden="true" className="block overflow-visible">
           {giftRows.map((row, index) => (
-            <g key={index} className="fge-kr" data-gone={shownAtStart ? "true" : "false"}>
+            <g key={index} className="fge-kr" data-gone="false">
               {row["#"] && <path d={row["#"]} style={{fill: "var(--color-yarn-white)"}} />}
               {row.o && <path d={row.o} style={{fill: "var(--color-gold)"}} />}
             </g>
@@ -349,27 +347,27 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
         </svg>
       </button>
       <span ref={progress} role="progressbar" aria-label={labels.progress} aria-valuemin={0} aria-valuemax={100}
-        aria-valuenow={shownAtStart ? 100 : 0} className="sr-only" />
+        aria-valuenow={0} className="sr-only" />
 
       <div className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-5" style={{top: NAME_TOP}}>
-        <div data-reveal-flakes="" className="flex gap-[70px]" style={{opacity: shownAtStart ? 1 : 0}}>
+        <div data-reveal-flakes="" className="flex gap-[70px]" style={{opacity: 0}}>
           <Snowflake cell={5} /><Snowflake cell={5} />
         </div>
-        <p data-reveal-lead="" className="text-section font-bold" style={{opacity: shownAtStart ? 1 : 0}}>{labels.lead}</p>
+        <p data-reveal-lead="" className="text-section font-bold" style={{opacity: 0}}>{labels.lead}</p>
         {stitched ? (
           <svg ref={nameSvg} aria-hidden="true" width={nameWidth} height={nameHeight} viewBox={`0 0 ${nameWidth} ${nameHeight}`} className="block overflow-visible">
             {nameStitches.map((stitch, index) => (
-              <path key={index} className="fge-nm" d={stitch.d} data-on={shownAtStart ? "true" : "false"} style={{fill: "var(--color-yarn-white)"}} />
+              <path key={index} className="fge-nm" d={stitch.d} data-on="false" style={{fill: "var(--color-yarn-white)"}} />
             ))}
           </svg>
         ) : (
           <p aria-hidden="true" className="font-extrabold uppercase" style={{fontSize: 9 * ch * 0.86, lineHeight: `${9 * ch}px`, opacity: revealed ? 1 : 0}}>{name}</p>
         )}
-        <div data-reveal-only="" style={{opacity: shownAtStart ? 1 : 0}}><OnlyYou>{labels.onlyYou}</OnlyYou></div>
+        <div data-reveal-only="" style={{opacity: 0}}><OnlyYou>{labels.onlyYou}</OnlyYou></div>
       </div>
       <p className="sr-only" aria-live="assertive">{announce}</p>
 
-      <div data-reveal-band="" className="pointer-events-none absolute inset-x-0" style={{top: BAND_TOP, opacity: shownAtStart ? 1 : 0}}>
+      <div data-reveal-band="" className="pointer-events-none absolute inset-x-0" style={{top: BAND_TOP, opacity: 0}}>
         <FairIsleBand kind="flake" cell={7} />
       </div>
 
@@ -379,8 +377,8 @@ export function UnravelReveal({name, labels, next, revealed: initiallyRevealed =
         </div>
       )}
 
-      <div data-reveal-next="" inert={!shownAtStart} className="absolute inset-x-edge bottom-[34px] flex flex-col gap-1.5"
-        style={{opacity: shownAtStart ? 1 : 0, pointerEvents: shownAtStart ? "auto" : "none"}}>
+      <div data-reveal-next="" inert className="absolute inset-x-edge bottom-[34px] flex flex-col gap-1.5"
+        style={{opacity: 0, pointerEvents: "none"}}>
         {next}
       </div>
     </div>

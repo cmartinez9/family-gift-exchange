@@ -13,8 +13,8 @@ export const PIN_LENGTH = 4;
  * Four 64 by 76px slots. A filled slot is white with a stitched red dot that pops in.
  * A refused PIN rings the slots gold and shakes them once.
  */
-export function PinSlots({filled, bad = false, shakeKey, label, length = PIN_LENGTH}: {
-  filled: number; bad?: boolean; shakeKey?: number; label: string; length?: number;
+export function PinSlots({filled, bad = false, shakeKey, label}: {
+  filled: number; bad?: boolean; shakeKey?: number; label: string;
 }) {
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -29,7 +29,7 @@ export function PinSlots({filled, bad = false, shakeKey, label, length = PIN_LEN
   }, [shakeKey]);
   return (
     <div ref={row} role="img" aria-label={label} className="flex justify-center gap-3.5" data-filled={filled}>
-      {Array.from({length}, (_, index) => {
+      {Array.from({length: PIN_LENGTH}, (_, index) => {
         const on = index < filled;
         return (
           <span key={index} data-filled={on} data-bad={bad && on}
