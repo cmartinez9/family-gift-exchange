@@ -5,6 +5,7 @@ import {DURATION} from "@/components/ui/motion/easing";
 import {dismissToast, toast} from "@/components/ui/toast";
 import type {Feedback} from "./action-types";
 import {removeItem} from "./actions";
+import {runListAction} from "./client-action";
 
 type Removal = {timer: number; state: "undo" | "saving" | "saved"};
 const pending = new Map<string, Map<string, Removal>>();
@@ -51,12 +52,7 @@ export function removeWithUndo(ownerId: string, itemId: string, message: string,
   removal.timer = window.setTimeout(async () => {
     removal.state = "saving";
     dismissToast(toastId);
-    let error: Feedback | undefined;
-    try {
-      error = (await removeItem(ownerId, itemId)).error;
-    } catch {
-      error = "could-not-save";
-    }
+    const {error} = await runListAction(() => removeItem(ownerId, itemId));
     if (error) {
       restore(ownerId, itemId);
       toast({message: errorMessage(error), icon: "alert"});

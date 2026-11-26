@@ -13,6 +13,7 @@ import {toast} from "@/components/ui/toast";
 import {aboutFields, sizePresets, type AboutField, type SizeKind} from "@/server/lists/validation";
 import {saveProfileField} from "../../actions";
 import type {FormState} from "../../action-types";
+import {runListAction} from "../../client-action";
 import {FormFeedback} from "../../controls";
 import {sizeLabel} from "../../tabs";
 
@@ -47,8 +48,8 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
   const [sizes, setSizes] = useState<Record<string, string>>(initialSizes);
   const [shoeSystem, setShoeSystem] = useState(initialSizes.shoeSystem ?? "");
   const [waist, setWaist] = useState(Boolean(initialSizes.waist || initialSizes.length));
-  const [otherTops, setOtherTops] = useState(Boolean(initialSizes.tops && !LETTERS.some((size) => size === initialSizes.tops)));
-  const [otherBottoms, setOtherBottoms] = useState(Boolean(initialSizes.bottoms && !LETTERS.some((size) => size === initialSizes.bottoms)));
+  const [otherTops, setOtherTops] = useState(false);
+  const [otherBottoms, setOtherBottoms] = useState(false);
   const [state, setState] = useState<FormState>({});
   const queue = useRef(Promise.resolve());
   const queuedCount = useRef(0);
@@ -65,14 +66,20 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
     queuedCount.current++;
     queue.current = queue.current.then(async () => {
       if ((saved.current.get(key) ?? "") === cleaned) return;
-      const result = await saveProfileField(ownerId, field, cleaned, group);
+      const result = await runListAction(() => saveProfileField(ownerId, field, cleaned, group));
       if (result.status === "saved") {
         saved.current.set(key, cleaned);
         toast(t("saved"));
+      } else if (result.error) {
+        const previous = saved.current.get(key) ?? "";
+        if (group === "noClothes") {
+          setNoClothes((current) => String(current) === cleaned ? previous === "true" : current);
+        } else if (group === "size") {
+          if (field === "shoeSystem") setShoeSystem((current) => current === cleaned ? previous : current);
+          else setSizes((current) => (current[field] ?? "").trim() === cleaned ? {...current, [field]: previous} : current);
+        }
       }
       setState(result);
-    }).catch(() => {
-      setState({error: "could-not-save"});
     }).finally(() => {
       queuedCount.current--;
     });
@@ -97,9 +104,10 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
   }
 
   function letters(field: "tops" | "bottoms", other: boolean, setOther: (on: boolean) => void) {
+    const custom = other || Boolean(sizes[field] && !LETTERS.some((size) => size === sizes[field]));
     return (
       <div className="relative flex flex-col gap-1">
-        <ChoiceChips legend={t(`size.${field}`)} name={`${ids}-${field}`} value={other ? null : sizes[field] ?? null}
+        <ChoiceChips legend={t(`size.${field}`)} name={`${ids}-${field}`} value={custom ? null : sizes[field] ?? null}
           className="[&>div]:grid [&>div]:grid-cols-6 [&>div]:gap-1 [&_label]:min-w-0 [&_label]:px-0"
           options={LETTERS.map((value) => ({value, label: sizeLabel(value)}))}
           onChange={(value) => {
@@ -107,7 +115,7 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
             setSize(field, value);
           }} />
         {/* kids' and other sizes: a typed answer, from the link beside the heading */}
-        {other
+        {custom
           ? <div className="pt-2">{sizeField(field)}</div>
           : <TextButton className="absolute -top-3 right-0 -mr-3" onClick={() => setOther(true)}>{t("otherSize")}</TextButton>}
       </div>

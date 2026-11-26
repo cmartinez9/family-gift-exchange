@@ -8,6 +8,7 @@ import {Icon} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
 import {toast} from "@/components/ui/toast";
 import type {Feedback, FormState} from "./action-types";
+import {runListAction} from "./client-action";
 
 /** A problem in words, with the alert icon; or nothing. Saved feedback is a toast. */
 export function FormFeedback({error, className}: {error?: Feedback; className?: string}) {
@@ -30,13 +31,15 @@ export function ListForm({
   className?: string;
   children?: ReactNode;
 }) {
-  const [state, dispatch, pending] = useActionState(action, {});
+  const [state, dispatch, pending] = useActionState<FormState, FormData>(
+    (previous, form) => runListAction(() => action(previous, form)), {},
+  );
   const t = useTranslations("lists");
   useEffect(() => {
     if (state.status === "saved") toast(t("saved"));
   }, [state, t]);
   return (
-    <form action={dispatch} className={cn("flex flex-col gap-3", className)}>
+    <form action={dispatch} onReset={(event) => event.preventDefault()} className={cn("flex flex-col gap-3", className)}>
       {children}
       <Button type="submit" variant={variant} disabled={pending}>{pending ? t("saving") : label}</Button>
       <FormFeedback error={state.error} />
@@ -67,12 +70,13 @@ export function ChecklistTick({
         <input
           type="checkbox" checked={current} disabled={pending} className="absolute inset-0 cursor-pointer rounded-pill opacity-0"
           onChange={(event) => {
+            const previous = current;
             const next = event.currentTarget.checked;
             setCurrent(next);
             if (next) haptic("tick");
             startTransition(async () => {
-              const result = await action(next, {});
-              if (result.error) setCurrent(!next);
+              const result = await runListAction(() => action(next, {}));
+              if (result.error) setCurrent(previous);
               setState(result);
             });
           }}

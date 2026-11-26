@@ -15,6 +15,7 @@ import {toast} from "@/components/ui/toast";
 import type {ItemKind} from "@/server/lists/validation";
 import {itemCommand, setItemStar} from "../actions";
 import {ItemForm} from "../item-form";
+import {runListAction} from "../client-action";
 import {ItemThumb, missesPicture, type ListItemView} from "../item-view";
 import {removeWithUndo, usePendingRemovals} from "../pending-removals";
 
@@ -65,7 +66,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
     haptic("tick");
     startTransition(async () => {
       setStar({id: item.id, starred: on});
-      const result = await setItemStar(ownerId, item.id, on);
+      const result = await runListAction(() => setItemStar(ownerId, item.id, on));
       if (result.error) {
         toast({message: t(`feedback.${result.error}`), icon: "alert"});
       }
@@ -75,7 +76,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const command = (item: ListItemView, name: "up" | "down" | "refresh") => {
     setEditing(null);
     startTransition(async () => {
-      const result = await itemCommand(ownerId, item.id, name);
+      const result = await runListAction(() => itemCommand(ownerId, item.id, name));
       if (result?.error) toast({message: t(`feedback.${result.error}`), icon: "alert"});
     });
   };

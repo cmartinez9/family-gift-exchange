@@ -9,8 +9,9 @@ import {TextArea, TextField} from "@/components/ui/inputs";
 import {ItemPicture, NoPicture} from "@/components/ui/item-card";
 import {haptic} from "@/components/ui/motion/haptic";
 import {NOTE_LIMIT, TITLE_LIMIT, type ItemKind} from "@/server/lists/validation";
-import type {Feedback, PreviewState} from "./action-types";
+import type {Feedback, FormState, PreviewState} from "./action-types";
 import {previewItemLink, saveItem} from "./actions";
+import {runListAction} from "./client-action";
 import {FormFeedback} from "./controls";
 
 type InitialItem = {
@@ -70,7 +71,9 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   const t = useTranslations("lists");
   const formatter = useFormatter();
   const sheet = mode === "sheet";
-  const [state, dispatch, pending] = useActionState(saveItem.bind(null, ownerId, initial?.id ?? null, kind, sheet), {});
+  const [state, dispatch, pending] = useActionState<FormState, FormData>(
+    (previous, form) => runListAction(() => saveItem(ownerId, initial?.id ?? null, kind, sheet, previous, form)), {},
+  );
   const [title, setTitle] = useState(initial?.title ?? "");
   const [price, setPrice] = useState(initial?.price ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
@@ -106,12 +109,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
     requested.current = input;
     const id = ++requestId.current;
     setLoading(true);
-    let response: PreviewState;
-    try {
-      response = await previewItemLink(ownerId, input);
-    } catch {
-      response = {error: "could-not-save"};
-    }
+    const response: PreviewState = await runListAction(() => previewItemLink(ownerId, input));
     if (id !== requestId.current) return;
     setPreview(response);
     setLoading(false);
@@ -181,7 +179,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   );
 
   return (
-    <form action={submit} className="flex flex-col gap-4" data-item-form={mode}>
+    <form action={submit} onReset={(event) => event.preventDefault()} className="flex flex-col gap-4" data-item-form={mode}>
       {kind === "link" && (
         <>
           <TextArea id={`${ids}-link`} label={t("url")} hint={t("linkHint")} name="link" rows={2} value={link} required maxLength={3000}
