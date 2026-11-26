@@ -27,7 +27,13 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
     const result = await drawPage(practiceMemberView(owner, as));
     if (result instanceof DrawError) return <DrawRecovery error={result} />;
     const {status, questions} = result;
-    if (status.status !== "ready") return <PersonStatusScreen status={status.status} details={status.exchange} />;
+    if (status.status !== "ready") {
+      return <PersonStatusScreen status={status.status} details={status.exchange} back={PRACTICE} backLabel={t("practiceTitle")}
+        banner={<ModeBanner icon="user" label={t("setup.mode")}
+          action={<AppLink href={PRACTICE} transition="back" className={modeActionClass}>{t("setup.stop")}</AppLink>}>
+          {t("practiceViewing", {name: status.subjectName})}
+        </ModeBanner>} />;
+    }
     const context: MemberContext = {id: status.exchange.id, version: status.exchange.version, subject: as, practice: true};
     const self = `${PRACTICE}?as=${encodeURIComponent(as)}`;
     const current = questions && questions.version === context.version ? questions : null;
