@@ -25,6 +25,7 @@ async function createFamily(page: Page) {
   await page.getByLabel(auth.pin, {exact: true}).fill(pin);
   await page.getByLabel(auth.confirmPin).fill(pin);
   await page.getByRole("button", {name: auth.createFamily}).click();
+  await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
   await expect(page.getByRole("link", {name: auth.sendKeys})).toBeVisible();
   return (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
@@ -55,6 +56,7 @@ async function joinMember(page: Page, browser: Browser, name: string) {
   await member.getByLabel(auth.pin, {exact: true}).fill(pin);
   await member.getByLabel(auth.confirmPin).fill(pin);
   await member.getByRole("button", {name: auth.savePin}).click();
+  await expect(member.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
   await member.getByRole("link", {name: auth.notNow}).click();
   return {context, page: member};
 }
@@ -201,7 +203,7 @@ test("lets a switched helper edit a relative's list while other members can only
     expect((await page.request.get(`${path}/items/new?kind=note`)).status()).toBe(404);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Little Acorn", exact: true}).click();
-    await expect(page.getByText("You're helping Little Acorn.", {exact: true})).toBeVisible();
+    await expect(page.getByText(auth.actingFor.replace("{name}", "Little Acorn"), {exact: true})).toBeVisible();
     await page.getByRole("link", {name: lists.myList, exact: true}).click();
     await expect(page.getByText("You’re helping Little Acorn.", {exact: true})).toBeVisible();
     await addNote(page, path!, "Wooden train");

@@ -100,6 +100,7 @@ test("sets up the family, joins by key, switches devices, disputes a session and
 
     // A known device can unlock new-device PIN sign-in after a dispute.
     await memberPage.getByRole("button", {name: "Switch person or sign out"}).click();
+    await expect(memberPage).toHaveURL(/\/en\/sign-in$/);
     await enterPin(memberPage, "Snowbit", pin);
     await expect(memberPage.getByRole("heading", {name: "Hi, Snowbit!"})).toBeVisible();
     await otherPage.goto(address);
@@ -184,11 +185,13 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await guestPage.getByLabel("PIN de 4 dígitos").fill(pin);
     await guestPage.getByLabel("Vuelve a escribir el PIN").fill(pin);
     await guestPage.getByRole("button", {name: "Guardar PIN"}).click();
+    await expect(guestPage.getByRole("heading", {name: "¿Quieres usar Face ID la próxima vez?"})).toBeVisible();
     await guestPage.getByRole("link", {name: "Ahora no"}).click();
     await expect(guestPage.getByRole("heading", {name: "¡Hola, Pino!"})).toBeVisible();
     expect((await guestPage.goto("/es/family/group-chat"))?.status()).toBe(404);
     await guestPage.goto("/es/account");
     await guestPage.getByRole("button", {name: "Cambiar de persona o cerrar sesión"}).click();
+    await expect(guestPage).toHaveURL(/\/es\/sign-in$/);
     await guestPage.getByRole("link", {name: "Pino", exact: true}).click();
     await guestPage.locator("summary").filter({hasText: "Olvidé mi PIN"}).click();
     await guestPage.getByRole("button", {name: "Pedirle una llave nueva al organizador"}).click();
