@@ -55,6 +55,7 @@ for (const language of ["en", "es"] as const) {
       const message = page.getByText(language === "en" ? /^Hi Noel! This is your private key/ : /^¡Hola, Noel!/);
       const url = (await message.innerText()).split(" ").at(-1)!;
       const buyer = await guest.newPage();
+      const markAsRead = buyer.getByRole("button", {name: notify.inbox.markRead, exact: true});
       await buyer.goto(url);
       await buyer.getByRole("button", {name: language === "en" ? "Yes, I'm Noel" : "Sí, soy Noel", exact: true}).click();
       await buyer.getByLabel(auth.pin, {exact: true}).fill(pin);
@@ -71,16 +72,18 @@ for (const language of ["en", "es"] as const) {
       await page.getByLabel(lists.title).fill("Private winter puzzle");
       await page.getByRole("textbox", {name: lists.note, exact: true}).fill("Blue box");
       await page.getByRole("button", {name: lists.saveItem}).click();
+      const card = page.getByRole("article", {name: "Private winter puzzle"});
+      await expect(card).toBeVisible();
       await buyer.goto(`/${language}/lists/${ownerId}`);
       await buyer.getByRole("button", {name: lists.claim, exact: true}).click();
       await expect(buyer.getByText(lists.mine, {exact: true})).toBeVisible();
       const [claim] = await scoped((tx) => tx.select().from(claims));
       expect(claim.exchangeId).toBeNull();
-      const card = page.getByRole("article", {name: "Private winter puzzle"});
       await page.reload();
       await expect(card.getByText(lists.someone, {exact: true})).toHaveCount(0);
       await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
       await page.getByRole("button", {name: lists.saveItem}).click();
+      await expect(card).toBeVisible();
       expect(await scoped((tx) => tx.select().from(outbox))).toEqual([]);
       await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
       await page.getByRole("textbox", {name: lists.note, exact: true}).fill("Red box instead");
@@ -106,20 +109,22 @@ for (const language of ["en", "es"] as const) {
       await capture(buyer, `claimed-item-notices-${language}`);
       // Replay another person's valid native form with the organizer's session.
       // The action must authorize the current viewer rather than trust its bound notice ID.
-      const readForm = buyer.locator("form").filter({has: buyer.getByRole("button", {name: notify.inbox.markRead, exact: true})}).first();
+      const readForm = buyer.locator("form").filter({has: markAsRead}).first();
       const forgedForm = await readForm.evaluate((form: HTMLFormElement) => Object.fromEntries(new FormData(form)) as Record<string, string>);
       const replay = await page.request.post(`/${language}/notifications`, {
         form: forgedForm, headers: {origin: new URL(page.url()).origin},
       });
       expect(replay.status()).toBe(200);
       expect((await scoped((tx) => tx.select().from(outbox))).every(({readAt}) => readAt === null)).toBe(true);
-      await buyer.getByRole("button", {name: notify.inbox.markRead, exact: true}).first().click();
+      await markAsRead.first().click();
+      await expect(markAsRead).toHaveCount(1);
       await buyer.goto(`/${language}/account`);
       await expect(buyer.getByRole("link", {name: language === "en" ? "Notifications (1 unread)" : "Notificaciones (1 sin leer)"})).toBeVisible();
       await buyer.goto(`/${language}/notifications`);
-      await buyer.getByRole("button", {name: notify.inbox.markRead, exact: true}).click();
+      await markAsRead.click();
+      await expect(markAsRead).toHaveCount(0);
       await buyer.reload();
-      await expect(buyer.getByRole("button", {name: notify.inbox.markRead, exact: true})).toHaveCount(0);
+      await expect(markAsRead).toHaveCount(0);
 
       const [exchange] = await scoped((tx) => tx.select().from(exchanges));
       await scoped((tx) => tx.update(exchanges).set({status: "drawn"}).where(eq(exchanges.id, exchange.id)));
@@ -179,7 +184,9 @@ for (const language of ["en", "es"] as const) {
       await expect(buyer.getByRole("heading", {name: notify.templates["names-drawn"].title, exact: true})).toBeVisible();
       await expect(buyer.getByRole("heading", {name: notify.templates["claimed-item-changed"].title, exact: true})).toHaveCount(0);
       await expect(buyer.getByRole("heading", {name: notify.templates["plans-changed"].title, exact: true})).toHaveCount(0);
-      await buyer.getByRole("button", {name: notify.inbox.markRead, exact: true}).first().click();
+      const helperUnreadCount = await markAsRead.count();
+      await markAsRead.first().click();
+      await expect(markAsRead).toHaveCount(helperUnreadCount - 1);
       await capture(buyer, `helper-inbox-${language}`);
       const dependentRows = (await scoped((tx) => tx.select().from(outbox))).filter(({personId}) => personId === dependentId);
       expect(dependentRows.filter(({readAt}) => readAt !== null)).toHaveLength(1);
