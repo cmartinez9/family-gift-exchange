@@ -1,9 +1,9 @@
 import {getLocale, getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
-import {practiceMemberView, practiceSeason, redrawConfirmation} from "@/server/draw";
+import {DrawError, practiceMemberView, practiceSeason, redrawConfirmation} from "@/server/draw";
 import {beginPractice, managePractice, type MemberContext} from "../actions";
-import {drawPage, ExchangeFacts, MemberReveal, QuestionSection} from "../components";
+import {DrawRecovery, drawPage, ExchangeFacts, MemberReveal, QuestionSection} from "../components";
 import {DrawForm} from "../form";
 import {control, heading, link, panel, screen, subheading} from "../styles";
 
@@ -13,7 +13,9 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
   const t = await getTranslations("draw");
 
   if (as) {
-    const {status, questions} = await drawPage(practiceMemberView(owner, as));
+    const result = await drawPage(practiceMemberView(owner, as));
+    if (result instanceof DrawError) return <main className={screen}><DrawRecovery error={result} /></main>;
+    const {status, questions} = result;
     const context: MemberContext = {id: status.exchange.id, version: status.exchange.version, subject: as, practice: true};
     return (
       <main className={screen}>
@@ -31,6 +33,7 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
   }
 
   const practice = await drawPage(practiceSeason(owner));
+  if (practice instanceof DrawError) return <main className={screen}><DrawRecovery error={practice} /></main>;
   const locale = await getLocale();
   const active = practice?.exchange.status !== "closed";
   const locked = practice?.exchange.status === "locked";

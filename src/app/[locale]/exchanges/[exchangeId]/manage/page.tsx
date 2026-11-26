@@ -3,7 +3,7 @@ import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
 import {checkSealedDraw, DrawError, drawFeasibility, organizerExchange, redrawConfirmation} from "@/server/draw";
 import {manage, openPreview} from "../../actions";
-import {DetailsFields, drawPage} from "../../components";
+import {DetailsFields, DrawRecovery, drawPage} from "../../components";
 import {DrawForm} from "../../form";
 import {button, control, heading, link, panel, screen, subheading} from "../../styles";
 
@@ -97,6 +97,7 @@ const validationRules = [
 async function Proof({viewer, id}: {viewer: Awaited<ReturnType<typeof requireViewer>>; id: string}) {
   const t = await getTranslations("draw");
   const result = await drawPage(checkSealedDraw(viewer, id));
+  if (result instanceof DrawError) return <DrawRecovery error={result} manageId={id} />;
   if (result.status === "pending" || result.status === "closed") return null;
   return (
     <section className={panel}>
@@ -189,6 +190,7 @@ export default async function ManagePage({params, searchParams}: {
   const {check} = await searchParams;
   const t = await getTranslations("draw");
   const state = await drawPage(organizerExchange(viewer, exchangeId));
+  if (state instanceof DrawError) return <main className={screen}><DrawRecovery error={state} manageId={exchangeId} /></main>;
   const {id, status, name} = state.exchange;
   return (
     <main className={screen}>

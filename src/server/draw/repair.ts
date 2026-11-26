@@ -1,4 +1,4 @@
-import {minimumPeople, shuffled, validPairs, type DrawRules, type Pairs} from "./solver";
+import {inspectDraw, minimumPeople, shuffled, validPairs, type DrawRules, type Pairs} from "./solver";
 
 export function removeFromDraw(rules: DrawRules, pairs: Pairs, leaving: string, checkTime?: () => void): Pairs | null {
   const replacement = pairs.get(leaving);
@@ -37,6 +37,7 @@ export function repairDraw(
       next.has(id) && next.get(id) === previous.get(id));
     const observation = JSON.stringify([
       privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id)), seenCount, retainedQuestions,
+      inspectDraw(rules, next, []).oneLoop,
     ]);
     const group = groups.get(observation) ?? {
       pairs: [], recipients: new Map([...required].map((id) => [id, new Set<string>()])),

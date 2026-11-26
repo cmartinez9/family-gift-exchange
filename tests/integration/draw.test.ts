@@ -6,7 +6,7 @@ import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {audit, families, households, keepApart, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
-  drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
+  DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
   organizerExchange, ownRevealOpenings, practiceCommand, practiceMemberView, practiceSeason,
   previewAsMember, repairDisputedReveals, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
   type DrawEvents, type DrawViewer, type ExchangeDetails,
@@ -15,22 +15,30 @@ import {issueKey, redeemKey, signInDevice, signInWithPin, type Device} from "../
 import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionDisputes} from "../../src/server/auth/security";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
-import {possibleDraws} from "../helpers/possible-draws";
+import {readiness, removeMember} from "../../src/server/auth/families";
+import {renderServerTree} from "../helpers/render-server";
+import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
 import * as solver from "../../src/server/draw/solver";
+import MemberExchangePage from "../../src/app/[locale]/exchanges/[exchangeId]/page";
+import ManagePage from "../../src/app/[locale]/exchanges/[exchangeId]/manage/page";
+import {drawPage} from "../../src/app/[locale]/exchanges/components";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
-const signedIn = vi.hoisted(() => ({viewer: null as DrawViewer | null, clearSession: vi.fn()}));
+const signedIn = vi.hoisted(() => ({viewer: null as DrawViewer | null, clearSession: vi.fn(), locale: "en" as "en" | "es"}));
 vi.mock("server-only", () => ({}));
 vi.mock("next-intl/server", async () => {
   const {createTranslator} = await import("next-intl");
-  const {default: messages} = await import("../../messages/en.json");
+  const {default: en} = await import("../../messages/en.json");
+  const {default: es} = await import("../../messages/es.json");
   return {
-    getLocale: async () => "en",
-    getTranslations: async (namespace: "auth" | "draw") => createTranslator({locale: "en", messages, namespace}),
+    getLocale: async () => signedIn.locale,
+    getTranslations: async (namespace: "auth" | "draw") => createTranslator({
+      locale: signedIn.locale, messages: signedIn.locale === "es" ? es : en, namespace,
+    }),
     getFormatter: async () => ({dateTime: (date: Date) => date.toISOString()}),
   };
 });
@@ -47,10 +55,19 @@ vi.mock("../../src/app/[locale]/sign-in/controls", async () => {
     PinFields: () => null,
   };
 });
+vi.mock("../../src/app/[locale]/exchanges/form", async () => {
+  const {createElement} = await import("react");
+  return {DrawForm: ({label, children}: {label: string; children?: import("react").ReactNode}) => createElement(
+    "form", null, children, createElement("button", {type: "submit"}, label),
+  )};
+});
 vi.mock("@/server/auth/request", async (original) => ({
   ...await original<typeof import("../../src/server/auth/request")>(), clearSession: signedIn.clearSession,
 }));
-vi.mock("next/navigation", () => ({redirect: (url: string) => { throw new Error(`redirect:${url}`); }}));
+vi.mock("next/navigation", () => ({
+  redirect: (url: string) => { throw new Error(`redirect:${url}`); },
+  notFound: () => { throw new Error("notFound"); },
+}));
 vi.mock("@/server/auth", async (original) => ({
   ...await original<typeof import("../../src/server/auth")>(),
   requireViewer: async () => signedIn.viewer!,
@@ -99,6 +116,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   signedIn.viewer = null;
   signedIn.clearSession.mockClear();
+  signedIn.locale = "en";
 });
 
 function cycle(ids: readonly string[]) {
@@ -109,7 +127,7 @@ const details: ExchangeDetails = {
   name: "Snowbell Gifts", giftDay: "2023-01-06", giftTime: "18:30", place: "Lantern Hall",
   budgetAmount: "25", listDeadline: "2022-12-30", drawDay: "2023-01-01",
 };
-const names = ["Mintflake", "Frostsprig", "Candleplum", "Jinglemoss", "Starfern", "Bellswirl", "Driftpetal", "Pinegleam"];
+const names = ["Mintflake", "Frostsprig", "Candleplum", "Jinglemoss", "Starfern", "Bellswirl", "Driftpetal", "Pinegleam", "Hollybrook"];
 
 async function fixture({helpers = false, count = 7, active = 6, organizerIndex = 0, coOrganizerIndex = 2 as number | null} = {}) {
   const familyId = randomUUID();
@@ -561,7 +579,8 @@ it("keeps B's repaired recipient ambiguous to organizer E in the A B C D E F dra
   const count = (pairs: ReadonlyMap<string, string>) => f.ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
   expect(count(actual)).toBe(3);
   const alternatives = possibleDraws(f.ids).filter((pairs) => count(pairs) === 3
-    && pairs.get(f.ids[4]) === actual.get(f.ids[4]) && pairs.get(f.ids[1]) !== f.ids[2]);
+    && pairs.get(f.ids[4]) === actual.get(f.ids[4]) && modelOneLoop(pairs) === modelOneLoop(actual)
+    && pairs.get(f.ids[1]) !== f.ids[2]);
   expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
   verifyNoPairing(await organizerExchange(f.organizer, f.exchangeId));
 });
@@ -733,11 +752,13 @@ it("keeps repaired recipients private at the same opened count and preserves una
   expect(state.seenCount).toBe(opened(actual));
   const all = possibleDraws(ids).filter((pairs) => pairs.get(ids[1]) !== ids[2]);
   const safe = all.filter((pairs) => all.some((other) => count(other) === count(pairs)
-    && other.get(ids[4]) === pairs.get(ids[4]) && opened(other) === opened(pairs)
+    && other.get(ids[4]) === pairs.get(ids[4]) && modelOneLoop(other) === modelOneLoop(pairs)
+    && opened(other) === opened(pairs)
     && other.get(ids[1]) !== pairs.get(ids[1])));
   expect(count(actual)).toBe(Math.min(...safe.map(count)));
   const alternatives = all.filter((pairs) => count(pairs) === count(actual)
-    && pairs.get(ids[4]) === actual.get(ids[4]) && opened(pairs) === state.seenCount);
+    && pairs.get(ids[4]) === actual.get(ids[4]) && modelOneLoop(pairs) === modelOneLoop(actual)
+    && opened(pairs) === state.seenCount);
   expect(new Set(alternatives.map((pairs) => pairs.get(ids[1]))).size).toBeGreaterThan(1);
   for (const row of saved) {
     if (row.status === "out") {
@@ -902,12 +923,104 @@ it("keeps repaired B ambiguous after the organizer observes question retention, 
   expect(state.seenCount).toBe(f.ids.length - count(actual));
   const all = possibleDraws(f.ids).filter((pairs) => pairs.get(f.ids[1]) !== f.ids[2]);
   const safe = all.filter((pairs) => all.some((other) => count(other) === count(pairs)
-    && other.get(f.ids[4]) === pairs.get(f.ids[4]) && questionRetained(other) === questionRetained(pairs)
+    && other.get(f.ids[4]) === pairs.get(f.ids[4]) && modelOneLoop(other) === modelOneLoop(pairs)
+    && questionRetained(other) === questionRetained(pairs)
     && other.get(f.ids[1]) !== pairs.get(f.ids[1])));
   expect(count(actual)).toBe(Math.min(...safe.map(count)));
   const alternatives = all.filter((pairs) => count(pairs) === count(actual)
-    && pairs.get(f.ids[4]) === actual.get(f.ids[4]) && questionRetained(pairs) === retained
+    && pairs.get(f.ids[4]) === actual.get(f.ids[4]) && modelOneLoop(pairs) === modelOneLoop(actual)
+    && questionRetained(pairs) === retained
     && f.ids.length - count(pairs) === state.seenCount);
   expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
   verifyNoPairing(state);
+});
+
+it("keeps the disputed recipient ambiguous at the same public sealed-loop result", async () => {
+  const f = await fixture({count: 9, active: 9, organizerIndex: 4, coOrganizerIndex: null});
+  const previous = cycle(f.ids);
+  const exclusions = [[1, 6], [1, 7], [2, 7]] as const;
+  for (const [a, b] of exclusions) await setKeepApart(f.organizer, f.exchangeId, f.ids[a], f.ids[b], "custom");
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  for (const viewer of f.viewers) await revealMyPerson(viewer, f.exchangeId, 1);
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const owner = {...f.viewers[1], sessionId: session.id};
+  signedIn.viewer = owner;
+  await expect(reportSession(f.viewers[1].sessionId)).rejects.toThrow("redirect:/en/account?reported=1");
+  const state = await organizerExchange(f.organizer, f.exchangeId);
+  const proof = await checkSealedDraw(f.organizer, f.exchangeId);
+  expect(proof).toMatchObject({status: "checked", valid: true});
+  if (proof.status !== "checked") throw new Error("Missing sealed check");
+  const actual = new Map(await Promise.all(f.viewers.map(async (viewer, index) => [
+    viewer.personId, (await revealMyPerson(index === 1 ? owner : viewer, f.exchangeId, 2)).person.id,
+  ] as const)));
+  const changed = (pairs: ReadonlyMap<string, string>) => f.ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  expect(proof.oneLoop).toBe(modelOneLoop(actual));
+  expect(state.seenCount).toBe(f.ids.length - changed(actual));
+  const alternatives = possibleDraws(f.ids).filter((pairs) => pairs.get(f.ids[1]) !== f.ids[2]
+    && exclusions.every(([a, b]) => pairs.get(f.ids[a]) !== f.ids[b] && pairs.get(f.ids[b]) !== f.ids[a])
+    && changed(pairs) === changed(actual) && pairs.get(f.ids[4]) === actual.get(f.ids[4])
+    && modelOneLoop(pairs) === proof.oneLoop && f.ids.length - changed(pairs) === state.seenCount);
+  expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
+  verifyNoPairing([state, proof]);
+}, 10_000);
+
+it("selects the active dated exchange ahead of closed undated history in family management", async () => {
+  const f = await fixture();
+  await editExchange(f.organizer, f.exchangeId, {...details, giftDay: null, giftTime: null});
+  await closeExchange(f.organizer, f.exchangeId);
+  const next = await createExchange(f.organizer, {...details, name: "Current Christmas"});
+  await setParticipants(f.organizer, next.id, f.ids.slice(0, 6));
+  await setKeepApart(f.organizer, next.id, f.ids[0], f.ids[1], "partner");
+  const ready = () => runForFamily(app.db, f.familyId, (tx) => readiness(tx, f.organizer, new Date()));
+  expect(await ready()).toMatchObject({exchangeId: next.id, constraintsOpen: true, pairs: [expect.any(Object)]});
+  await runDraw(f.organizer, next.id, {expectedVersion: 0});
+  expect(await ready()).toMatchObject({exchangeId: next.id, constraintsOpen: false, pairs: [expect.any(Object)]});
+  await expect(runForFamily(app.db, f.familyId, (tx) => removeMember(tx, f.organizer, f.ids[1], new Date())))
+    .resolves.toBe("drawStarted");
+  const [person] = await admin.db.select({removedAt: people.removedAt}).from(people).where(and(
+    eq(people.familyId, f.familyId), eq(people.id, f.ids[1]),
+  ));
+  expect(person.removedAt).toBeNull();
+  expect(await memberDrawStatus(f.viewers[1], next.id)).toMatchObject({status: "ready", exchange: {version: 1}});
+  expect(await checkSealedDraw(f.organizer, next.id)).toMatchObject({valid: true, rosterMatches: true, count: 6});
+});
+
+it.each(["en", "es"] as const)("renders localized recovery on member and sealed-check pages in %s", async (locale) => {
+  const f = await fixture({count: 4, active: 4});
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  await revealMyPerson(f.viewers[1], f.exchangeId, 1);
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const owner = {...f.viewers[1], sessionId: session.id};
+  signedIn.viewer = owner;
+  signedIn.locale = locale;
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  await expect(reportSession(f.viewers[1].sessionId)).resolves.toEqual({error: "repairRequired"});
+  const messages = locale === "es" ? (await import("../../messages/es.json")).default
+    : (await import("../../messages/en.json")).default;
+  const params = Promise.resolve({exchangeId: f.exchangeId});
+  const memberHtml = renderToStaticMarkup(await renderServerTree(await MemberExchangePage({params})));
+  expect(memberHtml).toContain(messages.draw.errors.repairImpossible);
+  expect(memberHtml).toContain('role="alert"');
+  expect(memberHtml).toContain('href="/account"');
+  signedIn.viewer = f.organizer;
+  const manageHtml = renderToStaticMarkup(await renderServerTree(await ManagePage({params, searchParams: Promise.resolve({check: "1"})})));
+  expect(manageHtml).toContain(messages.draw.errors.repairImpossible);
+  expect(manageHtml).toContain('href="/account"');
+  expect(manageHtml).toContain(`href="/exchanges/${f.exchangeId}/manage"`);
+  expect(manageHtml).toContain('name="confirmation"');
+  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "repairImpossible"});
+});
+
+it("keeps access denials and unexpected failures out of recoverable draw states", async () => {
+  await expect(drawPage(Promise.reject(new DrawError("forbidden")))).rejects.toThrow("notFound");
+  await expect(drawPage(Promise.reject(new DrawError("notFound")))).rejects.toThrow("notFound");
+  const error = new Error("Unexpected failure");
+  await expect(drawPage(Promise.reject(error))).rejects.toBe(error);
 });

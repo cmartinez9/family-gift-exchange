@@ -28,3 +28,14 @@ export function reportedRepairOrder<T>(values: Iterable<T>): T[] {
   };
   return choices.sort((a, b) => rank(a) - rank(b));
 }
+
+export function modelOneLoop(pairs: ReadonlyMap<string, string>) {
+  const first = pairs.keys().next().value;
+  const seen = new Set<string>();
+  let cursor = first;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    cursor = pairs.get(cursor);
+  }
+  return first !== undefined && cursor === first && seen.size === pairs.size;
+}

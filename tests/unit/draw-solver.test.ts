@@ -2,7 +2,7 @@ import fc from "fast-check";
 import {expect, it, vi} from "vitest";
 import {insertIntoDraw, removeFromDraw, repairDraw, repairReportedPair} from "../../src/server/draw/repair";
 import * as solver from "../../src/server/draw/solver";
-import {possibleDraws, reportedRepairOrder} from "../helpers/possible-draws";
+import {modelOneLoop, possibleDraws, reportedRepairOrder} from "../helpers/possible-draws";
 import {
   checkRules, drawRules, inspectDraw, solveDraw, type DrawPerson, type KeepApartPair, type Pairs,
 } from "../../src/server/draw/solver";
@@ -190,7 +190,8 @@ it("chooses the smallest private repair for A B C D E F with organizer E and a d
   expect(two[0].get("B")).toBe("F");
   expect(two[0].get("E")).toBe("C");
   const safe = all.filter((pairs) => all.some((other) => changedCount(other) === changedCount(pairs)
-    && other.get("E") === pairs.get("E") && other.get("B") !== pairs.get("B")));
+    && other.get("E") === pairs.get("E") && modelOneLoop(other) === modelOneLoop(pairs)
+    && other.get("B") !== pairs.get("B")));
   const minimum = Math.min(...safe.map(changedCount));
   expect(minimum).toBe(3);
   for (let attempt = 0; attempt < 12; attempt++) {
@@ -198,7 +199,7 @@ it("chooses the smallest private repair for A B C D E F with organizer E and a d
     expect(validate(people, [], next)).toBe(true);
     expect(changedCount(next)).toBe(minimum);
     expect(next.get("B")).not.toBe("C");
-    const alternatives = safe.filter((pairs) => changedCount(pairs) === minimum && pairs.get("E") === next.get("E"));
+    const alternatives = safe.filter((pairs) => changedCount(pairs) === minimum && pairs.get("E") === next.get("E") && modelOneLoop(pairs) === modelOneLoop(next));
     expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
   }
 });
@@ -221,7 +222,8 @@ it("keeps B ambiguous after conditioning on the opened count with only B D E see
   const seenCount = (pairs: Pairs) => seenGivers.filter((id) => pairs.get(id) === previous.get(id)).length;
   const all = possibleDraws(ids).filter((pairs) => pairs.get("B") !== "C");
   const safe = all.filter((pairs) => all.some((other) => changedCount(other) === changedCount(pairs)
-    && other.get("E") === pairs.get("E") && seenCount(other) === seenCount(pairs)
+    && other.get("E") === pairs.get("E") && modelOneLoop(other) === modelOneLoop(pairs)
+    && seenCount(other) === seenCount(pairs)
     && other.get("B") !== pairs.get("B")));
   const minimum = Math.min(...safe.map(changedCount));
   const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(reportedRepairOrder);
@@ -231,7 +233,8 @@ it("keeps B ambiguous after conditioning on the opened count with only B D E see
     expect(validate(people, [], next)).toBe(true);
     expect(changedCount(next)).toBe(minimum);
     const alternatives = all.filter((pairs) => changedCount(pairs) === changedCount(next)
-      && pairs.get("E") === next.get("E") && seenCount(pairs) === seenCount(next));
+      && pairs.get("E") === next.get("E") && modelOneLoop(pairs) === modelOneLoop(next)
+      && seenCount(pairs) === seenCount(next));
     expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
   } finally {
     shuffle.mockRestore();
@@ -246,7 +249,8 @@ it("keeps B ambiguous when an organizer can recognize D's retained question", ()
   const retained = (pairs: Pairs) => pairs.get("D") === "E";
   const all = possibleDraws(ids).filter((pairs) => pairs.get("B") !== "C");
   const safe = all.filter((pairs) => all.some((other) => changed(other) === changed(pairs)
-    && other.get("E") === pairs.get("E") && retained(other) === retained(pairs)
+    && other.get("E") === pairs.get("E") && modelOneLoop(other) === modelOneLoop(pairs)
+    && retained(other) === retained(pairs)
     && other.get("B") !== pairs.get("B")));
   const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(reportedRepairOrder);
   try {
@@ -257,9 +261,57 @@ it("keeps B ambiguous when an organizer can recognize D's retained question", ()
     expect(validate(people, [], next)).toBe(true);
     expect(changed(next)).toBe(Math.min(...safe.map(changed)));
     const alternatives = all.filter((pairs) => changed(pairs) === changed(next)
-      && pairs.get("E") === next.get("E") && retained(pairs) === retained(next));
+      && pairs.get("E") === next.get("E") && modelOneLoop(pairs) === modelOneLoop(next)
+      && retained(pairs) === retained(next));
     expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
   } finally {
     shuffle.mockRestore();
   }
 });
+
+it("keeps B ambiguous when the sealed check reveals whether a nine-person repair is one loop", () => {
+  const ids = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const excluded = [{personA: "B", personB: "G"}, {personA: "B", personB: "H"}, {personA: "C", personB: "H"}];
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const rules = drawRules(people, excluded);
+  const split = new Map(previous).set("B", "I").set("E", "C").set("H", "F");
+  const joined = new Map(previous).set("B", "D").set("C", "F").set("E", "C");
+  expect(validate(people, excluded, split)).toBe(true);
+  expect(validate(people, excluded, joined)).toBe(true);
+  expect(modelOneLoop(split)).toBe(false);
+  expect(modelOneLoop(joined)).toBe(true);
+  const changed = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const observation = (pairs: Pairs) => JSON.stringify([changed(pairs), pairs.get("E"), modelOneLoop(pairs)]);
+  const groups = new Map<string, {count: number; recipients: Set<string>}>();
+  for (const pairs of possibleDraws(ids)) {
+    if (pairs.get("B") === "C" || !validate(people, excluded, pairs)) continue;
+    const key = observation(pairs);
+    const group = groups.get(key) ?? {count: changed(pairs), recipients: new Set<string>()};
+    group.recipients.add(pairs.get("B")!);
+    groups.set(key, group);
+  }
+  expect(groups.get(observation(split))!.recipients).toEqual(new Set(["I"]));
+  const minimum = Math.min(...[...groups.values()].filter(({recipients}) => recipients.size > 1).map(({count}) => count));
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(function preferSplit<T>(values: Iterable<T>): T[] {
+    const choices = [...values];
+    if (!choices.every((value) => typeof value === "number")) return choices;
+    const preferred = choices.length === 6 && choices.some((value) => value === 2)
+      && !choices.some((value) => value === 1) ? [8, 3] : [5];
+    const rank = (value: T) => {
+      const index = preferred.indexOf(Number(value));
+      return index < 0 ? preferred.length + Number(value) : index;
+    };
+    return choices.sort((a, b) => rank(a) - rank(b));
+  });
+  try {
+    const next = repairDraw(rules, previous, ["B"], undefined, {
+      observers: ["E"], seenGivers: ids, questionGivers: [],
+    })!;
+    expect(validate(people, excluded, next)).toBe(true);
+    expect(changed(next)).toBe(minimum);
+    expect(groups.get(observation(next))!.recipients.size).toBeGreaterThan(1);
+  } finally {
+    shuffle.mockRestore();
+  }
+}, 10_000);

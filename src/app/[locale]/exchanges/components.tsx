@@ -1,5 +1,6 @@
 import {getFormatter, getTranslations} from "next-intl/server";
 import {notFound} from "next/navigation";
+import {Link} from "@/i18n/navigation";
 import {DrawError, type ExchangeDetails, type listOwnQuestions, type memberDrawStatus} from "@/server/draw";
 import {memberAction, reveal, type MemberContext} from "./actions";
 import {DrawForm} from "./form";
@@ -10,9 +11,26 @@ export async function drawPage<T>(result: Promise<T>) {
   try {
     return await result;
   } catch (error) {
-    if (error instanceof DrawError && (error.code === "forbidden" || error.code === "notFound")) notFound();
+    if (error instanceof DrawError) {
+      if (error.code === "forbidden" || error.code === "notFound") notFound();
+      if (error.code === "repairImpossible" || error.code === "checkTimedOut") return error;
+    }
     throw error;
   }
+}
+
+export async function DrawRecovery({error, manageId}: {error: DrawError; manageId?: string}) {
+  const t = await getTranslations("draw");
+  return (
+    <section className={panel}>
+      <p role="alert">{t(`errors.${error.code}`)}</p>
+      <nav className="flex flex-wrap gap-x-4">
+        <Link className={link} href="/account">{t("account")}</Link>
+        {manageId && <Link className={link} href={`/exchanges/${manageId}/manage`} prefetch={false}>{t("backToManage")}</Link>}
+        <Link className={link} href="/exchanges">{t("back")}</Link>
+      </nav>
+    </section>
+  );
 }
 
 export async function DetailsFields({details}: {details?: ExchangeDetails}) {

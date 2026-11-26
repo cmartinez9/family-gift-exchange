@@ -1,8 +1,8 @@
 import {getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
-import {previewAsMember} from "@/server/draw";
-import {drawPage, ExchangeFacts} from "../../../components";
+import {DrawError, previewAsMember} from "@/server/draw";
+import {DrawRecovery, drawPage, ExchangeFacts} from "../../../components";
 import {heading, link, panel, screen, subheading} from "../../../styles";
 
 export default async function PreviewPage({params}: {params: Promise<{exchangeId: string; personId: string}>}) {
@@ -10,6 +10,7 @@ export default async function PreviewPage({params}: {params: Promise<{exchangeId
   const {exchangeId, personId} = await params;
   const t = await getTranslations("draw");
   const preview = await drawPage(previewAsMember(viewer, exchangeId, personId));
+  if (preview instanceof DrawError) return <main className={screen}><DrawRecovery error={preview} manageId={exchangeId} /></main>;
   return (
     <main className={screen}>
       <Link className={link} href={`/exchanges/${exchangeId}/manage`} prefetch={false}>{t("backToManage")}</Link>

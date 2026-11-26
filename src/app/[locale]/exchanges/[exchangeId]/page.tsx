@@ -1,8 +1,8 @@
 import {getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
-import {listOwnQuestions, memberDrawStatus} from "@/server/draw";
-import {drawPage, ExchangeFacts, MemberReveal, QuestionSection} from "../components";
+import {DrawError, listOwnQuestions, memberDrawStatus} from "@/server/draw";
+import {DrawRecovery, drawPage, ExchangeFacts, MemberReveal, QuestionSection} from "../components";
 import {heading, link, panel, screen, subheading} from "../styles";
 
 export default async function MemberExchangePage({params}: {params: Promise<{exchangeId: string}>}) {
@@ -10,8 +10,16 @@ export default async function MemberExchangePage({params}: {params: Promise<{exc
   const {exchangeId} = await params;
   const t = await getTranslations("draw");
   const state = await drawPage(memberDrawStatus(viewer, exchangeId));
+  const recovery = (error: DrawError) => (
+    <main className={screen}>
+      <h1 className={heading}>{t("title")}</h1>
+      <DrawRecovery error={error} manageId={viewer.isOrganizer && viewer.actingAs === viewer.personId ? exchangeId : undefined} />
+    </main>
+  );
+  if (state instanceof DrawError) return recovery(state);
   const context = {id: state.exchange.id, subject: viewer.actingAs, version: state.exchange.version};
   const questions = state.status === "ready" ? await drawPage(listOwnQuestions(viewer, exchangeId)) : null;
+  if (questions instanceof DrawError) return recovery(questions);
 
   return (
     <main className={screen}>

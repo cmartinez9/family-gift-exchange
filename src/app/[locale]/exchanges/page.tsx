@@ -1,14 +1,15 @@
 import {getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
-import {listExchanges} from "@/server/draw";
-import {drawPage} from "./components";
+import {DrawError, listExchanges} from "@/server/draw";
+import {DrawRecovery, drawPage} from "./components";
 import {button, heading, link, panel, screen, subheading} from "./styles";
 
 export default async function ExchangesPage() {
   const viewer = await requireViewer();
   const t = await getTranslations("draw");
   const exchanges = await drawPage(listExchanges(viewer));
+  if (exchanges instanceof DrawError) return <main className={screen}><DrawRecovery error={exchanges} /></main>;
   const active = exchanges.find(({status}) => status !== "closed");
   const past = exchanges.filter(({status}) => status === "closed");
   const organizer = viewer.isOrganizer && viewer.actingAs === viewer.personId;
