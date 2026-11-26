@@ -287,6 +287,89 @@ it("keeps an unchanged co-organizer appointment's original grant time through lo
   expect(after).toMatchObject({role: "co_organizer", coOrganizerGrantedAt: f.at(1)});
 });
 
+it.each(["resetPreparedWithoutRequest", "resetSent"] as const)("roots a redeemed key's %s report at its issuing session", async (kind) => {
+  const f = await fixture();
+  const delegate = await f.add("Independent account");
+  const intruder = (await f.login(f.viewer.personId, device(), f.at(3))).session!;
+  const intruderViewer = (await resolve(intruder.cookie))!;
+  await tx(f.familyId, (t) => changeCoOrganizer(t, intruderViewer, delegate.id, f.at(4)));
+  const reset = await f.issue(intruderViewer, f.viewer.personId, "reset", f.at(5));
+  if (kind === "resetSent") await expect(tx(f.familyId, (t) => markKeySent(t, intruderViewer, reset.id!, f.at(5.5)))).resolves.toBe(true);
+  const redeemed = (await f.redeem(reset.token!, device(), f.at(6), replacementPin)).session!;
+  const recovery = await tx(f.familyId, (t) => issueOrganizerKey(t, f.familyId, pepper, f.at(7)));
+  const restored = (await f.redeem(recovery.token!, device(), f.at(8))).session!;
+  const reporter = (await resolve(restored.cookie))!;
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.keyId, reset.id!), eq(authEvents.kind, kind),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(9)))).resolves.toBe("lockdown");
+  const [record] = await tx(f.familyId, (t) => t.select().from(sessionDisputes).where(eq(sessionDisputes.eventId, eventId)));
+  expect(record.disputedSessionId).toBe(intruder.id);
+  const [member] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, delegate.id)));
+  expect(member).toMatchObject({role: "member", coOrganizerGrantedAt: null, needsNewKey: false});
+  for (const session of [intruder, redeemed, restored, delegate.session!]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  const [descendant] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, redeemed.id)));
+  expect(descendant.trusted).toBe(false);
+  const operatorKey = await tx(f.familyId, (t) => issueOrganizerKey(t, f.familyId, pepper, f.at(10)));
+  const organizer = (await f.redeem(operatorKey.token!, device(), f.at(11))).session!;
+  await expect(resolve(organizer.cookie)).resolves.toMatchObject({isOrganizer: true});
+  const returned = (await f.login(delegate.id, device(), f.at(12))).session!;
+  const formerDelegate = (await resolve(returned.cookie))!;
+  expect(formerDelegate.isOrganizer).toBe(false);
+  await expect(f.issue(formerDelegate, f.viewer.personId, "reset", f.at(13))).resolves.toEqual({error: "forbidden"});
+});
+
+it("roots a member's key-issuance report at the manager who issued it", async () => {
+  const f = await fixture();
+  const co = await f.add("Co-organizer");
+  const member = await f.add("Recipient", false);
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
+  const issuerSession = (await f.login(co.id, device(), f.at(3))).session!;
+  const issuer = (await resolve(issuerSession.cookie))!;
+  const key = await f.issue(issuer, member.id, "print", f.at(4));
+  const redeemed = (await f.redeem(key.token!, member.phone, f.at(5))).session!;
+  const reporter = (await resolve(redeemed.cookie))!;
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.keyId, key.id!), eq(authEvents.kind, "keyPrepared"),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(6)))).resolves.toBe("lockdown");
+  const [record] = await tx(f.familyId, (t) => t.select().from(sessionDisputes).where(eq(sessionDisputes.eventId, eventId)));
+  expect(record.disputedSessionId).toBe(issuerSession.id);
+  for (const session of [f.owner, issuerSession, redeemed]) await expect(resolve(session.cookie)).resolves.toBeNull();
+});
+
+it("locks down when a causal successor held organizer authority before delegating it elsewhere", async () => {
+  const f = await fixture();
+  const member = await f.add("Compromised member");
+  const independent = await f.add("Independent account");
+  const phone = device();
+  const reported = (await f.login(member.id, phone, f.at(3))).session!;
+  const reportedViewer = (await resolve(reported.cookie))!;
+  await expect(tx(f.familyId, (t) => endSessions(t, reportedViewer, f.at(4), false))).resolves.toBe(true);
+  const successor = (await f.login(member.id, phone, f.at(5))).session!;
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, member.id, f.at(6)));
+  const successorViewer = (await resolve(successor.cookie))!;
+  await tx(f.familyId, (t) => changeCoOrganizer(t, successorViewer, independent.id, f.at(7)));
+  const issuer = (await resolve(independent.session!.cookie))!;
+  const takeover = await f.issue(issuer, f.viewer.personId, "reset", f.at(8));
+  const [original] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, reported.id)));
+  const [descendant] = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.id, successor.id)));
+  expect(original.hadOrganizerAccess).toBe(false);
+  expect(descendant.hadOrganizerAccess).toBe(true);
+  const reporter = (await resolve(member.session!.cookie))!;
+  expect(reporter.isOrganizer).toBe(false);
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, reported.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(9)))).resolves.toBe("lockdown");
+  for (const session of [f.owner, reported, successor, independent.session!, member.session!]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  await expect(f.redeem(takeover.token!, device(), f.at(10))).resolves.toEqual({error: "unavailable"});
+  const returned = (await f.login(independent.id, device(), f.at(10))).session!;
+  await expect(resolve(returned.cookie)).resolves.toMatchObject({isOrganizer: false});
+  const [formerDelegate] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, independent.id)));
+  expect(formerDelegate).toMatchObject({role: "member", coOrganizerGrantedAt: null});
+});
+
 it("accepts slow PIN entry only for the exact key and device bound into a typed-code preview", async () => {
   const f = await fixture();
   const first = await f.add("First", false);

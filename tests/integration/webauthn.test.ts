@@ -4,7 +4,7 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {withFamily} from "../../src/server/db/client";
 import {families, people} from "../../src/server/db/schema";
-import {createFamily, readiness, saveMember} from "../../src/server/auth/families";
+import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
 import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent} from "../../src/server/auth/security";
@@ -367,4 +367,41 @@ it("keeps older member Face ID usable after lockdown while organizer recovery re
   const returnedViewer = (await resolve(returned.cookie))!;
   const activity = await withFamily(familyId, (tx) => account(tx, returnedViewer));
   expect(activity.activity.filter(({kind}) => kind === "familyLockdown")).toHaveLength(1);
+});
+
+it("revokes older authenticating passkeys in a co-organizer lockdown while preserving unrelated older Face ID", async () => {
+  const {familyId, viewer, session: owner} = await fixture(true);
+  const before = new Date(Date.now() - 3_600_000);
+  await withFamily(familyId, (tx) => saveMember(tx, viewer, null, {name: "Co-organizer", language: "en", helperId: null, householdId: null}));
+  const [{id: personId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(eq(people.displayName, "Co-organizer")));
+  const key = await withFamily(familyId, (tx) => issueKey(tx, viewer, personId, "share", pepper, before));
+  const phone = device();
+  const joined = (await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: phone, currentViewer: null, now: before,
+  }))).session!;
+  await withFamily(familyId, (tx) => changeCoOrganizer(tx, viewer, personId, before));
+  const reporter = (await resolve(joined.cookie))!;
+  const authenticating = await enroll(familyId, personId, phone, reporter);
+  const successorCredential = await enroll(familyId, personId, phone, reporter);
+  const unrelated = await enroll(familyId, personId, phone, reporter);
+  await withFamily(familyId, (tx) => tx.update(passkeys).set({enrolledAt: before}).where(eq(passkeys.personId, personId)));
+  const reportedPhone = device();
+  const reported = (await authenticating.authenticate(reportedPhone))!.session;
+  const successor = (await successorCredential.authenticate(reportedPhone))!.session;
+  const unrelatedSession = (await unrelated.authenticate(device()))!.session;
+  const [{id: eventId}] = await withFamily(familyId, (tx) => tx.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, reported.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, reporter, eventId, new Date()))).resolves.toBe("lockdown");
+  for (const session of [owner, joined, reported, successor, unrelatedSession]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  for (const credential of [authenticating, successorCredential]) {
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, credential.id)));
+    expect(stored.enrolledAt).toEqual(before);
+    expect(stored.revokedAt).toBeInstanceOf(Date);
+    await expect(credential.authenticate(device())).resolves.toBeNull();
+  }
+  const [preserved] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, unrelated.id)));
+  expect(preserved.revokedAt).toBeNull();
+  const returned = (await unrelated.authenticate(device()))!.session;
+  await expect(resolve(returned.cookie)).resolves.toMatchObject({personId, isOrganizer: true});
 });
