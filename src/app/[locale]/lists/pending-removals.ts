@@ -3,15 +3,25 @@
 import {useEffect, useSyncExternalStore} from "react";
 import {DURATION} from "@/components/ui/motion/easing";
 import {dismissToast, toast} from "@/components/ui/toast";
-import type {Feedback} from "./action-types";
+import type {Feedback, FormState} from "./action-types";
 import {removeItem} from "./actions";
 import {runListAction} from "./client-action";
 
-type Removal = {timer: number; state: "undo" | "saving" | "saved"};
+type Removal = {timer: number; state: "undo" | "saving" | "saved"; save: (keepalive: boolean) => Promise<void>};
 const pending = new Map<string, Map<string, Removal>>();
 const empty: ReadonlySet<string> = new Set();
 let hidden: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 const listeners = new Set<() => void>();
+
+function flush() {
+  for (const items of pending.values()) {
+    for (const removal of items.values()) void removal.save(true);
+  }
+}
+
+function visibilityChanged() {
+  if (document.visibilityState === "hidden") flush();
+}
 
 function emit() {
   hidden = new Map([...pending].map(([ownerId, items]) => [ownerId, new Set(items.keys())]));
@@ -22,6 +32,10 @@ function restore(ownerId: string, itemId: string) {
   const items = pending.get(ownerId);
   items?.delete(itemId);
   if (!items?.size) pending.delete(ownerId);
+  if (!pending.size) {
+    window.removeEventListener("pagehide", flush);
+    document.removeEventListener("visibilitychange", visibilityChanged);
+  }
   emit();
 }
 
@@ -43,24 +57,39 @@ export function usePendingRemovals(ownerId: string, items: readonly {id: string}
   return snapshot;
 }
 
-export function removeWithUndo(ownerId: string, itemId: string, message: string, errorMessage: (error: Feedback) => string) {
+export function removeWithUndo(locale: string, ownerId: string, itemId: string, message: string, errorMessage: (error: Feedback) => string) {
   const items = pending.get(ownerId) ?? new Map<string, Removal>();
   if (items.has(itemId)) return;
-  const removal: Removal = {timer: 0, state: "undo"};
+  if (!pending.size) {
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", visibilityChanged);
+  }
+  const removal: Removal = {
+    timer: 0,
+    state: "undo",
+    save: async (keepalive) => {
+      if (removal.state !== "undo") return;
+      window.clearTimeout(removal.timer);
+      removal.state = "saving";
+      dismissToast(toastId);
+      const {error} = await runListAction(async () => {
+        if (!keepalive) return removeItem(ownerId, itemId);
+        const response = await fetch(`/${locale}/lists/${ownerId}/items/${itemId}/remove`, {method: "POST", keepalive: true});
+        if (!response.ok) throw new Error("Removal failed");
+        return response.json() as Promise<FormState>;
+      });
+      if (error) {
+        restore(ownerId, itemId);
+        toast({message: errorMessage(error), icon: "alert"});
+      } else {
+        removal.state = "saved";
+        emit();
+      }
+    },
+  };
   items.set(itemId, removal);
   pending.set(ownerId, items);
-  removal.timer = window.setTimeout(async () => {
-    removal.state = "saving";
-    dismissToast(toastId);
-    const {error} = await runListAction(() => removeItem(ownerId, itemId));
-    if (error) {
-      restore(ownerId, itemId);
-      toast({message: errorMessage(error), icon: "alert"});
-    } else {
-      removal.state = "saved";
-      emit();
-    }
-  }, DURATION.toastStayUndo + 300);
+  removal.timer = window.setTimeout(() => void removal.save(false), DURATION.toastStayUndo + 300);
   const toastId = toast({
     message,
     icon: "undo",

@@ -1,7 +1,7 @@
 "use client";
 
 import {useOptimistic, useState, useTransition} from "react";
-import {useFormatter, useTranslations} from "next-intl";
+import {useFormatter, useLocale, useTranslations} from "next-intl";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
 import {EmptyBlock} from "@/components/ui/blocks";
@@ -28,7 +28,7 @@ const ADD_OPTIONS = [
 /**
  * Your own list (or the list of someone you help): words first, one big "Add something", your sizes, then
  * each thing with its heart. Tapping a thing opens it in a sheet over the list. Taking something off has
- * Undo instead of a confirm: it disappears at once and is only removed once the Undo has passed.
+ * Undo instead of a confirm: it disappears at once.
  */
 export function OwnList({ownerId, items, sizes, closeLabel}: {
   ownerId: string;
@@ -39,6 +39,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
 }) {
   const t = useTranslations("lists");
   const format = useFormatter();
+  const locale = useLocale();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [round, setRound] = useState(0);
@@ -59,7 +60,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const takeOff = (item: ListItemView) => {
     setEditing(null);
     haptic("soft");
-    removeWithUndo(ownerId, item.id, t("tookOff", {title: item.title}), (error) => t(`feedback.${error}`));
+    removeWithUndo(locale, ownerId, item.id, t("tookOff", {title: item.title}), (error) => t(`feedback.${error}`));
   };
 
   const star = (item: ListItemView, on: boolean) => {

@@ -7,6 +7,7 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import {ClaimItem} from "../../src/app/[locale]/lists/[personId]/claim-item";
 import {OwnList} from "../../src/app/[locale]/lists/[personId]/own-list";
+import {POST} from "../../src/app/[locale]/lists/[personId]/items/[itemId]/remove/route";
 import {claimCommand, removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
 import type {FormState} from "../../src/app/[locale]/lists/action-types";
 import {ItemThumb, toItemView, type ListItemView} from "../../src/app/[locale]/lists/item-view";
@@ -48,6 +49,14 @@ beforeEach(() => {
   vi.resetAllMocks();
   ownerId = randomUUID();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    const url = new URL(path, "https://gift.example");
+    const [, , , personId, , itemId] = url.pathname.split("/");
+    return POST(new Request(url, {method: "POST", headers: {origin: url.origin}}), {
+      params: Promise.resolve({personId, itemId}),
+    });
+  }));
   window.matchMedia = vi.fn().mockReturnValue({matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn()});
   Element.prototype.animate = vi.fn().mockReturnValue({cancel() {}, onfinish: null});
   Element.prototype.getAnimations = () => [];
@@ -89,13 +98,12 @@ async function takeOff() {
   await click(remove);
 }
 
-it("keeps Undo effective after leaving the list or hiding the page", async () => {
+it("keeps Undo effective after leaving the list while the page stays visible", async () => {
   vi.useFakeTimers();
   await render();
   await takeOff();
   expect(container.querySelector("article")).toBeNull();
   document.dispatchEvent(new Event("visibilitychange"));
-  window.dispatchEvent(new Event("pagehide"));
   showingList = false;
   await render();
   expect(removeItem).not.toHaveBeenCalled();
@@ -105,6 +113,66 @@ it("keeps Undo effective after leaving the list or hiding the page", async () =>
   showingList = true;
   await render();
   expect(container.querySelector("article")?.textContent).toContain(item.title);
+});
+
+it.each(["pagehide", "hidden"] as const)("flushes a removal once with keepalive on %s before reloading the list", async (event) => {
+  vi.useFakeTimers();
+  await render();
+  await takeOff();
+  expect(removeItem).not.toHaveBeenCalled();
+  await act(async () => {
+    if (event === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+    } else window.dispatchEvent(new Event("pagehide"));
+  });
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(`/en/lists/${ownerId}/items/${item.id}/remove`, {method: "POST", keepalive: true});
+  expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, item.id);
+  expect(container.querySelector(".fge-toast")?.getAttribute("data-show")).toBe("false");
+  await act(async () => {
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(6000);
+  });
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(removeItem).toHaveBeenCalledOnce();
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+});
+
+it("flushes every pending removal on exit even after leaving the list", async () => {
+  vi.useFakeTimers();
+  items.push({...item, id: "second", title: "Winter book"});
+  await render();
+  await takeOff();
+  await takeOff();
+  showingList = false;
+  await render();
+  await act(async () => window.dispatchEvent(new Event("pagehide")));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(removeItem).toHaveBeenCalledWith(ownerId, item.id);
+  expect(removeItem).toHaveBeenCalledWith(ownerId, "second");
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).toHaveBeenCalledTimes(2);
+  showingList = true;
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+});
+
+it.each(["returned", "rejected"] as const)("restores an item after a %s keepalive failure", async (failure) => {
+  vi.useFakeTimers();
+  if (failure === "returned") vi.mocked(removeItem).mockResolvedValueOnce({error: "forbidden"});
+  else vi.mocked(fetch).mockRejectedValueOnce(new Error("Offline"));
+  await render();
+  await takeOff();
+  await act(async () => window.dispatchEvent(new Event("pagehide")));
+  expect(container.querySelector("article")?.textContent).toContain(item.title);
+  const message = en.lists.feedback[failure === "returned" ? "forbidden" : "could-not-save"];
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(message);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(removeItem).toHaveBeenCalledTimes(failure === "returned" ? 1 : 0);
 });
 
 it("commits a removal once after leaving its Undo window unused", async () => {
@@ -161,7 +229,7 @@ it("shares cancellation when the same item removal is requested twice", async ()
   vi.useFakeTimers();
   await render();
   await takeOff();
-  await act(async () => removeWithUndo(ownerId, item.id, "Duplicate request", () => "Failed"));
+  await act(async () => removeWithUndo("en", ownerId, item.id, "Duplicate request", () => "Failed"));
   await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
   await act(async () => vi.advanceTimersByTimeAsync(6000));
   expect(removeItem).not.toHaveBeenCalled();

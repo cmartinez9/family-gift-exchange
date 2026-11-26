@@ -6,7 +6,7 @@ import sharp from "sharp";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {families} from "../../src/server/db/schema";
+import {families, items} from "../../src/server/db/schema";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
 
 const pin = "4268";
@@ -56,6 +56,35 @@ async function takeOff(page: Page, title: string, language: "en" | "es" = "en") 
   await expect(page.getByRole("status").filter({hasText: lists.tookOff.replace("{title}", title)})).toBeVisible();
   expect((await removal).ok()).toBe(true);
 }
+
+test("saves a removal when reloading before Undo expires", async ({page}) => {
+  const {lists} = en;
+  const familyId = await startFamily(page, "en");
+  const connection = connectDatabase(process.env.DATABASE_URL!);
+  try {
+    await enterWishlists(page, "en");
+    await page.getByRole("link", {name: lists.newNote}).click();
+    await page.getByLabel(lists.title).fill("Reload gift");
+    await page.getByRole("button", {name: lists.saveItem}).click();
+    const card = page.getByRole("article", {name: "Reload gift", exact: true});
+    await expect(card).toBeVisible();
+    await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Reload gift")}).click();
+    await page.getByRole("dialog", {name: lists.editItem}).getByRole("button", {name: lists.deleteItem}).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole("button", {name: en.ui.undo, exact: true})).toBeVisible();
+    await page.reload();
+    await expect.poll(() => runForFamily(connection.db, familyId, async (tx) => {
+      const [removed] = await tx.select({archivedAt: items.archivedAt}).from(items).where(eq(items.familyId, familyId));
+      return removed?.archivedAt !== null && removed?.archivedAt !== undefined;
+    })).toBe(true);
+    await page.reload();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole("heading", {name: lists.emptyTitle})).toBeVisible();
+  } finally {
+    await connection.close();
+    await removeFamily(familyId);
+  }
+});
 
 for (const language of ["en", "es"] as const) {
   test(`adds, edits and removes an item and saves sizes as you go in ${language}`, async ({page}) => {
