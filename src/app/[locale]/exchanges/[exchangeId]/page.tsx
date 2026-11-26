@@ -1,8 +1,9 @@
 import {getTranslations} from "next-intl/server";
+import {SectionHeading} from "@/components/ui/page-header";
 import {requireViewer} from "@/server/auth";
 import {DrawError, listOwnQuestions, memberDrawStatus} from "@/server/draw";
 import {AnswerScreen} from "../answer";
-import {DrawRecovery, drawPage, FixedScreen, PersonStatusScreen} from "../components";
+import {DrawRecovery, drawPage, ExchangeFacts, FixedScreen, PersonStatusScreen} from "../components";
 import {MemberPerson} from "../person";
 import {SeasonWrap} from "../season-wrap";
 
@@ -36,6 +37,10 @@ export default async function MemberExchangePage({params, searchParams}: {
       outgoing={current && state.seen ? questions.outgoing : []}
       incoming={current ? questions.incoming.filter(({answered}) => !answered).map(({text}) => text) : []}
       back="/" backLabel={t("person.backHome")} answerHref={`${self}?answer=1`}
+      exchangeFacts={<section aria-label={t("detailsTitle")} className="pb-6">
+        <SectionHeading title={t("detailsTitle")} />
+        <div className="px-edge pt-3"><ExchangeFacts details={state.exchange} /></div>
+      </section>}
       helping={viewer.actingAs !== viewer.personId ? {label: t("helping", {name: state.subjectName}), href: "/account", action: t("person.helpingDone")} : undefined} />
   );
 }

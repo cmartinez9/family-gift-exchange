@@ -1,7 +1,7 @@
 "use client";
 
 import {useFormatter, useTranslations} from "next-intl";
-import {useActionState, useEffect, useId, useRef, useState, useTransition} from "react";
+import {useActionState, useEffect, useId, useRef, useState, useTransition, type ReactNode} from "react";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton, TextLink} from "@/components/ui/button";
 import {Card, IconDisc, OnlyYou, Track, Chevron} from "@/components/ui/card";
@@ -32,7 +32,7 @@ const SUGGESTIONS = ["size", "color", "have"] as const;
  * Your person: the reveal the first time, then their page — pine, because only you may see it.
  * The name comes from the reveal itself; until it is opened on this visit the page keeps it hidden.
  */
-export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, helping}: {
+export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, helping, exchangeFacts}: {
   context: MemberContext;
   seen: boolean;
   canReport: boolean;
@@ -47,6 +47,7 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   answerHref: string;
   /** A mode: "You're helping Tito" or "Viewing as Pinewisp", and the way out of it. */
   helping?: {label: string; href: string; action: string};
+  exchangeFacts?: ReactNode;
 }) {
   const t = useTranslations("draw");
   const ui = useTranslations("ui");
@@ -111,6 +112,7 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
             }}>{t("person.tryAgain")}</Button>
           </div>
         )}
+        {exchangeFacts}
       </Screen>
     );
   }
@@ -178,6 +180,7 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
 
       {name && list && <PersonListSection name={name} id={person!.id} list={list} budget={budget}
         onAsk={canAsk ? () => setAsk(true) : undefined} />}
+      {exchangeFacts}
 
       {canAsk && <AskSheet open={ask} onClose={() => setAsk(false)} context={context} name={name} />}
       {canReport && <ReportSheet open={report} onClose={() => setReport(false)} context={context} name={name} />}
