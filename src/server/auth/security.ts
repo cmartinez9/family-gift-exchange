@@ -61,24 +61,40 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     targetId ??= key?.sessionId ?? null;
   }
   const disputedSessionId = targetId === sessionId ? null : targetId;
-  const personSessions = disputedSessionId ? await tx.select({
-    id: sessions.id, hash: sessions.deviceHash, passkeyId: sessions.passkeyId,
-  }).from(sessions).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, personId))) : [];
-  const target = personSessions.find(({id}) => id === disputedSessionId);
-  const personCredentials = target ? await tx.select({id: passkeys.id, hash: passkeys.deviceHash}).from(passkeys)
-    .where(and(eq(passkeys.familyId, familyId), eq(passkeys.personId, personId))) : [];
-  const deviceHashes = new Set(target ? [target.hash] : []);
+  const familySessions = disputedSessionId ? await tx.select({
+    id: sessions.id, personId: sessions.personId, hash: sessions.deviceHash, passkeyId: sessions.passkeyId,
+  }).from(sessions).where(eq(sessions.familyId, familyId)) : [];
+  const target = familySessions.find((session) => session.id === disputedSessionId && session.personId === personId);
+  const familyCredentials = target ? await tx.select({id: passkeys.id, personId: passkeys.personId, hash: passkeys.deviceHash})
+    .from(passkeys).where(eq(passkeys.familyId, familyId)) : [];
+  const familyKeys = target ? await tx.select({
+    id: personalKeys.id, issuedBySessionId: personalKeys.issuedBySessionId, usedSessionId: personalKeys.usedSessionId,
+  }).from(personalKeys).where(eq(personalKeys.familyId, familyId)) : [];
+  const deviceHashes = new Set(target ? [`${target.personId}.${target.hash}`] : []);
   const credentialIds = new Set(target?.passkeyId ? [target.passkeyId] : []);
+  const sessionIds = new Set(target ? [target.id] : []);
+  const keyIds = new Set<string>();
   let expanded = true;
   while (expanded) {
-    const size = deviceHashes.size + credentialIds.size;
-    for (const credential of personCredentials) {
-      if (deviceHashes.has(credential.hash)) credentialIds.add(credential.id);
+    const size = deviceHashes.size + credentialIds.size + sessionIds.size + keyIds.size;
+    for (const credential of familyCredentials) {
+      if (deviceHashes.has(`${credential.personId}.${credential.hash}`)) credentialIds.add(credential.id);
     }
-    for (const session of personSessions) {
-      if (session.id !== sessionId && session.passkeyId && credentialIds.has(session.passkeyId)) deviceHashes.add(session.hash);
+    for (const session of familySessions) {
+      if (session.id === sessionId) continue;
+      const device = `${session.personId}.${session.hash}`;
+      if (sessionIds.has(session.id) || deviceHashes.has(device) || (session.passkeyId && credentialIds.has(session.passkeyId))) {
+        sessionIds.add(session.id);
+        deviceHashes.add(device);
+      }
     }
-    expanded = size !== deviceHashes.size + credentialIds.size;
+    for (const key of familyKeys) {
+      if (key.issuedBySessionId && sessionIds.has(key.issuedBySessionId)) {
+        keyIds.add(key.id);
+        if (key.usedSessionId && key.usedSessionId !== sessionId) sessionIds.add(key.usedSessionId);
+      }
+    }
+    expanded = size !== deviceHashes.size + credentialIds.size + sessionIds.size + keyIds.size;
   }
   if (event.keyId) await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), eq(personalKeys.id, event.keyId),
@@ -89,20 +105,18 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   if (!record) return true;
   if (!target) return true;
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
-    eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), eq(personalKeys.issuedBy, personId),
-    eq(personalKeys.kind, "reset"), isNull(personalKeys.usedAt), isNull(personalKeys.revokedAt),
+    eq(personalKeys.familyId, familyId), inArray(personalKeys.id, [...keyIds]),
+    isNull(personalKeys.usedAt), isNull(personalKeys.revokedAt),
   ));
   await tx.update(passkeys).set({revokedAt: now}).where(and(
-    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId),
-    inArray(passkeys.id, [...credentialIds]),
+    eq(passkeys.familyId, familyId), inArray(passkeys.id, [...credentialIds]),
   ));
   await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
-    eq(sessions.familyId, familyId), eq(sessions.personId, personId),
-    inArray(sessions.deviceHash, [...deviceHashes]),
-    ne(sessions.id, sessionId),
+    eq(sessions.familyId, familyId), inArray(sessions.id, [...sessionIds]), ne(sessions.id, sessionId),
   ));
+  const affectedPeople = familySessions.filter(({id}) => sessionIds.has(id)).map(({personId}) => personId);
   await tx.update(pinCredentials).set({newDevicesLocked: true}).where(and(
-    eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId),
+    eq(pinCredentials.familyId, familyId), inArray(pinCredentials.personId, affectedPeople),
   ));
   return true;
 }

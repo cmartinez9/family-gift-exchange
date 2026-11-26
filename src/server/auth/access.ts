@@ -100,7 +100,7 @@ export async function issueKey(
   if (!await isManager(tx, viewer)) return {error: "forbidden"} as const;
   const person = await activePerson(tx, familyId, personId);
   if (!person || person.helperId || (viewer.personId === personId && kind !== "reset")) return {error: "unavailable"} as const;
-  return prepareKey(tx, familyId, person, viewer.personId, kind, pepper, now);
+  return prepareKey(tx, familyId, person, viewer.personId, viewer.sessionId, kind, pepper, now);
 }
 
 export async function issueOrganizerKey(tx: FamilyTransaction, familyId: string, pepper: string, now: Date) {
@@ -109,11 +109,11 @@ export async function issueOrganizerKey(tx: FamilyTransaction, familyId: string,
     eq(people.familyId, familyId), isNull(people.removedAt), eq(people.role, "organizer"),
   ));
   if (!organizer || organizer.helperId) return {error: "unavailable"} as const;
-  return prepareKey(tx, familyId, organizer, organizer.id, "reset", pepper, now);
+  return prepareKey(tx, familyId, organizer, organizer.id, null, "reset", pepper, now);
 }
 
 async function prepareKey(
-  tx: FamilyTransaction, familyId: string, person: typeof people.$inferSelect, issuedBy: string,
+  tx: FamilyTransaction, familyId: string, person: typeof people.$inferSelect, issuedBy: string, issuedBySessionId: string | null,
   kind: KeyKind, pepper: string, now: Date,
 ) {
   const personId = person.id;
@@ -130,7 +130,7 @@ async function prepareKey(
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeCode();
     const [inserted] = await tx.insert(personalKeys).values({
-      familyId, id, personId, issuedBy, tokenHash: digest(token),
+      familyId, id, personId, issuedBy, issuedBySessionId, tokenHash: digest(token),
       codeHash: keyedHash(pepper, "key-code", `${familyId}.${code}`), kind, createdAt: now, expiresAt,
     }).onConflictDoNothing().returning({id: personalKeys.id});
     if (!inserted) continue;

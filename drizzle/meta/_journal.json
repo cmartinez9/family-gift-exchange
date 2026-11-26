@@ -43,6 +43,13 @@
       "when": 1795664224650,
       "tag": "0005_session-passkey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795668554740,
+      "tag": "0006_key-issuing-session",
+      "breakpoints": true
     }
   ]
 }

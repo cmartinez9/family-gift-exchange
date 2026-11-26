@@ -1,0 +1,2 @@
+ALTER TABLE "personal_keys" ADD COLUMN "issued_by_session_id" uuid;--> statement-breakpoint
+ALTER TABLE "personal_keys" ADD CONSTRAINT "personal_keys_issuing_session_fk" FOREIGN KEY ("family_id","issued_by_session_id") REFERENCES "public"."sessions"("family_id","id") ON DELETE no action ON UPDATE no action;

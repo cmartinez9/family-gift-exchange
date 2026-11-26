@@ -58,6 +58,7 @@ export const personalKeys = pgTable("personal_keys", {
   id: uuid("id").notNull(),
   personId: uuid("person_id").notNull(),
   issuedBy: uuid("issued_by").notNull(),
+  issuedBySessionId: uuid("issued_by_session_id"),
   tokenHash: text("token_hash").notNull(),
   codeHash: text("code_hash").notNull(),
   kind: text("kind", {enum: ["share", "qr", "print", "reset"]}).notNull(),
@@ -85,6 +86,11 @@ export const personalKeys = pgTable("personal_keys", {
   foreignKey({
     name: "personal_keys_session_fk",
     columns: [table.familyId, table.usedSessionId],
+    foreignColumns: [sessions.familyId, sessions.id],
+  }),
+  foreignKey({
+    name: "personal_keys_issuing_session_fk",
+    columns: [table.familyId, table.issuedBySessionId],
     foreignColumns: [sessions.familyId, sessions.id],
   }),
 ]);
