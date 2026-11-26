@@ -29,9 +29,9 @@ function Feedback({state}: {state: AuthResult}) {
 }
 
 /** One prepared key: the message on a track, how to send it, and the card details when it is for paper. */
-function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, onPrepare, feedback}: {
+function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, onPrepare, onPrint, feedback}: {
   person: KeyPerson; prepared: PreparedKey; pending: boolean; feedback: AuthResult;
-  onShare: () => void; onWhatsapp: () => void; onMarkSent: () => void; onPrepare: (kind: KeyKind) => void;
+  onShare: () => void; onWhatsapp: () => void; onMarkSent: () => void; onPrepare: (kind: KeyKind) => void; onPrint: () => void;
 }) {
   const t = useTranslations("auth");
   const k = useTranslations("draw.keys");
@@ -61,7 +61,7 @@ function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, o
         <TextButton disabled={pending} onClick={onMarkSent}>{t("markSent")}</TextButton>
         {!person.joined && <TextButton disabled={pending} onClick={() => onPrepare("qr")}>{t("showQr")}</TextButton>}
         {!person.joined && <TextButton disabled={pending} onClick={() => onPrepare("print")}>{t("printCard")}</TextButton>}
-        {prepared.qr && <TextButton onClick={() => window.print()}>{t("print")}</TextButton>}
+        {prepared.qr && <TextButton disabled={pending} onClick={onPrint}>{t("print")}</TextButton>}
       </div>
       <Feedback state={feedback} />
     </div>
@@ -159,7 +159,8 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
     return (
       <KeyPanel person={person} prepared={key} pending={pending} feedback={feedback[person.id] ?? {}}
         onShare={() => share(person)} onWhatsapp={() => transition(() => markSent(person))}
-        onMarkSent={() => transition(() => markSent(person))} onPrepare={(kind) => prepare(person, kind)} />
+        onMarkSent={() => transition(() => markSent(person))} onPrepare={(kind) => prepare(person, kind)}
+        onPrint={() => setPrintBatch([{person, prepared: {key}}])} />
     );
   };
 
@@ -182,8 +183,11 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
                       {person.requestedAt && <p className="text-body font-semibold text-gold-ink">
                         {t("requestAt", {at: format.dateTime(new Date(person.requestedAt), activityDateFormat)})}</p>}
                       {person.joined && (
-                        <Button variant="small" icon="lock" className={person.requestedAt ? "mt-1.5" : "mt-1.5 bg-card-track! text-ink!"}
-                          onClick={() => setReset(person)}>{t("resetPin")}</Button>
+                        <Button variant="small" icon="lock" disabled={pending} className={person.requestedAt ? "mt-1.5" : "mt-1.5 bg-card-track! text-ink!"}
+                          onClick={() => {
+                            setPrepared((all) => ({...all, [person.id]: {}}));
+                            setReset(person);
+                          }}>{t("resetPin")}</Button>
                       )}
                     </div>
                     {person.joined ? null : isSent && !prepared[person.id]?.key ? (
