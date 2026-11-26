@@ -1,4 +1,6 @@
 import {getFormatter, getTranslations} from "next-intl/server";
+import {NotificationBell} from "@/components/notifications/bell";
+import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
 import {account} from "@/server/auth/security";
@@ -19,6 +21,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
   return (
     <main className={sectionClass}>
       <h1 className="text-2xl font-semibold">{t("hello", {name})}</h1>
+      <NotificationBell viewer={viewer} />
       {actingFor && <p>{t("actingFor", {name: actingFor.name})}</p>}
       <nav className="flex flex-wrap gap-x-4" aria-label={lists("navigation")}>
         <Link className={linkClass} href={`/lists/${viewer.actingAs}`}>{lists("myList")}</Link>
@@ -65,10 +68,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
           <p>{t("confirmSignOutAll")}</p>
           <AuthForm action={signOut.bind(null, true)} label={t("signOutAll")} />
         </details>
-        <details className="space-y-2">
-          <summary className={linkClass}>{t("homeScreen")}</summary>
-          <p>{t("homeScreenHelp")}</p>
-        </details>
+        <HomeScreenHelp />
       </section>
       <nav aria-label={t("language")} className="flex gap-4">
         <form action={setLanguage.bind(null, "en")}><button className={linkClass} lang="en">English</button></form>

@@ -1,6 +1,7 @@
 import {hasLocale} from "next-intl";
 import {notFound} from "next/navigation";
 import {getTranslations} from "next-intl/server";
+import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Link} from "@/i18n/navigation";
 import {routing, type Locale} from "@/i18n/routing";
 
@@ -41,6 +42,7 @@ export default async function HomePage({params}: HomeProps) {
         ))}
       </nav>
       <SignInScreen />
+      <HomeScreenHelp />
     </main>
   );
 }

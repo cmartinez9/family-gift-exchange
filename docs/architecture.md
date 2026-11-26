@@ -34,7 +34,9 @@ The `schema` setting in [`drizzle.config.ts`](../drizzle.config.ts) owns the lis
 
 For deployments, `DATABASE_URL` should connect as a runtime login allowed to assume `fge_app`, with neither table ownership nor RLS bypass. Use `DATABASE_ADMIN_URL` for migrations, with privileges to manage the schema and role. For local Compose and CI, the disposable database owner can run migrations and assume the same `fge_app` role that application queries use. The local viewer uses that local owner connection to inspect the latest 100 captured rows across practice families.
 
-The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`: `production` queues messages with status `pending`; all other environments capture them. Delivery adapters belong to Phase 4. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
+The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. Production queues Web Push for opted-in devices and flushes after the request commits. Other environments record captured content. The outbox also stores the in-app read state per recipient. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
+
+Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily job sends reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
 
 ## Tests
 

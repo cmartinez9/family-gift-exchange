@@ -1,0 +1,105 @@
+import "server-only";
+import {and, eq, inArray, isNull, ne} from "drizzle-orm";
+import {withFamily} from "../db/client";
+import type {FamilyTransaction} from "../db/database";
+import {claims, items, participants, people} from "../db/schema";
+import {schedulePushDelivery} from "./delivery";
+import {enqueueMessages, type Message} from "./queue";
+
+type ExchangeEvent = {familyId: string; exchangeId: string};
+type PlansChangedEvent = ExchangeEvent & {personIds: readonly string[]};
+type ItemChangedEvent = ExchangeEvent & {itemId: string};
+type PinResetRequest = {familyId: string; personId: string};
+
+async function record(
+  familyId: string,
+  tx: FamilyTransaction | undefined,
+  action: (tx: FamilyTransaction) => Promise<void>,
+) {
+  if (tx) await action(tx);
+  else await withFamily(familyId, action);
+  schedulePushDelivery(familyId);
+}
+
+export async function exchangeRecipients(tx: FamilyTransaction, event: ExchangeEvent) {
+  return tx.select({personId: people.id, language: people.language})
+    .from(participants)
+    .innerJoin(people, and(eq(people.familyId, participants.familyId), eq(people.id, participants.personId)))
+    .where(and(
+      eq(participants.familyId, event.familyId),
+      eq(participants.exchangeId, event.exchangeId),
+      eq(participants.status, "in"),
+      isNull(people.removedAt),
+    ));
+}
+
+function notifyExchange(
+  event: ExchangeEvent,
+  template: "names-drawn" | "budget-changed" | "plans-changed",
+  tx?: FamilyTransaction,
+  personIds?: readonly string[],
+) {
+  return record(event.familyId, tx, async (transaction) => {
+    const recipients = await exchangeRecipients(transaction, event);
+    const optedIn = personIds ? recipients.filter((recipient) => personIds.includes(recipient.personId)) : recipients;
+    await enqueueMessages(transaction, optedIn.map((recipient): Message => ({
+      ...recipient, familyId: event.familyId, template,
+    })));
+  });
+}
+
+export const drawEvents = {
+  namesDrawn: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "names-drawn", tx),
+  plansChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "plans-changed", tx, event.personIds),
+};
+
+export const listEvents = {
+  budgetChanged: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "budget-changed", tx),
+
+  // Call with the list mutation's transaction while the original claim still exists.
+  itemChanged(event: ItemChangedEvent, tx?: FamilyTransaction) {
+    return record(event.familyId, tx, async (transaction) => {
+      const recipients = await transaction.select({personId: people.id, language: people.language})
+        .from(claims)
+        .innerJoin(items, and(eq(items.familyId, claims.familyId), eq(items.id, claims.itemId)))
+        .innerJoin(people, and(eq(people.familyId, claims.familyId), eq(people.id, claims.claimerId)))
+        .where(and(
+          eq(claims.familyId, event.familyId),
+          eq(claims.exchangeId, event.exchangeId),
+          eq(claims.itemId, event.itemId),
+          ne(claims.claimerId, items.ownerId),
+          isNull(people.removedAt),
+        ));
+      await enqueueMessages(transaction, recipients.map((recipient): Message => ({
+        ...recipient, familyId: event.familyId, template: "claimed-item-changed",
+      })));
+    });
+  },
+};
+
+/** Call from sign-in after recording an accepted reset request. */
+export function requestPinReset(event: PinResetRequest, tx?: FamilyTransaction) {
+  return record(event.familyId, tx, async (transaction) => {
+    const [requester] = await transaction.select({name: people.displayName}).from(people)
+      .where(and(
+        eq(people.familyId, event.familyId), eq(people.id, event.personId),
+        isNull(people.removedAt), isNull(people.helperId),
+      ));
+    if (!requester) return;
+
+    const organizers = await transaction.select({personId: people.id, language: people.language}).from(people)
+      .where(and(
+        eq(people.familyId, event.familyId),
+        ne(people.id, event.personId),
+        inArray(people.role, ["organizer", "co_organizer"]),
+        isNull(people.removedAt),
+      ));
+    await enqueueMessages(transaction, organizers.map((organizer): Message => ({
+      ...organizer,
+      familyId: event.familyId,
+      template: "pin-reset-request",
+      requesterName: requester.name,
+    })));
+  });
+}

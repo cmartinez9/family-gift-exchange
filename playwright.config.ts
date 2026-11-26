@@ -4,11 +4,13 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {loadEnvFile} from "node:process";
 import {defineConfig, devices} from "@playwright/test";
+import {generateVAPIDKeys} from "web-push";
 
 if (existsSync(".env.local")) loadEnvFile(".env.local");
 
 const port = process.env.E2E_PORT || "3100";
 const origin = `https://localhost:${port}`;
+const vapid = generateVAPIDKeys();
 // The design gallery is development only, so its tests run against `next dev` (Next keeps dev output apart from the build).
 const designPort = process.env.E2E_DESIGN_PORT || "3101";
 const designOrigin = `http://localhost:${designPort}`;
@@ -22,7 +24,11 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   use: {baseURL: origin, locale: "en-US", ignoreHTTPSErrors: true, trace: "retain-on-failure"},
   projects: [
-    {name: "mobile-chromium", testIgnore: design, use: {...devices["Pixel 7"]}},
+    {name: "mobile-chromium", testIgnore: design, use: {
+      ...devices["Pixel 7"],
+      // Chromium's service-worker fetch uses its own certificate checks for the local test server.
+      launchOptions: {args: ["--ignore-certificate-errors"]},
+    }},
     {name: "mobile-webkit", testIgnore: design, use: {...devices["iPhone 13"]}},
     {name: "design-chromium", testMatch: design, use: {...devices["Pixel 7"], ...phone, baseURL: designOrigin}},
     {name: "design-webkit", testMatch: design, use: {...devices["iPhone 13"], ...phone, baseURL: designOrigin}},
@@ -33,6 +39,10 @@ export default defineConfig({
       AUTH_ORIGIN: origin,
       AUTH_SECRET: process.env.E2E_AUTH_SECRET,
       ORGANIZER_INVITE_CODE: process.env.E2E_ORGANIZER_INVITE_CODE,
+      VERCEL_ENV: "preview",
+      VAPID_SUBJECT: origin,
+      VAPID_PUBLIC_KEY: vapid.publicKey,
+      VAPID_PRIVATE_KEY: vapid.privateKey,
       LIST_PHOTO_DIR: process.env.LIST_PHOTO_DIR || join(tmpdir(), `fge-playwright-photos-${randomUUID()}`),
     },
     command: "pnpm build && node --import tsx scripts/playwright-server.ts",

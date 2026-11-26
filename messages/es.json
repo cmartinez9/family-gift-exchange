@@ -302,5 +302,97 @@
       "unsafe-link": "Usa un enlace público de la tienda que comience con http o https.",
       "could-not-save": "Algo salió mal. Inténtalo de nuevo."
     }
+  },
+  "notify": {
+    "templates": {
+      "practice-reminder": {
+        "title": "Recordatorio de práctica",
+        "body": "Abre la aplicación para probar tu intercambio."
+      },
+      "names-drawn": {
+        "title": "¡Ya se hizo el sorteo!",
+        "body": "Abre la aplicación para ver a quién le darás un regalo."
+      },
+      "list-reminder": {
+        "title": "Mañana es el último día para completar tu lista",
+        "body": "Agrega ideas de regalos para que tu familia sepa qué te gustaría recibir."
+      },
+      "plans-changed": {
+        "title": "Cambio de planes",
+        "body": "Te tocó otra persona. Abre la aplicación para ver a quién le darás un regalo."
+      },
+      "gift-day-reminder": {
+        "title": "Mañana es el intercambio",
+        "body": "Revisa los detalles en la aplicación y acuérdate de llevar tu regalo."
+      },
+      "pin-reset-request": {
+        "title": "Solicitud para restablecer el PIN",
+        "body": "{name} pidió restablecer su PIN."
+      },
+      "claimed-item-changed": {
+        "title": "Cambió una idea de regalo",
+        "body": "Cambió uno de los regalos que vas a comprar. Revisa tu lista de regalos que vas a dar."
+      },
+      "budget-changed": {
+        "title": "Cambió el presupuesto de los regalos",
+        "body": "Abre la aplicación para ver el nuevo presupuesto."
+      }
+    },
+    "privatePush": {
+      "title": "Intercambio familiar de regalos",
+      "body": "Tienes una notificación nueva."
+    },
+    "install": {
+      "prompt": "¿Quieres poner la aplicación en tu pantalla de inicio? Ver cómo",
+      "iphone": "Safari en iPhone",
+      "iphoneOpen": "Abre esta página en Safari.",
+      "iphoneShare": "Toca el botón Compartir.",
+      "iphoneAdd": "Toca Agregar a pantalla de inicio y luego toca Agregar.",
+      "iphoneLaunch": "Abre la aplicación desde el ícono nuevo. Las notificaciones requieren iOS 16.4 o una versión posterior.",
+      "android": "Chrome en Android",
+      "androidOpen": "Abre esta página en Chrome.",
+      "androidMenu": "Toca los tres puntos de la esquina superior derecha.",
+      "androidAdd": "Toca Agregar a pantalla de inicio o Instalar aplicación y sigue los pasos.",
+      "androidLaunch": "Abre la aplicación desde el ícono nuevo."
+    },
+    "groupChat": {
+      "wishlists": "¡Agrega tu lista de deseos para nuestro intercambio! {address}",
+      "draw": "¡Ya se hizo el sorteo! Abre la aplicación para ver a quién le darás un regalo. {address}",
+      "giftDay": "¡Mañana es el intercambio! Revisa los detalles en la aplicación y trae tu regalo. {address}",
+      "title": "Mensajes para el chat familiar",
+      "back": "Volver a mi familia",
+      "copy": "Copiar mensaje",
+      "share": "Compartir",
+      "whatsapp": "Compartir por WhatsApp",
+      "copied": "Mensaje copiado.",
+      "copyError": "No se pudo copiar. Selecciona el texto del mensaje para copiarlo.",
+      "shareError": "No se pudo compartir. Copia el mensaje o abre WhatsApp.",
+      "topic": {
+        "wishlists": "Recordatorio de listas de deseos",
+        "draw": "¡Ya se hizo el sorteo!",
+        "giftDay": "Mañana es el intercambio"
+      }
+    },
+    "inbox": {
+      "title": "Notificaciones",
+      "bellUnread": "Notificaciones ({count, plural, one {# sin leer} other {# sin leer}})",
+      "back": "Volver a mi cuenta",
+      "empty": "Todavía no hay notificaciones.",
+      "read": "Leída",
+      "unread": "Sin leer",
+      "markRead": "Marcar como leída",
+      "resetRequests": "Ver solicitudes para restablecer el PIN"
+    },
+    "device": {
+      "title": "Notificaciones de la pantalla de inicio",
+      "enable": "Activar notificaciones en este dispositivo",
+      "disable": "Desactivar notificaciones en este dispositivo",
+      "enabled": "Las notificaciones están activadas en este dispositivo.",
+      "disabled": "Las notificaciones están desactivadas en este dispositivo.",
+      "denied": "Permite las notificaciones en la configuración del dispositivo o del navegador y vuelve a intentarlo.",
+      "error": "No pudimos cambiar las notificaciones. Vuelve a intentarlo.",
+      "unsupported": "Abre la aplicación desde tu pantalla de inicio para activar las notificaciones.",
+      "unavailable": "Las notificaciones en el dispositivo no están disponibles en este momento."
+    }
   }
 }

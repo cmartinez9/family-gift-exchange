@@ -6,6 +6,7 @@ import {hasLocale, NextIntlClientProvider} from "next-intl";
 import {getTranslations, setRequestLocale} from "next-intl/server";
 import {notFound} from "next/navigation";
 import type {ReactNode} from "react";
+import {RegisterNotificationWorker} from "@/components/notifications/register-worker";
 import {routing} from "@/i18n/routing";
 
 export async function generateMetadata({params}: {params: Promise<{locale: string}>}) {
@@ -48,6 +49,7 @@ export default async function LocaleLayout({
           }} />
         </NextIntlClientProvider>
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <RegisterNotificationWorker />
       </body>
     </html>
   );
