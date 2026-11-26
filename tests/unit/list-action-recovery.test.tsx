@@ -253,6 +253,88 @@ it("rolls back a rejected shoe-system change and allows retry", async () => {
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
+it.each(["noClothes", "tops", "bottoms", "shoes", "shoeSystem"] as const)("keeps the newest repeated %s edit when an earlier save fails", async (field) => {
+  const first = Promise.withResolvers<FormState>();
+  const last = Promise.withResolvers<FormState>();
+  const initial = field === "noClothes" ? "false" : field === "shoeSystem" ? "us-women" : field === "shoes" ? "7" : "M";
+  const next = field === "noClothes" ? "true" : field === "shoeSystem" ? "eu" : field === "shoes" ? "7.5" : "L";
+  let persisted = initial;
+  vi.mocked(saveProfileField).mockReturnValueOnce(first.promise).mockImplementation(async (_owner, _field, value) => {
+    const result = await last.promise;
+    if (result.status === "saved") persisted = value;
+    return result;
+  });
+  await render(profile({tops: "M", bottoms: "M", shoes: "7", shoeSystem: "us-women"}));
+  const letters = () => [...container.querySelectorAll("fieldset")].find((entry) =>
+    entry.querySelector("legend")?.textContent === en.lists.size[field as "tops" | "bottoms"])!;
+  const change = async (value: string) => {
+    if (field === "noClothes") await click(container.querySelector<HTMLButtonElement>('[role="switch"]')!);
+    else if (field === "shoes") {
+      const label = value === next ? en.lists.shoeBigger : en.lists.shoeSmaller;
+      await click(container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!);
+    } else if (field === "shoeSystem") {
+      await act(async () => {
+        const select = container.querySelector<HTMLSelectElement>("select")!;
+        select.value = value;
+        select.dispatchEvent(new Event("change", {bubbles: true}));
+      });
+    } else await click(letters().querySelector<HTMLInputElement>(`input[value="${value}"]`)!);
+  };
+  const displayed = () => field === "noClothes"
+    ? container.querySelector('[role="switch"]')!.getAttribute("aria-checked")
+    : field === "shoes" ? container.querySelector<HTMLInputElement>('input[id$="-shoes"]')!.value
+    : field === "shoeSystem" ? container.querySelector<HTMLSelectElement>("select")!.value
+    : letters().querySelector<HTMLInputElement>('input:checked')?.value;
+  const expected = field === "shoes" ? "7½" : next;
+  await change(next);
+  await change(initial);
+  await change(next);
+  expect(displayed()).toBe(expected);
+  await act(async () => first.reject(new Error("Offline")));
+  expectFeedback();
+  expect(displayed()).toBe(expected);
+  expect(saveProfileField).toHaveBeenCalledTimes(2);
+  expect(saveProfileField).toHaveBeenNthCalledWith(2, ownerId, field, next, field === "noClothes" ? "noClothes" : "size");
+  await act(async () => last.resolve({status: "saved"}));
+  expect(persisted).toBe(next);
+  expect(displayed()).toBe(expected);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(en.lists.saved);
+});
+
+it("still rolls back a failed field when a different field was edited later", async () => {
+  const first = Promise.withResolvers<FormState>();
+  vi.mocked(saveProfileField).mockReturnValueOnce(first.promise).mockResolvedValueOnce({status: "saved"});
+  await render(profile({tops: "M", bottoms: "M"}));
+  const fields = container.querySelectorAll("fieldset");
+  await click(fields[0].querySelector<HTMLInputElement>('input[value="L"]')!);
+  await click(fields[1].querySelector<HTMLInputElement>('input[value="L"]')!);
+  await act(async () => first.reject(new Error("Offline")));
+  expect(fields[0].querySelector<HTMLInputElement>('input[value="M"]')!.checked).toBe(true);
+  expect(fields[1].querySelector<HTMLInputElement>('input[value="L"]')!.checked).toBe(true);
+  expect(saveProfileField).toHaveBeenCalledTimes(2);
+});
+
+it("keeps a newer repeated shoe draft when its earlier autosave fails", async () => {
+  const response = Promise.withResolvers<FormState>();
+  vi.mocked(saveProfileField).mockReturnValueOnce(response.promise);
+  await render(profile());
+  await click(container.querySelector<HTMLButtonElement>(`button[aria-label="${en.lists.shoeBigger}"]`)!);
+  const input = () => container.querySelector<HTMLInputElement>('input[id$="-shoes"]')!;
+  const type = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input(), value);
+    input().dispatchEvent(new Event("input", {bubbles: true}));
+  });
+  await type("8");
+  await render(profile());
+  expect(input().value).toBe("8");
+  await type("7.5");
+  await act(async () => response.reject(new Error("Offline")));
+  expect(input().value).toBe("7½");
+  expectFeedback();
+  expect(saveProfileField).toHaveBeenCalledOnce();
+});
+
 it("retains About me drafts after a rejected autosave and allows retry", async () => {
   vi.mocked(saveProfileField).mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce({status: "saved"});
   await render(profile());

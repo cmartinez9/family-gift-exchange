@@ -53,15 +53,23 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
   const [state, setState] = useState<FormState>({});
   const queue = useRef(Promise.resolve());
   const queuedCount = useRef(0);
+  const edits = useRef(new Map<string, number>());
   const saved = useRef(new Map<string, string>([
     ...Object.entries(initialSizes).map(([field, value]) => [`size.${field}`, value] as const),
     ...aboutFields.map((field) => [`about.${field}`, initialAbout[field] ?? ""] as const),
     ["noClothes.noClothes", String(initialNoClothes)],
   ]));
 
+  function recordEdit(key: string) {
+    const version = (edits.current.get(key) ?? 0) + 1;
+    edits.current.set(key, version);
+    return version;
+  }
+
   function update(group: Group, field: string, value: string) {
     const cleaned = value.trim();
     const key = `${group}.${field}`;
+    const version = recordEdit(key);
     if (!queuedCount.current && (saved.current.get(key) ?? "") === cleaned) return;
     queuedCount.current++;
     queue.current = queue.current.then(async () => {
@@ -73,10 +81,10 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
       } else if (result.error) {
         const previous = saved.current.get(key) ?? "";
         if (group === "noClothes") {
-          setNoClothes((current) => String(current) === cleaned ? previous === "true" : current);
+          setNoClothes((current) => edits.current.get(key) === version ? previous === "true" : current);
         } else if (group === "size") {
-          if (field === "shoeSystem") setShoeSystem((current) => current === cleaned ? previous : current);
-          else setSizes((current) => (current[field] ?? "").trim() === cleaned ? {...current, [field]: previous} : current);
+          if (field === "shoeSystem") setShoeSystem((current) => edits.current.get(key) === version ? previous : current);
+          else setSizes((current) => edits.current.get(key) === version ? {...current, [field]: previous} : current);
         }
       }
       setState(result);
@@ -86,6 +94,7 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
   }
 
   function setSize(field: SizeKind, value: string, save = true) {
+    if (!save) recordEdit(`size.${field}`);
     setSizes((current) => ({...current, [field]: value}));
     if (save) update("size", field, value);
   }
