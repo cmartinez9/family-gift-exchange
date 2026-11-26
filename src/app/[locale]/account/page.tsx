@@ -10,7 +10,7 @@ import {AppLink} from "@/components/ui/navigation";
 import {BackRow} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
-import {youSummary} from "@/server/auth/account";
+import {mySizes, youSummary} from "@/server/auth/account";
 import {currentDeviceKind} from "@/server/auth/request";
 import {account} from "@/server/auth/security";
 import {ownRevealOpenings} from "@/server/draw";
@@ -62,6 +62,8 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
   ]);
   const notices = await getTranslations("getIn.notices");
   const actingFor = helpers.find(({id}) => id === viewer.actingAs);
+  const profile = viewer.actingAs === viewer.personId ? summary
+    : await withFamily(viewer.familyId, (tx) => mySizes(tx, viewer.familyId, viewer.actingAs));
   const device = auth(`device.${await currentDeviceKind()}` as Parameters<typeof auth>[0]);
   // the newest unread message leads; otherwise the newest of anything
   const message = inbox.find(({isRead}) => !isRead) ?? inbox[0];
@@ -70,8 +72,8 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
     : event ? (await noticeText(event, viewer)).title : null;
   const wrapped = getting.filter(({wrapped: done}) => done).length;
   const sizes = [
-    summary.sizes.tops && t("topsShort", {size: summary.sizes.tops === "XXL" ? "2XL" : summary.sizes.tops}),
-    summary.sizes.shoes && t("shoesShort", {size: shoeLabel(summary.sizes.shoes)}),
+    profile.sizes.tops && t("topsShort", {size: profile.sizes.tops === "XXL" ? "2XL" : profile.sizes.tops}),
+    profile.sizes.shoes && t("shoesShort", {size: shoeLabel(profile.sizes.shoes)}),
   ].filter(Boolean).join(" · ");
   const noClothes = await getTranslations("getIn.sizes");
 
@@ -120,7 +122,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
                 </span>
               ) : undefined} />
             <RowLink href={`/lists/${viewer.actingAs}/profile`} icon="shirt" title={t("sizes")}
-              sub={summary.noClothes ? noClothes("noClothes") : sizes || t("sizesNone")} />
+              sub={profile.noClothes ? noClothes("noClothes") : sizes || t("sizesNone")} />
           </Rows>
         </Card>
         <Card flush className="px-[18px] py-0.5">

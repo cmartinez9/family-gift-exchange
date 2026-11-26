@@ -7,6 +7,7 @@ import en from "../../messages/en.json";
 import {KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
+import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
 
 const actions = vi.hoisted(() => ({
   previewCode: vi.fn(), useKey: vi.fn(), beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(),
@@ -71,6 +72,25 @@ async function type(digits: string) {
 
 async function advance(milliseconds: number) {
   await act(async () => { vi.advanceTimersByTime(milliseconds); });
+}
+
+function prepareSheet() {
+  const sheet = container.querySelector<HTMLDialogElement>("dialog")!;
+  sheet.showModal = () => { sheet.open = true; };
+  sheet.close = () => { sheet.open = false; };
+  const animations: Array<{onfinish: (() => void) | null}> = [];
+  for (const element of sheet.querySelectorAll<HTMLElement>(".fge-sheet-body, [data-scrim]")) {
+    element.getAnimations = () => [];
+    element.animate = () => {
+      const animation = {onfinish: null as (() => void) | null, cancel() {}};
+      animations.push(animation);
+      return animation as unknown as Animation;
+    };
+  }
+  return {
+    sheet,
+    finish: async () => { await act(async () => { animations.splice(0).forEach((animation) => animation.onfinish?.()); }); },
+  };
 }
 
 it("submits only the corrected PIN after the settling delay", async () => {
@@ -154,6 +174,8 @@ it.each([
   ["eu", "", "38", "39"],
   ["us-kids", "", "1C", "2C"],
   ["uk", "7.5", "8", "8.5"],
+  ["us-women", "7.5", "8", "8.5"],
+  ["us-men", "7.5", "8", "8.5"],
 ])("steps through %s shoe sizes", async (system, initial, first, second) => {
   await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {shoeSystem: system, shoes: initial}}} profileHref="/profile" />);
   await click(en.getIn.sizes.bigger);
@@ -162,6 +184,116 @@ it.each([
   expect(lists.saveProfileField).toHaveBeenLastCalledWith("person", "shoes", second, "size");
   await click(en.getIn.sizes.smaller);
   expect(lists.saveProfileField).toHaveBeenLastCalledWith("person", "shoes", first, "size");
+});
+
+it.each(["us-women", "us-men"])("clamps %s at the adult maximum instead of stepping into youth sizes", async (system) => {
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {shoeSystem: system, shoes: "13.5"}}} profileHref="/profile" />);
+  await click(en.getIn.sizes.bigger);
+  await click(en.getIn.sizes.bigger);
+  expect(lists.saveProfileField.mock.calls.map((call) => call[2])).toEqual(["13.5", "13.5"]);
+  await click(en.getIn.sizes.smaller);
+  expect(lists.saveProfileField).toHaveBeenLastCalledWith("person", "shoes", "13", "size");
+});
+
+it("clears the stored shoe size before changing systems and waits for a new selection", async () => {
+  const persisted: Record<string, string> = {shoeSystem: "us-women", shoes: "7.5"};
+  const cleared = Promise.withResolvers<void>();
+  lists.saveProfileField.mockImplementation(async (_owner, field, value) => {
+    if (field === "shoes" && value === "") await cleared.promise;
+    persisted[field] = value;
+    return {status: "saved"};
+  });
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {...persisted}}} profileHref="/profile" />);
+  const sheet = prepareSheet();
+  await click(en.getIn.sizes.system["us-women"]);
+  await act(async () => container.querySelector<HTMLInputElement>('input[name="shoeSystem"][value="eu"]')!.click());
+  await sheet.finish();
+  expect(button(en.getIn.sizes.bigger).disabled).toBe(true);
+  expect(lists.saveProfileField).toHaveBeenCalledExactlyOnceWith("person", "shoes", "", "size");
+  await act(async () => cleared.resolve());
+  expect(persisted).toEqual({shoeSystem: "eu", shoes: ""});
+  expect(container.querySelector('[aria-labelledby="shoes"] [aria-live="polite"]')?.textContent).toBe(en.getIn.sizes.pickOne);
+  await click(en.getIn.sizes.next);
+  expect(persisted.shoes).toBe("");
+  await click(en.getIn.sizes.bigger);
+  expect(persisted).toEqual({shoeSystem: "eu", shoes: "38"});
+});
+
+it("keeps the old system if clearing its saved size fails", async () => {
+  lists.saveProfileField.mockResolvedValue({error: "could-not-save"});
+  await render(<SizesStep ownerId="person" initial={{noClothes: false, sizes: {shoeSystem: "us-women", shoes: "7.5"}}} profileHref="/profile" />);
+  const sheet = prepareSheet();
+  await click(en.getIn.sizes.system["us-women"]);
+  await act(async () => container.querySelector<HTMLInputElement>('input[name="shoeSystem"][value="eu"]')!.click());
+  await sheet.finish();
+  expect(lists.saveProfileField).toHaveBeenCalledExactlyOnceWith("person", "shoes", "", "size");
+  expect(button(en.getIn.sizes.system["us-women"]).disabled).toBe(false);
+  expect(container.querySelector('[aria-labelledby="shoes"] [aria-live="polite"]')?.textContent).toBe("7½");
+});
+
+it.each([
+  ["forgotPin", "Ask Rosa for a new key", "resetRequested"],
+  ["reportUsedKey", en.getIn.used.never, "keyDisputed"],
+] as const)("keeps %s refusals visible and closes recovery only after success", async (action, label, success) => {
+  actions[action].mockResolvedValueOnce({error: "tryLater"}).mockResolvedValue({success});
+  await render(<KeyAlreadyOpened familyId="family" value="key" typed={false} organizer="Rosa"
+    entry={{personId: "person", name: "Ana", familyName: "Family", available: false, usedAt: "2030-01-01"}} />);
+  const {sheet, finish} = prepareSheet();
+  await click(en.getIn.enter.forgot);
+  expect(sheet.open).toBe(true);
+  await click(label);
+  await finish();
+  expect(sheet.open).toBe(true);
+  expect(sheet.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.tryLater);
+  await click(label);
+  await finish();
+  expect(sheet.open).toBe(false);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(en.auth.feedback[success]);
+});
+
+async function editLink(value: string) {
+  await act(async () => {
+    const field = container.querySelector<HTMLInputElement>('input[name="link"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new Event("input", {bubbles: true}));
+  });
+}
+
+const preview: PreviewState = {card: {url: "https://shop.example/gift", title: "A sweater", store: "Shop", icon: "shop", price: null}};
+
+it("shows a rejected link preview as a failure and recovers after the link is edited", async () => {
+  vi.useFakeTimers();
+  const result = Promise.withResolvers<PreviewState>();
+  lists.previewItemLink.mockReturnValueOnce(result.promise).mockResolvedValue(preview);
+  await render(<AddStep ownerId="person" />);
+  await click(en.getIn.add.paste);
+  await editLink("https://shop.example/first");
+  await advance(500);
+  expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+  await act(async () => result.reject(new Error("offline")));
+  expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.paste.failed);
+  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+  await editLink("https://shop.example/second");
+  await advance(500);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button(en.getIn.add.add).disabled).toBe(false);
+});
+
+it("ignores a stale preview rejection after a newer link has loaded", async () => {
+  vi.useFakeTimers();
+  const first = Promise.withResolvers<PreviewState>();
+  lists.previewItemLink.mockReturnValueOnce(first.promise).mockResolvedValue(preview);
+  await render(<AddStep ownerId="person" />);
+  await click(en.getIn.add.paste);
+  await editLink("https://old.example/gift");
+  await advance(500);
+  await editLink("https://shop.example/gift");
+  await advance(500);
+  await act(async () => first.reject(new Error("offline")));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button(en.getIn.add.add).disabled).toBe(false);
+  expect(container.querySelector("h2")?.textContent).toBe("A sweater");
 });
 
 async function selectPhoto(file: File) {

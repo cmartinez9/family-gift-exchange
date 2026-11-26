@@ -18,7 +18,7 @@ import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
 import {sizePresets} from "@/server/lists/validation";
 import {previewItemLink, saveProfileField} from "../lists/actions";
-import type {PreviewCard} from "../lists/action-types";
+import type {PreviewCard, PreviewState} from "../lists/action-types";
 import {shoeOptions} from "../lists/[personId]/profile/profile-form";
 import {preparePhoto} from "../lists/item-form";
 import {WelcomeSteps} from "../sign-in/get-in";
@@ -28,6 +28,7 @@ import {shoeLabel} from "./shoe-label";
 /** The design's six chips; the stored value for 2XL is the preset's XXL. */
 const LETTER_SIZES = [["XS", "XS"], ["S", "S"], ["M", "M"], ["L", "L"], ["XL", "XL"], ["XXL", "2XL"]] as const;
 const SHOE_SYSTEMS = sizePresets.shoeSystem;
+const ADULT_SHOES = sizePresets.shoes.filter((value) => !value.endsWith("Y"));
 type ShoeSystem = typeof SHOE_SYSTEMS[number];
 
 /** A heading row inside the sizes card: the group's name, and an optional link on the right. */
@@ -53,6 +54,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
   const [noClothes, setNoClothes] = useState(initial.noClothes);
   const [sizes, setSizes] = useState(initial.sizes);
   const [systemOpen, setSystemOpen] = useState(false);
+  const [changingSystem, startSystemChange] = useTransition();
   const [, start] = useTransition();
   const failed = t("failed");
 
@@ -67,7 +69,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
     save(kind, value);
   }
   function step(direction: 1 | -1) {
-    const options = shoeOptions[system ?? ""] ?? sizePresets.shoes;
+    const options = shoeOptions[system ?? ""] ?? ADULT_SHOES;
     const index = options.indexOf(sizes.shoes ?? "");
     const first = system === "eu" ? "38" : system === "us-kids" ? "1C" : "7.5";
     const next = index < 0 ? options.indexOf(first) : Math.max(0, Math.min(options.length - 1, index + direction));
@@ -76,6 +78,26 @@ export function SizesStep({ownerId, initial, profileHref}: {
   }
   const system = sizes.shoeSystem as ShoeSystem | undefined;
   const shoe = sizes.shoes;
+
+  function changeSystem(value: string) {
+    setSystemOpen(false);
+    if (value === system) return;
+    startSystemChange(async () => {
+      try {
+        const cleared = await saveProfileField(ownerId, "shoes", "", "size");
+        if (cleared.error) {
+          toast({message: failed, icon: "alert"});
+          return;
+        }
+        setSizes((current) => ({...current, shoes: ""}));
+        const result = await saveProfileField(ownerId, "shoeSystem", value, "size");
+        if (result.error) toast({message: failed, icon: "alert"});
+        else setSizes((current) => ({...current, shoeSystem: value}));
+      } catch {
+        toast({message: failed, icon: "alert"});
+      }
+    });
+  }
 
   return (
     <Screen actions={<>
@@ -120,19 +142,19 @@ export function SizesStep({ownerId, initial, profileHref}: {
             </div>
             <div className="flex flex-col gap-2" role="group" aria-labelledby="shoes">
               <GroupHead id="shoes" title={t("shoes")}
-                right={<TextButton className="px-0 text-ink" onClick={() => setSystemOpen(true)}>
+                right={<TextButton className="px-0 text-ink" disabled={changingSystem} onClick={() => setSystemOpen(true)}>
                   {system ? t(`system.${system}`) : t("systemNone")}
                 </TextButton>} />
               {system === "other" ? (
-                <TextField label={t("shoes")} defaultValue={shoe ?? ""} maxLength={40} surface="white"
+                <TextField label={t("shoes")} defaultValue={shoe ?? ""} maxLength={40} surface="white" disabled={changingSystem}
                   onBlur={(event) => pick("shoes", event.currentTarget.value)} />
               ) : <div className="flex items-center gap-2.5">
-                <IconButton icon="minus" label={t("smaller")} onClick={() => step(-1)} />
+                <IconButton icon="minus" label={t("smaller")} disabled={changingSystem} onClick={() => step(-1)} />
                 <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title",
                   shoe ? "bg-ink text-snow-white" : "bg-[var(--track)] text-muted-ink")}>
                   {shoe ? shoeLabel(shoe) : t("pickOne")}
                 </p>
-                <IconButton icon="plus" label={t("bigger")} onClick={() => step(1)} />
+                <IconButton icon="plus" label={t("bigger")} disabled={changingSystem} onClick={() => step(1)} />
               </div>}
             </div>
           </Card>
@@ -142,10 +164,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
       <Sheet open={systemOpen} onClose={() => setSystemOpen(false)} title={t("systemTitle")} closeLabel={ui("close")}>
         <ChoiceChips legend={t("systemTitle")} legendClassName="sr-only" name="shoeSystem" value={system ?? null}
           options={SHOE_SYSTEMS.map((value) => ({value, label: t(`system.${value}`)}))}
-          onChange={(value) => {
-            pick("shoeSystem", value);
-            setSystemOpen(false);
-          }} />
+          onChange={changeSystem} />
       </Sheet>
     </Screen>
   );
@@ -315,7 +334,12 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
     }
     setLoading(true);
     timer.current = window.setTimeout(async () => {
-      const result = await previewItemLink(ownerId, typed);
+      let result: PreviewState;
+      try {
+        result = await previewItemLink(ownerId, typed);
+      } catch {
+        result = {};
+      }
       if (request !== version.current) return;
       setLoading(false);
       if (result.card) {

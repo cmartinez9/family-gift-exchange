@@ -264,13 +264,15 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
         <Button variant="card" disabled={pending || Boolean(result.success)} onClick={() => start(async () => {
-          setResult(await forgotPin(familyId, entry.personId));
-          setOpen(false);
+          const response = await forgotPin(familyId, entry.personId);
+          setResult(response);
+          if (response.success) setOpen(false);
         })}>{forgot("ask", {organizer})}</Button>
         <p className="text-body text-muted-ink">{t("askSub", {organizer})}</p>
         <Button variant="soft" disabled={pending || Boolean(result.success)} onClick={() => start(async () => {
-          setResult(await reportUsedKey(familyId, value, typed));
-          setOpen(false);
+          const response = await reportUsedKey(familyId, value, typed);
+          setResult(response);
+          if (response.success) setOpen(false);
         })}>{t("never")}</Button>
         <p className="text-body text-muted-ink">{t("neverSub", {organizer})}</p>
         {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}

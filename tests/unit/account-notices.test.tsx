@@ -9,12 +9,12 @@ import AccountPage from "../../src/app/[locale]/account/page";
 import NoticesPage from "../../src/app/[locale]/account/notices/page";
 
 const server = vi.hoisted(() => ({
-  requireViewer: vi.fn(), account: vi.fn(), youSummary: vi.fn(), listNotifications: vi.fn(), getUnreadCount: vi.fn(),
+  requireViewer: vi.fn(), account: vi.fn(), youSummary: vi.fn(), mySizes: vi.fn(), listNotifications: vi.fn(), getUnreadCount: vi.fn(),
   markNotificationRead: vi.fn(), redirect: vi.fn(), revalidatePath: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/auth", () => ({requireViewer: server.requireViewer}));
-vi.mock("@/server/auth/account", () => ({youSummary: server.youSummary}));
+vi.mock("@/server/auth/account", () => ({youSummary: server.youSummary, mySizes: server.mySizes}));
 vi.mock("@/server/auth/security", () => ({account: server.account, actFor: vi.fn(), disputeEvent: vi.fn(), endSessions: vi.fn()}));
 vi.mock("@/server/auth/request", () => ({currentDeviceKind: async () => "iphone", clearSession: vi.fn()}));
 vi.mock("@/server/auth/access", () => ({lockFamily: vi.fn()}));
@@ -71,6 +71,25 @@ it("renders saved shoe sizes in the server account summary", async () => {
   container.innerHTML = renderToStaticMarkup(intl(page));
   const sizes = [...container.querySelectorAll("a")].find((link) => link.getAttribute("href") === "/lists/organizer/profile");
   expect(sizes?.textContent).toBe("My sizesShoes 7½");
+});
+
+it.each([false, true])("shows the helped person's sizes and clothing preference (%s) with the helper's devices", async (noClothes) => {
+  const helping = {...viewer, personId: "ana", actingAs: "leo", isOrganizer: false};
+  server.requireViewer.mockResolvedValue(helping);
+  server.account.mockResolvedValue({name: "Ana", helpers: [{id: "leo", name: "Leo"}], activity: []});
+  server.youSummary.mockResolvedValue({familyName: "Family", sizes: {tops: "L", shoes: "7.5"}, noClothes: !noClothes, devices: 3, faceId: true});
+  server.mySizes.mockImplementation(async (_tx, _family, personId) => {
+    expect(personId).toBe("leo");
+    return {sizes: {tops: "XS", shoes: "2C"}, noClothes};
+  });
+  const page = await AccountPage({searchParams: Promise.resolve({})});
+  container.innerHTML = renderToStaticMarkup(intl(page));
+  const profile = container.querySelector('a[href="/lists/leo/profile"]');
+  expect(profile?.textContent).toBe(`My sizes${noClothes ? en.getIn.sizes.noClothes : "Tops XS · Shoes 2C"}`);
+  expect(container.querySelector("h1")?.textContent).toBe("Ana");
+  expect(container.querySelector('a[href="/account/phones"]')?.textContent).toBe("Your phones3 signed in");
+  expect(container.textContent).toContain("On for this iPhone");
+  expect(server.youSummary).toHaveBeenCalledWith(undefined, helping, expect.any(Date));
 });
 
 it("marks an unread reset request before navigating to Family", async () => {
