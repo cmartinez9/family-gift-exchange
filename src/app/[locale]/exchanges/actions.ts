@@ -45,7 +45,10 @@ function details(data: FormData): ExchangeDetails {
 
 async function refreshDrawPages() {
   const locale = await getLocale();
+  revalidatePath(`/${locale}`);
   revalidatePath(`/${locale}/exchanges`, "layout");
+  revalidatePath(`/${locale}/lists`, "layout");
+  revalidatePath(`/${locale}/notifications`);
 }
 
 export async function create(_previous: FormState, data: FormData): Promise<FormState> {

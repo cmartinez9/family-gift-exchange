@@ -50,7 +50,8 @@ function notifyExchange(
 }
 
 export const drawEvents = {
-  namesDrawn: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "names-drawn", tx),
+  namesDrawn: (event: ExchangeEvent & {personIds?: readonly string[]}, tx?: FamilyTransaction) =>
+    notifyExchange(event, "names-drawn", tx, event.personIds),
   plansChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
     notifyExchange(event, "plans-changed", tx, event.personIds),
 };

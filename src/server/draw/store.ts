@@ -111,7 +111,7 @@ export function authorizeSealedSubject(snapshot: RuleSnapshot, viewer: DrawViewe
   if (!giver || (giver.helperId ?? giver.id) !== viewer.personId) throw new DrawError("notFound");
 }
 
-type DecryptPurpose = "reveal" | "check" | "repair" | "practice" | "ask" | "question-inbox" | "question-outbox" | "answer";
+type DecryptPurpose = "reveal" | "opened-recipient" | "check" | "repair" | "practice" | "ask" | "question-inbox" | "question-outbox" | "answer";
 
 export class InvalidSeal extends Error {
   constructor() {
@@ -180,7 +180,7 @@ export async function loadPairs(
 
 export async function loadRecipient(
   tx: FamilyTransaction, viewer: DrawViewer, exchange: Exchange, decrypt: DrawDecryptor,
-  purpose: "ask" | "reveal",
+  purpose: "ask" | "reveal" | "opened-recipient",
 ) {
   const {rows: [assignment]} = await tx.execute<{sealed: Buffer | null}>(sql`
     SELECT public.fge_sealed_recipient(

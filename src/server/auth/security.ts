@@ -232,7 +232,7 @@ async function lockDownFamily(
   await tx.insert(authEvents).values(members.map(({personId}) => ({familyId, personId, kind: "familyLockdown" as const, at: now})));
 }
 
-/** Phase 2 can read reports for the current family and person from this projection. */
+/** Draw recovery consumes this family- and person-scoped projection. */
 export async function listSessionDisputes(tx: FamilyTransaction, familyId: string, personId: string) {
   return tx.select({sessionId: sessions.id, at: sessionDisputes.at})
     .from(sessionDisputes).innerJoin(sessions, and(

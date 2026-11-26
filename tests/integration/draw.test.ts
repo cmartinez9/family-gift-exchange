@@ -5,10 +5,10 @@ import {NextIntlClientProvider} from "next-intl";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {audit, claims, exchanges, families, households, items, keepApart, participants, people} from "../../src/server/db/schema";
+import {audit, claims, exchanges, families, households, items, keepApart, outbox, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
-  DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
+  DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus, myPerson,
   organizerExchange, ownRevealOpenings, practiceCommand, practiceMemberView, practiceSeason,
   previewAsMember, repairDisputedReveals, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
   type DrawEvents, type DrawViewer, type ExchangeDetails,
@@ -101,6 +101,13 @@ const suffix = randomBytes(6).toString("hex");
 const appRole = `draw_test_app_${suffix}`;
 const drawRole = `draw_test_sealed_${suffix}`;
 const testFamilies = new Set<string>();
+
+async function drawNoticeIds(familyId: string, template: "names-drawn" | "plans-changed") {
+  const rows = await admin.db.select({personId: outbox.personId, requesterName: outbox.requesterName})
+    .from(outbox).where(and(eq(outbox.familyId, familyId), eq(outbox.template, template)));
+  expect(rows.every(({requesterName}) => requesterName === null)).toBe(true);
+  return rows.map(({personId}) => personId).sort();
+}
 
 function testLogin(name: string, password: string) {
   const url = new URL(databaseUrl!);
@@ -255,12 +262,16 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   const helperOwner = {...organizer, sessionId: helperSession.id};
   await runForFamily(app.db, familyId, (tx) => actFor(tx, helperOwner, ids[1]));
   const helper = {...helperOwner, actingAs: ids[1]};
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: null});
+  expect(await organizerExchange(organizer, exchangeId)).toMatchObject({seenCount: 0, exchange: {status: "drawn"}});
   await expect(revealMyPerson(viewers[1], exchangeId, 2)).rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...viewers[3], actingAs: ids[1]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...organizer, actingAs: ids[3]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
   const opened = await revealMyPerson(helper, exchangeId, 2);
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: opened.person.id});
+  expect(await myPerson(organizer, exchangeId)).toEqual({recipientId: null});
   expect(Object.keys(opened).sort()).toEqual(["person", "version"]);
   expect(opened.person.id).not.toBe(ids[0]);
   expect(opened.person.id).not.toBe(ids[1]);
@@ -305,32 +316,26 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
 it("changes one giver for a simple dropout and inserts a newcomer without erasing other seen ticks", async () => {
   const {organizer, exchangeId, ids, viewers, familyId} = await fixture();
   await runDraw(organizer, exchangeId, {expectedVersion: 0});
+  expect(await drawNoticeIds(familyId, "names-drawn")).toEqual(ids.slice(0, 6).sort());
   const known = new Map(await Promise.all(viewers.slice(0, 6).map(async (viewer) =>
     [viewer.personId, (await revealMyPerson(viewer, exchangeId, 1)).person.id] as const)));
-  const events: {destinations: readonly string[]}[] = [];
-  const sink: DrawEvents = {
-    async publish(_tx, event, destinations) {
-      verifyNoPairing(event);
-      expect(event.kind).toBe("reassigned");
-      events.push({destinations});
-    },
-  };
-  const dropout = await changeParticipation(organizer, exchangeId, ids[1], "out", 1, sink);
+  const dropout = await changeParticipation(organizer, exchangeId, ids[1], "out", 1);
   expect(dropout).toMatchObject({version: 2, changedGivers: 1, participantCount: 5});
-  const [changed] = events[0].destinations;
-  expect(known.get(changed)).toBe(ids[1]);
+  const changed = [...known].find(([, recipient]) => recipient === ids[1])![0];
+  expect(await drawNoticeIds(familyId, "plans-changed")).toEqual([changed]);
   expect(await organizerExchange(organizer, exchangeId)).toMatchObject({seenCount: 4});
-  const entry = await changeParticipation(organizer, exchangeId, ids[6], "in", 2, sink);
+  const entry = await changeParticipation(organizer, exchangeId, ids[6], "in", 2);
   expect(entry).toMatchObject({version: 3, changedGivers: 1, participantCount: 6});
-  expect(events[1].destinations).toHaveLength(2);
-  expect(events[1].destinations).toContain(ids[6]);
   await expect(revealMyPerson(viewers[1], exchangeId, 3)).rejects.toMatchObject({code: "notFound"});
   const rows = await runForFamily(app.db, familyId, (tx) => tx.select({
     id: participants.personId, seen: participants.seenVersion,
   }).from(participants).where(and(eq(participants.familyId, familyId), eq(participants.exchangeId, exchangeId))));
+  const current = new Map(await Promise.all(viewers.filter(({personId}) => personId !== ids[1]).map(async (viewer) =>
+    [viewer.personId, (await revealMyPerson(viewer, exchangeId, 3)).person.id] as const)));
+  const predecessor = [...current].find(([, recipient]) => recipient === ids[6])![0];
+  expect(await drawNoticeIds(familyId, "plans-changed")).toEqual([changed, predecessor, ids[6]].sort());
   for (const row of rows) {
-    if (row.id === ids[1] || [changed, ...events[1].destinations].includes(row.id)) expect(row.seen).toBeNull();
-    else expect(row.seen).toBe(3);
+    expect(row.seen).toBe([ids[1], changed, predecessor, ids[6]].includes(row.id) ? null : 3);
   }
   expect(await checkSealedDraw(organizer, exchangeId)).toMatchObject({valid: true, oneLoop: true});
   verifyNoPairing([dropout, entry]);
@@ -621,6 +626,7 @@ it("loads and starts isolated practice while the real family has an unresolved r
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(repair, "repairDraw").mockImplementation(() => { throw new DrawError("checkTimedOut"); });
   await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "checkTimedOut"});
+  expect(await myPerson(reporter, f.exchangeId)).toBeNull();
   signedIn.viewer = f.organizer;
   const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(renderToStaticMarkup);
   expect(await practiceSeason(f.organizer)).toBeNull();
@@ -766,6 +772,7 @@ it("does not repair an unopened disputed session or an opening invalidated by a 
   await revealMyPerson(f.viewers[3], f.exchangeId, 1);
   vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids.slice(0, 6).reverse()));
   await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"});
+  expect(await drawNoticeIds(f.familyId, "plans-changed")).toEqual(f.ids.slice(0, 6).sort());
   const otherOwner = {...f.viewers[3], sessionId: (await runForFamily(app.db, f.familyId, (tx) => signInDevice(
     tx, f.familyId, f.ids[3], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
   ))).id};
@@ -1261,6 +1268,8 @@ it("keeps the disputed recipient ambiguous at the same public sealed-loop result
     viewer.personId, (await revealMyPerson(index === 1 ? owner : viewer, f.exchangeId, 2)).person.id,
   ] as const)));
   const changed = (pairs: ReadonlyMap<string, string>) => f.ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  expect(await drawNoticeIds(f.familyId, "plans-changed"))
+    .toEqual(f.ids.filter((id) => actual.get(id) !== previous.get(id)).sort());
   expect(proof.oneLoop).toBe(modelOneLoop(actual));
   expect(state.seenCount).toBe(f.ids.length - changed(actual));
   const alternatives = possibleDraws(f.ids).filter((pairs) => pairs.get(f.ids[1]) !== f.ids[2]

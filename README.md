@@ -18,7 +18,7 @@ As an organizer, open **Exchanges** and choose the current exchange, then set it
 
 **Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. A fresh draw tries one big loop first and permits separate valid loops when that is impossible; repairs can also produce separate valid loops. Past years do not restrict matches.
 
-Members choose **Open your person** to see their own recipient, then **Open {name}'s wishlist** to open that exact person's list, even when relatives share a name. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
+Members choose **Open your person** to see their own recipient. Home and **Family lists** then put that person's list first, above the rest of the family. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal and see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
 
 The first opening locks the draw. **Replace the entire draw** then requires the displayed confirmation phrase. A full redraw clears everyone's opened status and all questions, even when someone happens to draw the same person again.
 
@@ -48,7 +48,7 @@ For what happens to marks at season end, see [Run an exchange](#run-an-exchange)
 
 Open **Notices** on **You** to read messages; tapping an unread message marks it read. Choose **Notices on this phone** to open **Notifications** and manage device alerts. Organizers can also open **Notifications** from **Manage my family**, where unread messages offer **Mark as read**. The app uses this inbox and optional home-screen notifications; it sends no email or texts. The inbox shows the newest 100 notices, and the unread badge counts only unread notices in that window.
 
-When an item you've marked **I'm getting this** is edited or removed, you receive a general notice without the item or buyer's name. Participating members also receive notices when the budget changes after a draw.
+Participating members receive a notice when names are drawn, when the draw is replaced, and when the budget changes after a draw. A repair alerts only the members receiving a new match. If an item you've marked **I'm getting this** is edited or removed, only you receive the notice. These notices omit pairings, buyer names, and item titles.
 
 For home-screen setup, open **Put this on your home screen? Show me how** on **You** and follow the instructions for your phone. Open the app from its new icon, sign in, then open **Notifications** as described above, choose **Turn on notifications for this device**, and allow the browser prompt. Enable notifications on each device and after each new sign-in. Use **Turn off notifications for this device** to stop alerts there; the inbox remains available. If permission was denied, allow notifications in your device or browser settings and try again.
 

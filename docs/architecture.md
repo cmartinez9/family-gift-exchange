@@ -40,7 +40,7 @@ For deployments, `DATABASE_URL` should connect as a runtime login allowed to ass
 
 `DRAW_DATABASE_URL` connects as a separate login allowed to assume `fge_draw`. Give that login and the app login only their respective request roles. Keep table ownership and RLS bypass on the migration connection. For disposable local databases, the draw connection can use the local database owner and still explicitly assumes `fge_draw` for requests. Set `ASSIGNMENT_ENCRYPTION_KEY` to a base64-encoded 32-byte secret. Existing assignments require the key they were sealed with.
 
-Draw notifications have an optional `DrawEvents` integration contract exported by the draw module. A publisher must queue messages using the supplied transaction so a failed enqueue rolls back the draw or repair. The app actions do not supply a publisher yet, so draws and repairs currently send no notifications. The [`DrawEvent` type](../src/server/draw/events.ts) owns public event fields. Delivery destinations are private; repair destinations stay out of organizer views and exports. Both family and exchange keep-apart editors use the draw module’s exchange-scoped operation; rules can include inactive family members without enrolling them.
+The draw module publishes [`DrawEvent`](../src/server/draw/events.ts) notices in the draw transaction, so a failed enqueue rolls back the draw or repair. The first draw tells the roster, full redraws tell everyone in the new draw, and repairs tell only the givers with new matches. Delivery destinations stay out of organizer views and exports. Home and Family lists read the acting member's own match only after the member opens it. Reading a match from those screens preserves existing reveal evidence. Both family and exchange keep-apart editors use the draw module’s exchange-scoped operation; rules can include inactive family members without enrolling them.
 
 ## Notifications
 
@@ -48,7 +48,7 @@ The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. In production, n
 
 Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily schedule is defined in [`vercel.json`](../vercel.json). The job queues reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
 
-The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. The draw hooks await Phase 2 integration.
+The draw publisher, [`ListEvents` adapter](../src/server/lists/list-events.ts), and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. Both budget editors use the same notification hook.
 
 ## Disputed-reveal recovery
 

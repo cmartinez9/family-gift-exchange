@@ -7,7 +7,7 @@ import {authorizeSubject, DrawError, withDrawFamily, type DrawViewer} from "./ac
 import {recordId} from "./inputs";
 import {drawOpenings, drawReports} from "./schema";
 import {
-  auditedDraw, authorizeSealedSubject, checkVersion, exchangeScope, loadExchange,
+  auditedDraw, authorizeSealedSubject, checkVersion, exchangeScope, InvalidSeal, loadExchange,
   loadRecipient, loadSnapshot, participantScope, requireOpen, type Exchange,
 } from "./store";
 
@@ -74,6 +74,29 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
     }
     return {person: recipient, version: exchange.version};
   });
+}
+
+/** Read the current member's match without creating reveal evidence. */
+export async function myPerson(viewer: DrawViewer, id: string): Promise<{recipientId: string | null} | null> {
+  try {
+    return await auditedDraw(viewer, async (tx, decrypt) => {
+      await authorizeSubject(tx, viewer);
+      const exchange = await loadExchange(tx, viewer.familyId, recordId(id));
+      if (exchange.status === "closed" || !exchange.version) return null;
+      const participant = await ownParticipant(tx, viewer, exchange);
+      if (!participant) return null;
+      authorizeSealedSubject(await loadSnapshot(tx, viewer.familyId, exchange.id), viewer);
+      const recipientId = participant.seenVersion === exchange.version
+        ? await loadRecipient(tx, viewer, exchange, decrypt, "opened-recipient")
+        : null;
+      return {recipientId};
+    });
+  } catch (error) {
+    // The list and Home remain available while the exchange needs recovery.
+    if (error instanceof InvalidSeal || (error instanceof DrawError &&
+      (error.code === "notFound" || error.code === "repairImpossible" || error.code === "checkTimedOut"))) return null;
+    throw error;
+  }
 }
 
 export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
