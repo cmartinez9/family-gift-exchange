@@ -47,8 +47,8 @@ async function addPerson(page: Page, name: string, helper?: string) {
 
 async function prepareKey(page: Page, name: string, reset = false) {
   const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name, exact: true})});
-  if (reset) await row.locator("summary").filter({hasText: /^Reset PIN$/}).click();
-  await row.getByRole("button", {name: reset ? "Prepare a new key" : "Prepare message", exact: true}).click();
+  if (reset) await row.getByRole("button", {name: "Reset PIN", exact: true}).click();
+  await row.getByRole("button", {name: reset ? "Reset and send a new key" : "Send", exact: true}).click();
   const message = row.getByText(reset ? new RegExp(`^Hi ${name}! Here's your private key`) : new RegExp(`^Hi ${name}! This is your private key`));
   await expect(message).toBeVisible();
   return (await message.innerText()).split(" ").at(-1)!;
@@ -230,7 +230,7 @@ test("assigned helper manages a person without a phone and cannot use organizer 
     await expect(page.getByRole("link", {name: "Manage my family"})).toHaveCount(0);
     await capture(page, info, "helper-profile");
     await page.goto("/en/family/keys");
-    await expect(page.getByRole("button", {name: "Prepare message"})).toHaveCount(0);
+    await expect(page.getByRole("button", {name: "Send", exact: true})).toHaveCount(0);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Done", exact: true}).click();
     await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();
@@ -249,7 +249,8 @@ test("editing a pending printed-code preview cannot redeem another name, includi
     for (const name of ["First", "Second"]) await addPerson(page, name);
     await page.getByRole("link", {name: "Send keys"}).click();
     const first = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "First", exact: true})});
-    await first.getByRole("button", {name: "Prepare a key card"}).click();
+    await first.getByRole("button", {name: "Send", exact: true}).click();
+    await first.getByRole("button", {name: "Print a card"}).click();
     await expect(first.getByRole("img", {name: "Scan to open your private key"})).toBeVisible();
     const firstCode = (await first.getByText(/^Your key code is/).innerText()).match(/\b[A-Z2-9]{6}\b/)![0];
     const firstUrl = (await first.getByText(/^Hi First!/).innerText()).split(" ").at(-1)!;

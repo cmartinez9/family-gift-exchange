@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {TextButton} from "../button";
 import {OnlyYou} from "../card";
 import {FairIsleBand} from "../knit/knit-svg";
@@ -56,9 +56,13 @@ type Phase = "ready" | "holding" | "short" | "paused" | "watching" | "revealed";
  * Every hold has a tap path ("Or tap here to open it", 1100ms) and works from the keyboard (Space or
  * Enter held down). Reduced motion: the gift opens at once.
  */
-export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs: Title = "h1"}: {
-  /** The name to knit. A name the stitched alphabet cannot draw yet is shown in heavy Rubik. */
-  name: string;
+export function UnravelReveal({name: given, labels, next, onStart, onRevealed, titleAs: Title = "h1"}: {
+  /**
+   * The name to knit. A name the stitched alphabet cannot draw yet is shown in heavy Rubik.
+   * `null` while the name is still on its way (it is fetched when the hold starts): the gift unravels as
+   * usual and the name knits in as soon as it arrives.
+   */
+  name: string | null;
   labels: RevealLabels;
   /** What comes after: the main button on the ground, and a line under it. */
   next: ReactNode;
@@ -68,6 +72,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   /** The heading's level; the reveal is normally the whole screen. */
   titleAs?: "h1" | "h2" | "h3" | "h4";
 }) {
+  const name = given ?? "";
   const [phase, setPhase] = useState<Phase>("ready");
   const [announce, setAnnounce] = useState("");
   const stage = useRef<HTMLDivElement>(null);
@@ -76,7 +81,8 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   const ring = useRef<SVGCircleElement>(null);
   const progress = useRef<HTMLSpanElement>(null);
   const nameSvg = useRef<SVGSVGElement>(null);
-  const state = useRef({p: 0, row: 0, held: false, opened: false, done: false, end: null as [number, number] | null});
+  const state = useRef({p: 0, row: 0, held: false, opened: false, done: false, end: null as [number, number] | null,
+    waiting: null as "knit" | "open" | null});
   const frames = useRef({yarn: 0, hold: 0, tap: 0, knit: 0});
   const timers = useRef<number[]>([]);
   const callbacks = useRef({onStart, onRevealed});
@@ -99,6 +105,11 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     return {bitmap: chart, nameStitches: order};
   }, [name, stitched, cell, ch]);
   const nameWidth = round2((bitmap[0]?.length ?? 0) * cell), nameHeight = round2(bitmap.length * ch);
+  // the name may arrive while a hold or a tap is already running: those read the latest one
+  const latest = useRef({given, nameStitches});
+  useLayoutEffect(() => {
+    latest.current = {given, nameStitches};
+  });
 
   const q = useCallback(<T extends Element>(selector: string) => stage.current?.querySelector<T>(selector) ?? null, []);
   const qa = useCallback(<T extends Element>(selector: string) => [...(stage.current?.querySelectorAll<T>(selector) ?? [])], []);
@@ -184,6 +195,10 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
 
   const openNow = useCallback(() => {
     const s = state.current;
+    if (latest.current.given === null) {
+      s.waiting = "open";
+      return;
+    }
     s.opened = true;
     s.p = 1;
     qa<SVGGElement>(".fge-kr").forEach((row) => row.setAttribute("data-gone", "true"));
@@ -195,6 +210,12 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   const knitName = useCallback(() => {
     const s = state.current;
     if (s.opened) return;
+    if (latest.current.given === null) {
+      // the gift is open but the name is still on its way
+      s.waiting = "knit";
+      setPhase("watching");
+      return;
+    }
     s.opened = true;
     setPhase("watching");
     timers.current.push(window.setTimeout(() => {
@@ -206,16 +227,27 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     const step = (time: number) => {
       const n = Math.floor(Math.max(0, time - start) / DURATION.knitNameStep);
       for (let index = 0; index < Math.min(n, stitches.length); index++) stitches[index].setAttribute("data-on", "true");
-      if (svg && host && nameStitches.length) {
+      const needle = latest.current.nameStitches;
+      if (svg && host && needle.length) {
         const box = svg.getBoundingClientRect(), origin = host.getBoundingClientRect();
-        const at = nameStitches[Math.min(n, nameStitches.length - 1)];
+        const at = needle[Math.min(n, needle.length - 1)];
         s.end = [box.left - origin.left + at.cx, box.top - origin.top + at.cy];
       }
       if (n < stitches.length) frames.current.knit = requestAnimationFrame(step);
       else finish(false);
     };
     frames.current.knit = requestAnimationFrame(step);
-  }, [finish, nameStitches, qa]);
+  }, [finish, qa]);
+
+  // the name arrived after the gift had already come undone
+  useEffect(() => {
+    const s = state.current;
+    if (given === null || !s.waiting) return;
+    const waiting = s.waiting;
+    s.waiting = null;
+    if (waiting === "open") openNow();
+    else knitName();
+  }, [given, knitName, openNow]);
 
   const begin = useCallback(() => {
     const s = state.current;

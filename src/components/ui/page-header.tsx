@@ -59,7 +59,7 @@ export function PageTitle({title, lead, count, as: Tag = "h1", className}: {
   return (
     <div className={cn("flex flex-col gap-2 px-edge pt-4 text-snow-white", className)} data-page-title="">
       <div className="flex items-end justify-between gap-3">
-        <Tag className="text-title">{title}</Tag>
+        <Tag className="min-w-0 text-title break-words">{title}</Tag>
         {count && <p className="pb-1.5 text-label uppercase whitespace-nowrap">{count}</p>}
       </div>
       {lead && <p className="text-lead">{lead}</p>}

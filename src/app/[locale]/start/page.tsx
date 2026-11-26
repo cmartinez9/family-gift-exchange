@@ -1,22 +1,16 @@
 import {getTranslations} from "next-intl/server";
-import {Link} from "@/i18n/navigation";
-import {AuthForm, PinFields} from "../sign-in/controls";
-import {inputClass, linkClass, sectionClass} from "../sign-in/styles";
-import {startFamily} from "../sign-in/actions";
+import {FairIsleBand} from "@/components/ui/knit/knit-svg";
+import {KnitMotif} from "@/components/ui/knit/knit-motif";
+import {PageTitle} from "@/components/ui/page-header";
+import {StartForm} from "./form";
 
 export default async function StartPage() {
-  const t = await getTranslations("auth");
+  const setup = await getTranslations("draw.setup");
   return (
-    <main className={sectionClass}>
-      <h1 className="text-2xl font-semibold">{t("startFamily")}</h1>
-      <AuthForm action={startFamily} label={t("createFamily")}>
-        <label className="block">{t("organizerInvite")}<input name="invite" className={inputClass} maxLength={128} required /></label>
-        <label className="block">{t("familyName")}<input name="familyName" className={inputClass} maxLength={80} required /></label>
-        <label className="block">{t("yourName")}<input name="displayName" className={inputClass} maxLength={60} required /></label>
-        <p>{t("makePin")}</p>
-        <PinFields create />
-      </AuthForm>
-      <Link href="/" className={linkClass}>{t("back")}</Link>
-    </main>
+    <StartForm hero={<>
+      <div className="flex justify-center pt-12"><KnitMotif name="gift" cell={9.5} /></div>
+      <FairIsleBand kind="trees" cell={5} className="mt-5" />
+      <PageTitle title={setup("startTitle")} lead={setup("startLead")} className="pt-6" />
+    </>} />
   );
 }

@@ -50,7 +50,7 @@ test("sets up the family, joins by key, switches devices, disputes a session and
     await expect(page.getByRole("heading", {name: "Snowbit"})).toBeVisible();
 
     await page.getByRole("link", {name: "Send keys"}).click();
-    await page.getByRole("button", {name: "Prepare message"}).click();
+    await page.getByRole("button", {name: "Send", exact: true}).click();
     const message = page.getByText("Hi Snowbit! This is your private key", {exact: false});
     await expect(message).toBeVisible();
     const url = (await message.innerText()).split(" ").at(-1)!;
@@ -162,7 +162,8 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await add.getByRole("button", {name: "Add a person"}).click();
     await expect(page.getByRole("heading", {name: "Pino"})).toBeVisible();
     await page.getByRole("link", {name: "Send keys"}).click();
-    await page.getByRole("button", {name: "Prepare a key card"}).click();
+    await page.getByRole("button", {name: "Send", exact: true}).click();
+    await page.getByRole("button", {name: "Print a card"}).click();
     await expect(page.getByRole("img", {name: "Scan to open your private key"})).toBeVisible();
     const message = page.getByText(/^¡Hola, Pino!/);
     await expect(message).toBeVisible();
@@ -190,7 +191,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await guestPage.getByRole("button", {name: "¿Lo olvidaste?"}).click();
     await guestPage.getByRole("button", {name: "Pedirle una llave nueva a Northstar"}).click();
     await expect(guestPage.getByRole("status").filter({hasText: "Ya le avisamos a Northstar"})).toBeVisible();
-    await page.getByRole("link", {name: "Go back"}).click();
+    await page.goto("/en/family");
     const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "Pino"})});
     await expect(row.getByText(/Asked for a new key on/)).toBeVisible();
     await page.getByRole("link", {name: "Notifications (1 unread)"}).click();
