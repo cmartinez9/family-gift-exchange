@@ -299,6 +299,7 @@
       "invalid-size": "Check the size you entered.",
       "invalid-profile": "Keep this answer within 500 characters.",
       "invalid-budget": "Enter a dollar amount with up to two decimal places.",
+      "closed": "This exchange is closed.",
       "already-claimed": "Someone is already getting this.",
       "item-changed": "This item changed. Reopen it and try again.",
       "invalid-photo": "We couldn’t open that photo. Try a different photo or screenshot.",
