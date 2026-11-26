@@ -139,15 +139,33 @@ it("revokes the authenticating passkey after cookies change while preserving ano
   expect(credentials.find(({id}) => id === unrelated.id)?.revokedAt).toBeNull();
 });
 
-it("revokes credentials conservatively when a disputed session has no recorded passkey", async () => {
-  const {familyId, viewer} = await fixture();
+it("preserves the owner's passkey and other sessions when an unrelated PIN session is reported", async () => {
+  const {familyId, viewer, session: reporter} = await fixture();
   const credential = await enroll(familyId, viewer.personId, device());
-  const suspect = (await withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, device(), new Date()))).session!;
+  const first = (await credential.authenticate(device()))!.session;
+  const second = (await credential.authenticate(device()))!.session;
+  const reportedDevice = device();
+  const suspect = (await withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, reportedDevice, new Date()))).session!;
+  const [before] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, suspect.id)));
+  expect(before.passkeyId).toBeNull();
   const [{id: eventId}] = await withFamily(familyId, (tx) => tx.select().from(authEvents).where(and(
     eq(authEvents.sessionId, suspect.id), eq(authEvents.kind, "newDevice"),
   )));
-  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, new Date()))).resolves.toBe(true);
-  await expect(credential.authenticate(device())).resolves.toBeNull();
+  const at = new Date();
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, at))).resolves.toBe(true);
+  await expect(resolve(suspect.cookie)).resolves.toBeNull();
+  const [reported] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, suspect.id)));
+  expect(reported).toMatchObject({revokedAt: at, trusted: false});
+  await expect(withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, reportedDevice, new Date())))
+    .resolves.toEqual({error: "newDevicesLocked"});
+  for (const session of [reporter, first, second]) {
+    await expect(resolve(session.cookie)).resolves.toMatchObject({personId: viewer.personId});
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(sessions).where(eq(sessions.id, session.id)));
+    expect(stored).toMatchObject({revokedAt: null, trusted: true});
+  }
+  const [storedCredential] = await withFamily(familyId, (tx) => tx.select().from(passkeys).where(eq(passkeys.id, credential.id)));
+  expect(storedCredential.revokedAt).toBeNull();
+  await expect(credential.authenticate(device())).resolves.toHaveProperty("session");
 });
 
 it("revokes a passkey enrolled on the reported browser and its sessions while preserving unrelated access", async () => {

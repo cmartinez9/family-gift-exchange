@@ -68,7 +68,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const personCredentials = target ? await tx.select({id: passkeys.id, hash: passkeys.deviceHash}).from(passkeys)
     .where(and(eq(passkeys.familyId, familyId), eq(passkeys.personId, personId))) : [];
   const deviceHashes = new Set(target ? [target.hash] : []);
-  const credentialIds = new Set(target?.passkeyId ? [target.passkeyId] : personCredentials.map(({id}) => id));
+  const credentialIds = new Set(target?.passkeyId ? [target.passkeyId] : []);
   let expanded = true;
   while (expanded) {
     const size = deviceHashes.size + credentialIds.size;
