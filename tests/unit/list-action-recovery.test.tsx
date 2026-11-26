@@ -96,8 +96,12 @@ it.each([
   ["bought", false], ["bought", true], ["wrapped", false], ["wrapped", true],
 ] as const)("rolls back %s from %s after a rejected save and allows retry", async (command, checked) => {
   const response = Promise.withResolvers<FormState>();
-  vi.mocked(claimCommand).mockReturnValueOnce(response.promise).mockResolvedValueOnce({});
-  await render(<ChecklistTick label={en.lists[command]} checked={checked} action={claimCommand.bind(null, item.id, command)} />);
+  const checklist = (value: boolean) => <ChecklistTick label={en.lists[command]} checked={value} action={claimCommand.bind(null, item.id, command)} />;
+  vi.mocked(claimCommand).mockReturnValueOnce(response.promise).mockImplementationOnce(async () => {
+    root.render(view(checklist(!checked)));
+    return {};
+  });
+  await render(checklist(checked));
   const checkbox = () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   await click(checkbox());
   expect(checkbox().checked).toBe(!checked);
@@ -111,6 +115,33 @@ it.each([
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(claimCommand).toHaveBeenCalledTimes(2);
   expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, !checked, {});
+});
+
+it.each(["bought", "wrapped"] as const)("reconciles %s when a concurrent save returns the same server value", async (command) => {
+  const response = Promise.withResolvers<FormState>();
+  let checked = true;
+  const checklist = () => <ChecklistTick label={en.lists[command]} checked={checked} action={claimCommand.bind(null, item.id, command)} />;
+  vi.mocked(claimCommand).mockImplementationOnce(async () => {
+    checked = false;
+    root.render(view(checklist()));
+    return {};
+  }).mockReturnValueOnce(response.promise);
+  await render(checklist());
+  const checkbox = () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await click(checkbox());
+  expect(checkbox().checked).toBe(false);
+  await click(checkbox());
+  expect(checkbox().checked).toBe(true);
+  expect(checkbox().disabled).toBe(true);
+  await act(async () => {
+    root.render(view(checklist()));
+    response.resolve({});
+  });
+  expect(checkbox().checked).toBe(false);
+  expect(checkbox().disabled).toBe(false);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, false, {});
+  expect(claimCommand).toHaveBeenNthCalledWith(2, item.id, command, true, {});
 });
 
 it("rolls back a rejected heart save, reports it, and allows retry", async () => {

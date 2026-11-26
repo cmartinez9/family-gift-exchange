@@ -1,6 +1,6 @@
 "use client";
 
-import {useActionState, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
+import {useActionState, useEffect, useOptimistic, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
 import {Button} from "@/components/ui/button";
 import {cn} from "@/components/ui/cn";
@@ -60,7 +60,7 @@ export function ChecklistTick({
   onPine?: boolean;
   action: (checked: boolean, state: FormState) => Promise<FormState>;
 }) {
-  const [current, setCurrent] = useState(checked);
+  const [current, setCurrent] = useOptimistic(checked);
   const [state, setState] = useState<FormState>({});
   const [pending, startTransition] = useTransition();
   return (
@@ -70,13 +70,11 @@ export function ChecklistTick({
         <input
           type="checkbox" checked={current} disabled={pending} className="absolute inset-0 cursor-pointer rounded-pill opacity-0"
           onChange={(event) => {
-            const previous = current;
             const next = event.currentTarget.checked;
-            setCurrent(next);
             if (next) haptic("tick");
             startTransition(async () => {
+              setCurrent(next);
               const result = await runListAction(() => action(next, {}));
-              if (result.error) setCurrent(previous);
               setState(result);
             });
           }}

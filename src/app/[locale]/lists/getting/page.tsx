@@ -43,9 +43,9 @@ export default async function GettingPage() {
                   price={item.price !== null ? format.number(Number(item.price), {style: "currency", currency: "USD"}) : undefined}
                   after={(
                     <div className="flex gap-2 pt-3.5">
-                      <ChecklistTick key={`bought-${item.bought}`} label={t("bought")} checked={item.bought} onPine={yours}
+                      <ChecklistTick label={t("bought")} checked={item.bought} onPine={yours}
                         action={claimCommand.bind(null, viewer.actingAs, item.itemId, "bought")} />
-                      <ChecklistTick key={`wrapped-${item.wrapped}`} label={t("wrapped")} checked={item.wrapped} onPine={yours}
+                      <ChecklistTick label={t("wrapped")} checked={item.wrapped} onPine={yours}
                         action={claimCommand.bind(null, viewer.actingAs, item.itemId, "wrapped")} />
                     </div>
                   )} />

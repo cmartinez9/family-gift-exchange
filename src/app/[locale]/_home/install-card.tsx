@@ -12,6 +12,7 @@ import {toast} from "@/components/ui/toast";
 
 const DISMISSED = "fge-install-dismissed";
 const listeners = new Set<() => void>();
+let dismissedFallback: boolean | undefined;
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -26,6 +27,7 @@ function subscribe(listener: () => void) {
 }
 
 function readDismissed() {
+  if (dismissedFallback !== undefined) return dismissedFallback;
   try {
     return window.localStorage.getItem(DISMISSED) === "1";
   } catch {
@@ -37,8 +39,9 @@ function setDismissed(on: boolean) {
   try {
     if (on) window.localStorage.setItem(DISMISSED, "1");
     else window.localStorage.removeItem(DISMISSED);
+    dismissedFallback = undefined;
   } catch {
-    // private browsing: the card simply comes back next time
+    dismissedFallback = on;
   }
   listeners.forEach((listener) => listener());
 }
