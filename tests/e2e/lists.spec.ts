@@ -12,7 +12,7 @@ import {openKey, skipFaceId} from "../helpers/pin-pad";
 const pin = "4268";
 
 async function startFamily(page: Page, language: "en" | "es") {
-  const {auth} = language === "en" ? en : es;
+  const {auth, getIn} = language === "en" ? en : es;
   const familyName = `Spruce ${randomUUID().slice(0, 6)}`;
   await page.goto(`/${language}/start`);
   await page.getByLabel(auth.organizerInvite).fill(process.env.E2E_ORGANIZER_INVITE_CODE!);
@@ -21,7 +21,7 @@ async function startFamily(page: Page, language: "en" | "es") {
   await page.getByLabel(auth.pin, {exact: true}).fill(pin);
   await page.getByLabel(auth.confirmPin).fill(pin);
   await page.getByRole("button", {name: auth.createFamily}).click();
-  await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
+  await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
   await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session");

@@ -37,7 +37,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByLabel(auth.pin, {exact: true}).fill(pin);
       await page.getByLabel(auth.confirmPin).fill(pin);
       await page.getByRole("button", {name: auth.createFamily}).click();
-      await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
+      await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
       await page.getByRole("link", {name: auth.notNow}).click();
       familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
       const scoped = <T,>(fn: Parameters<typeof runForFamily<T>>[2]) => runForFamily(db, familyId!, fn);
