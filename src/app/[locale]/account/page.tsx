@@ -17,7 +17,7 @@ import {ownRevealOpenings} from "@/server/draw";
 import {withFamily} from "@/server/db/client";
 import {getGettingList} from "@/server/lists/claims";
 import {getUnreadCount, listNotifications} from "@/server/messages/inbox";
-import {shoeLabel} from "../welcome/steps";
+import {shoeLabel} from "../welcome/shoe-label";
 import {reportSession, signOut, switchProfile} from "./actions";
 import {noticeText} from "./notice-text";
 import {ActForm, HomeScreenRow, LanguageRow, RowDisc} from "./rows";

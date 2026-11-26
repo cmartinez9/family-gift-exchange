@@ -251,7 +251,8 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
   const [result, setResult] = useState<AuthResult>({});
   const [pending, start] = useTransition();
 
-  if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer} />;
+  if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
+    onRetry={() => setLocked(null)} />;
 
   return (
     <Screen>
@@ -291,7 +292,8 @@ export function SignInWithPin({familyId, personId, name, organizer, backHref}: {
   const [view, setView] = useState<{kind: "pin"} | {kind: "forgot"} | {kind: "locked"; minutes: number}>({kind: "pin"});
 
   if (view.kind === "locked") {
-    return <Locked minutes={view.minutes} name={name} familyId={familyId} personId={personId} organizer={organizer} />;
+    return <Locked minutes={view.minutes} name={name} familyId={familyId} personId={personId} organizer={organizer}
+      onRetry={() => setView({kind: "pin"})} />;
   }
   if (view.kind === "forgot") {
     return <Forgot familyId={familyId} personId={personId} organizer={organizer} doneHref={backHref}
@@ -358,18 +360,30 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
 }
 
 /** Let's take a break (10.4): the minutes stitched, what is safe, and the ways forward. */
-function Locked({minutes, name, familyId, personId, organizer}: {
-  minutes: number; name: string; familyId: string; personId: string; organizer: string;
+function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
+  minutes: number; name: string; familyId: string; personId: string; organizer: string; onRetry: () => void;
 }) {
   const t = useTranslations("getIn.locked");
   const forgot = useTranslations("getIn.forgot");
   const feedback = useTranslations("auth.feedback");
   const [result, setResult] = useState<AuthResult & {at?: Date}>({});
   const [pending, start] = useTransition();
+  const [until] = useState(() => Date.now() + minutes * 60_000);
+  const [remaining, setRemaining] = useState(minutes);
+  useEffect(() => {
+    const update = () => setRemaining(Math.max(0, Math.ceil((until - Date.now()) / 60_000)));
+    const timer = window.setInterval(update, 1000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, [until]);
   return (
     <Screen actions={<>
+      {remaining === 0 && <Button disabled={pending} onClick={onRetry}>{t("retry")}</Button>}
       {!result.success && (
-        <Button disabled={pending} onClick={() => start(async () => {
+        <Button variant={remaining === 0 ? "outline" : "ground"} disabled={pending} onClick={() => start(async () => {
           const response = await forgotPin(familyId, personId);
           if (response.success) haptic("success");
           setResult({...response, at: new Date()});
@@ -377,12 +391,12 @@ function Locked({minutes, name, familyId, personId, organizer}: {
       )}
       <FaceIdLink label={t("face")} />
     </>}>
-      <div className="flex flex-col items-center gap-3 pt-[26px] text-snow-white" role="img"
-        aria-label={`${t("tryAgainIn")} ${minutes} ${t("minutes", {count: minutes})}`}>
+      {remaining > 0 ? <div className="flex flex-col items-center gap-3 pt-[26px] text-snow-white" role="img"
+        aria-label={`${t("tryAgainIn")} ${remaining} ${t("minutes", {count: remaining})}`}>
         <p aria-hidden="true" className="text-section">{t("tryAgainIn")}</p>
-        <StitchedText as="p" text={String(minutes)} cell={12} />
-        <p aria-hidden="true" className="text-section">{t("minutes", {count: minutes})}</p>
-      </div>
+        <StitchedText as="p" text={String(remaining)} cell={12} />
+        <p aria-hidden="true" className="text-section">{t("minutes", {count: remaining})}</p>
+      </div> : <p role="status" className="px-edge pt-[26px] text-center text-section">{t("ready")}</p>}
       <PageTitle title={t("title")} lead={t("lead", {name})} className="pt-[22px]" />
       <div className="flex flex-col gap-3 px-edge pt-[18px]">
         {result.success && result.at

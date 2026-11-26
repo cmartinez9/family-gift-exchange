@@ -16,23 +16,19 @@ import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
+import {sizePresets} from "@/server/lists/validation";
 import {previewItemLink, saveProfileField} from "../lists/actions";
 import type {PreviewCard} from "../lists/action-types";
+import {shoeOptions} from "../lists/[personId]/profile/profile-form";
+import {preparePhoto} from "../lists/item-form";
 import {WelcomeSteps} from "../sign-in/get-in";
 import {addFirstThing} from "./actions";
+import {shoeLabel} from "./shoe-label";
 
 /** The design's six chips; the stored value for 2XL is the preset's XXL. */
 const LETTER_SIZES = [["XS", "XS"], ["S", "S"], ["M", "M"], ["L", "L"], ["XL", "XL"], ["XXL", "2XL"]] as const;
-const SHOE_SYSTEMS = ["us-women", "us-men", "us-kids", "eu", "uk", "other"] as const;
+const SHOE_SYSTEMS = sizePresets.shoeSystem;
 type ShoeSystem = typeof SHOE_SYSTEMS[number];
-const SHOES = ["4", "4.5", "5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5",
-  "11", "11.5", "12", "12.5", "13", "13.5", "1Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y"];
-const SHOE_START = SHOES.indexOf("7.5");
-
-/** 7.5 reads 7½. */
-export function shoeLabel(value: string) {
-  return value.replace(/\.5$/, "½");
-}
 
 /** A heading row inside the sizes card: the group's name, and an optional link on the right. */
 function GroupHead({title, id, right}: {title: string; id: string; right?: ReactNode}) {
@@ -71,10 +67,12 @@ export function SizesStep({ownerId, initial, profileHref}: {
     save(kind, value);
   }
   function step(direction: 1 | -1) {
-    const index = SHOES.indexOf(sizes.shoes ?? "");
-    const next = index < 0 ? SHOE_START : Math.max(0, Math.min(SHOES.length - 1, index + direction));
+    const options = shoeOptions[system ?? ""] ?? sizePresets.shoes;
+    const index = options.indexOf(sizes.shoes ?? "");
+    const first = system === "eu" ? "38" : system === "us-kids" ? "1C" : "7.5";
+    const next = index < 0 ? options.indexOf(first) : Math.max(0, Math.min(options.length - 1, index + direction));
     haptic("tick");
-    pick("shoes", SHOES[next]);
+    pick("shoes", options[next]);
   }
   const system = sizes.shoeSystem as ShoeSystem | undefined;
   const shoe = sizes.shoes;
@@ -125,14 +123,17 @@ export function SizesStep({ownerId, initial, profileHref}: {
                 right={<TextButton className="px-0 text-ink" onClick={() => setSystemOpen(true)}>
                   {system ? t(`system.${system}`) : t("systemNone")}
                 </TextButton>} />
-              <div className="flex items-center gap-2.5">
+              {system === "other" ? (
+                <TextField label={t("shoes")} defaultValue={shoe ?? ""} maxLength={40} surface="white"
+                  onBlur={(event) => pick("shoes", event.currentTarget.value)} />
+              ) : <div className="flex items-center gap-2.5">
                 <IconButton icon="minus" label={t("smaller")} onClick={() => step(-1)} />
                 <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title",
                   shoe ? "bg-ink text-snow-white" : "bg-[var(--track)] text-muted-ink")}>
                   {shoe ? shoeLabel(shoe) : t("pickOne")}
                 </p>
                 <IconButton icon="plus" label={t("bigger")} onClick={() => step(1)} />
-              </div>
+              </div>}
             </div>
           </Card>
         )}
@@ -166,12 +167,19 @@ type Mode = "words" | "paste" | "photo";
 /** Add one thing you'd like (2.7 to 2.9): a few words, a pasted link, or a photo. */
 export function AddStep({ownerId}: {ownerId: string}) {
   const t = useTranslations("getIn.add");
+  const lists = useTranslations("lists");
   const back = useTranslations("getIn.hello");
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("words");
   const [state, submit, pending] = useActionState(addFirstThing, {});
   const camera = useRef<HTMLInputElement>(null);
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<{file: File; url: string} | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
+
+  useEffect(() => () => {
+    if (photo) URL.revokeObjectURL(photo.url);
+  }, [photo]);
 
   useEffect(() => {
     if (!state.added) return;
@@ -180,17 +188,34 @@ export function AddStep({ownerId}: {ownerId: string}) {
     router.push("/welcome/done");
   }, [state, router, t]);
 
-  const error = state.error && <ErrorBlock title={t("failed")}>{t("failedSub")}</ErrorBlock>;
+  function save(form: FormData) {
+    if (form.get("kind") === "photo") {
+      if (preparing || !photo) return;
+      form.set("photo", photo.file);
+    }
+    submit(form);
+  }
+
+  const error = (state.error || photoError) && <ErrorBlock title={t("failed")}>{t("failedSub")}</ErrorBlock>;
   const cameraInput = (
-    <input ref={camera} type="file" name="photo" accept="image/*" capture="environment" className="sr-only" tabIndex={-1}
-      aria-hidden="true" onChange={(event) => {
-        const file = event.target.files?.[0];
+    <input ref={camera} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1}
+      disabled={preparing || pending} aria-hidden="true" onChange={async (event) => {
+        const input = event.currentTarget;
+        const file = input.files?.[0];
         if (!file) return;
-        setPhoto((current) => {
-          if (current) URL.revokeObjectURL(current);
-          return URL.createObjectURL(file);
-        });
+        input.value = "";
+        setPhoto(null);
+        setPhotoError(false);
+        setPreparing(true);
         setMode("photo");
+        try {
+          const prepared = await preparePhoto(file);
+          setPhoto({file: prepared, url: URL.createObjectURL(prepared)});
+        } catch {
+          setPhotoError(true);
+        } finally {
+          setPreparing(false);
+        }
       }} />
   );
 
@@ -199,24 +224,25 @@ export function AddStep({ownerId}: {ownerId: string}) {
   }
 
   return (
-    <form action={submit} className="contents">
+    <form action={save} className="contents">
       <Screen actions={mode === "photo"
         ? <>
-          <Button type="submit" icon="plus" disabled={pending}>{t("add")}</Button>
-          <TextButton className="self-center" onClick={() => setMode("words")}>{back("helperBack")}</TextButton>
+          <Button type="submit" icon="plus" disabled={pending || preparing || !photo}>{t("add")}</Button>
+          <TextButton className="self-center" disabled={preparing || pending} onClick={() => setMode("words")}>{back("helperBack")}</TextButton>
         </>
         : <TextLink href="/welcome/done" className="self-center">{t("later")}</TextLink>}>
         <WelcomeSteps step={4} waitingStep={2} />
         <PageTitle title={t("title")} lead={t("lead")} />
         {cameraInput}
-        {mode === "photo" && photo ? (
+        {mode === "photo" ? (
           <div className="flex flex-col gap-3 px-edge pt-5">
             <input type="hidden" name="kind" value="photo" />
             <Card className="flex flex-col gap-3 rounded-item p-4">
               <div className="flex items-center gap-3.5">
-                <ItemPicture src={photo} alt={t("photoAlt")} size={80} />
-                <TextButton className="px-0 text-ink" onClick={() => camera.current?.click()}>{t("photoChange")}</TextButton>
+                {photo && <ItemPicture src={photo.url} alt={t("photoAlt")} size={80} />}
+                <TextButton className="px-0 text-ink" disabled={preparing || pending} onClick={() => camera.current?.click()}>{t("photoChange")}</TextButton>
               </div>
+              {preparing && <p role="status">{lists("preparingPhoto")}</p>}
               <TextField label={t("photoTitle")} name="title" required maxLength={200} placeholder={t("photoPlaceholder")} surface="white" />
             </Card>
             {error}

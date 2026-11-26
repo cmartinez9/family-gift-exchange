@@ -631,6 +631,8 @@
       "unavailableSub": "Check the link, or ask {organizer} for help."
     },
     "locked": {
+      "retry": "Try my PIN again",
+      "ready": "You can try your PIN again",
       "tryAgainIn": "Try again in",
       "minutes": "{count, plural, one {minute} other {minutes}}",
       "title": "Let's take a break",

@@ -1,6 +1,6 @@
 "use client";
 
-import {useRef, useState, useTransition, type ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Icon, type IconName} from "@/components/ui/icon";
@@ -33,6 +33,25 @@ function Refusal({problem, version}: {problem: Problem; version: number}) {
 }
 
 const settle = () => (prefersReducedMotion() ? 60 : 260);
+
+function usePinCompletion(onComplete: (pin: string) => void) {
+  const timer = useRef<number | undefined>(undefined);
+  const cancel = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+  }, []);
+  useEffect(() => cancel, [cancel]);
+  return {
+    cancel,
+    schedule(pin: string) {
+      cancel();
+      timer.current = window.setTimeout(() => {
+        timer.current = undefined;
+        onComplete(pin);
+      }, settle());
+    },
+  };
+}
 
 /** Calls a PIN server action with the digits as form fields. A successful action redirects. */
 export function pinForm(pin: string, confirmation = pin) {
@@ -107,6 +126,8 @@ export function MakePin({save, top}: {
     });
   }
 
+  const completion = usePinCompletion(check);
+
   return (
     <>
       {top}
@@ -115,11 +136,12 @@ export function MakePin({save, top}: {
         <PinPad fill value={pin} slotsLabel={t("slots", {count: pin.length})} deleteLabel={t("delete")}
           bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending}
           onChange={(next) => {
+            completion.cancel();
             if (next.length) setBad(false);
             if (next.length === 1) setProblem(null);
             setPin(next);
           }}
-          onComplete={(next) => window.setTimeout(() => check(next), settle())}
+          onComplete={completion.schedule}
           middle={<div className="-mx-edge">
             {pending ? <div role="status"><GroundNote icon="lock">{t("saving")}</GroundNote></div>
               : problem ? <Refusal problem={problem} version={version} />
@@ -185,6 +207,8 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
     });
   }
 
+  const completion = usePinCompletion(send);
+
   return (
     <>
       <PageTitle title={title} lead={lead} />
@@ -192,11 +216,12 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer}:
         <PinPad fill value={pin} slotsLabel={pinText("slots", {count: pin.length})} deleteLabel={pinText("delete")}
           bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending} left={left}
           onChange={(next) => {
+            completion.cancel();
             if (next.length) setBad(false);
             if (next.length === 1) setProblem(null);
             setPin(next);
           }}
-          onComplete={(next) => window.setTimeout(() => send(next), settle())}
+          onComplete={completion.schedule}
           middle={<div className="-mx-edge">
             {problem ? <Refusal problem={problem} version={version} /> : note}
           </div>} />

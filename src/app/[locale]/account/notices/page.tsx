@@ -10,7 +10,7 @@ import {requireViewer} from "@/server/auth";
 import {account} from "@/server/auth/security";
 import {withFamily} from "@/server/db/client";
 import {listNotifications} from "@/server/messages/inbox";
-import {readNotice} from "../actions";
+import {readNotice, readResetRequest} from "../actions";
 import {noticeText} from "../notice-text";
 import {RowDisc} from "../rows";
 import {screenTitle} from "../../sign-in/title";
@@ -56,7 +56,9 @@ export default async function NoticesPage() {
       return {key: id, at: createdAt, row: (
         <li key={id} data-notice="message">
           {canHandleReset && isPinResetRequest
-            ? <AppLink href="/family" transition="push" className={press}>{content}<span className="sr-only">{t("resetRequests")}</span></AppLink>
+            ? isRead
+              ? <AppLink href="/family" transition="push" className={press}>{content}<span className="sr-only">{t("resetRequests")}</span></AppLink>
+              : <form action={readResetRequest.bind(null, id)}><button type="submit" className={press}>{content}<span className="sr-only">{t("resetRequests")}</span></button></form>
             : !isRead
               ? <form action={readNotice.bind(null, id)}><button type="submit" className={press}>{content}</button></form>
               : content}

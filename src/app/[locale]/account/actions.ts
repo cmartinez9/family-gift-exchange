@@ -80,3 +80,8 @@ export async function readNotice(id: string) {
   await markNotificationRead(viewer, id);
   revalidatePath("/[locale]/account", "layout");
 }
+
+export async function readResetRequest(id: string) {
+  await readNotice(id);
+  redirect(`/${await getLocale()}/family`);
+}

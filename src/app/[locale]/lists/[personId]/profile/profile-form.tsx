@@ -11,7 +11,7 @@ import {inputClass, linkClass, panelClass} from "../../styles";
 const standardSizes = ["tops", "bottoms", "waist", "length"] as const;
 const extraSizes = ["dress", "ring", "hat", "gloves", "other"] as const;
 
-const shoeOptions: Record<string, readonly string[]> = {
+export const shoeOptions: Record<string, readonly string[]> = {
   eu: Array.from({length: 35}, (_, index) => String(index + 16)),
   "us-kids": ["1C", "2C", "3C", "4C", "5C", "6C", "7C", "8C", "9C", "10C", "11C", "12C", "13C",
     "1Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y"],
