@@ -253,7 +253,12 @@ test("resolves competing anonymous claims and releases only unpurchased gifts wh
     await first.page.goto(path);
     await second.page.goto(path);
     const race = (p: Page) => p.getByRole("article", {name: "Racing candle", exact: true});
-    await Promise.all([first.page, second.page].map((p) => race(p).getByRole("button", {name: lists.claim, exact: true}).click()));
+    await Promise.all([first.page, second.page].map(async (p) => {
+      await race(p).getByRole("button", {name: lists.claim, exact: true}).click();
+      // Wait for the server action before reloading so navigation cannot cancel the claim.
+      await expect(race(p).getByText(lists.mine, {exact: true})
+        .or(race(p).getByText(lists.feedback["already-claimed"], {exact: true}))).toBeVisible();
+    }));
     await first.page.reload();
     await second.page.reload();
     const firstWon = await race(first.page).getByText(lists.mine, {exact: true}).count() === 1;
@@ -265,12 +270,17 @@ test("resolves competing anonymous claims and releases only unpurchased gifts wh
     await expect(race(loser).getByText(firstWon ? "Snowfinch" : "Firleaf", {exact: false})).toHaveCount(0);
     await screenshot(loser, "competing-claim-anonymous");
     await race(winner).getByRole("button", {name: lists.undoClaim, exact: true}).click();
+    await expect(race(winner).getByRole("button", {name: lists.claim, exact: true})).toBeVisible();
 
     for (const title of ["Pending book", "Purchased scarf"]) {
       await first.page.reload();
-      await first.page.getByRole("article", {name: title, exact: true}).getByRole("button", {name: lists.claim, exact: true}).click();
+      const card = first.page.getByRole("article", {name: title, exact: true});
+      await card.getByRole("button", {name: lists.claim, exact: true}).click();
+      await expect(card.getByText(lists.mine, {exact: true})).toBeVisible();
     }
-    await second.page.getByRole("article", {name: "Other buyer's mittens", exact: true}).getByRole("button", {name: lists.claim, exact: true}).click();
+    const otherClaim = second.page.getByRole("article", {name: "Other buyer's mittens", exact: true});
+    await otherClaim.getByRole("button", {name: lists.claim, exact: true}).click();
+    await expect(otherClaim.getByText(lists.mine, {exact: true})).toBeVisible();
     await first.page.goto("/en/lists/getting");
     const bought = first.page.getByRole("listitem").filter({has: first.page.getByRole("heading", {name: "Purchased scarf", exact: true})});
     await bought.getByLabel(lists.bought, {exact: true}).check();
