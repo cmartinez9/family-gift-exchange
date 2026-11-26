@@ -1,6 +1,6 @@
 # Family Gift Exchange
 
-A phone-first family Christmas gift exchange in English and Spanish, with encrypted draws and anonymous questions. Shared wishlists are planned. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
+A phone-first family Christmas gift exchange in English and Spanish, with shared wishlists, encrypted draws, and anonymous questions. Organizers can create a family, add the people who will take part, and give each person a private sign-in key. Members return with Face ID or a four-digit PIN.
 
 ## Join and return
 
@@ -16,9 +16,9 @@ Review **Sign-in activity** for key use, new devices, and replacement keys. Use 
 
 As an organizer, open **Exchanges** and choose the current exchange, then set its details and **Who's taking part?**. A family can have one active exchange; close it before starting another. Set households, helpers, and keep-apart pairs before drawing.
 
-**Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. It tries one big loop first and permits separate valid loops when that is impossible. Past years do not restrict matches.
+**Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. A fresh draw tries one big loop first and permits separate valid loops when that is impossible; repairs can also produce separate valid loops. Past years do not restrict matches.
 
-Members choose **Open your person** to see their own recipient. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions.
+Members choose **Open your person** to see their own recipient, then **Open {name}'s wishlist** to open that exact person's list, even when relatives share a name. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
 
 The first opening locks the draw. **Replace the entire draw** then requires the displayed confirmation phrase. A full redraw clears everyone's opened status and all questions, even when someone happens to draw the same person again.
 
@@ -36,7 +36,7 @@ Open **Your list** from your account, then **Add an item** to paste a product li
 
 Choose **Edit sizes and About me** to add sizing, preferences, or allergies. These fields save when you leave each field; wait for **Saved** before navigating away. Select **No clothes, please** if you do not want clothing. The directory's **List ready** label requires at least one item. It also requires tops, bottoms (or waist and inseam), and shoe sizes with a shoe size system, unless **No clothes, please** is selected. When helping a relative, switch to their profile in **People you help**, then edit **Your list** for them.
 
-**Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory currently lists people alphabetically; assigned-recipient highlighting awaits the draw integration. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget.
+**Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory lists people alphabetically. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget.
 
 On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
 

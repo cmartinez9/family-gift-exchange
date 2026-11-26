@@ -14,6 +14,7 @@ import {
 } from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 import type {ListPhotoStorage} from "../../src/server/lists/photo-storage";
+import type {ListViewer} from "../../src/server/lists/access";
 
 vi.mock("server-only", () => ({}));
 
@@ -38,7 +39,7 @@ const owner = viewer(ownerId);
 const buyer = viewer(buyerId);
 const outsider = viewer(outsiderId, outsiderId, otherFamilyId);
 const largeListActor = viewer(largeListPersonId);
-const addWritten = (actor: ReturnType<typeof viewer>, id: string, title: string) =>
+const addWritten = (actor: ListViewer, id: string, title: string) =>
   addListItem(actor, id, {kind: "note", title});
 
 function signal() {
@@ -207,7 +208,7 @@ describe("live list authorization", () => {
     const title = `Interrupted save: ${change}`;
     const image = await sharp({create: {width: 2, height: 2, channels: 3, background: "#aabbcc"}}).webp().toBuffer();
     const outcome = addListItem(actor, targetId, {kind: "link", link: "https://gift.example.com/book"}, {
-      storage, resolve: async () => ({url: "https://gift.example.com/book", title, store: "gift.example.com", icon: "store", image}),
+      storage, resolve: async () => ({url: "https://gift.example.com/book", title, price: null, store: "gift.example.com", icon: "store", image}),
     }).then((value) => ({value}), (error: unknown) => ({error}));
     await stored.promise;
     try {
