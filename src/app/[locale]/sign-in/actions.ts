@@ -110,7 +110,7 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
     if (!key || (!key.available && !key.usedAt)) return {error: "unavailable"};
     if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) return {error: "otherPerson"};
     return {key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
-      preview: createCodePreview(authenticatorSecret(), familyId, key, code, device.hash, now)}};
+      preview: createCodePreview(authenticatorSecret(), familyId, key, code, device.hash)}};
   });
 }
 

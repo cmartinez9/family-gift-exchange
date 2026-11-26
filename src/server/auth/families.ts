@@ -164,6 +164,7 @@ export async function changeCoOrganizer(tx: FamilyTransaction, viewer: Viewer, p
   if (personId) {
     const person = await activePerson(tx, familyId, personId);
     if (!person || person.helperId || person.role === "organizer") return "unavailable";
+    if (person.role === "co_organizer") return null;
   }
   await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(peopleOnly(familyId), eq(people.role, "co_organizer")));
   if (personId) {

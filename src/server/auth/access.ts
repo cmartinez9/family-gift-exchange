@@ -227,7 +227,7 @@ export async function redeemKey(
   }
   const key = await lookupKey(tx, familyId, pepper, value, typed);
   if (!key || key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
-  if (typed && (typeof input.preview !== "string" || !validCodePreview(input.preview, pepper, familyId, key, value, device.hash, now))) {
+  if (typed && (typeof input.preview !== "string" || !validCodePreview(input.preview, pepper, familyId, key, value, device.hash))) {
     return {error: "previewAgain"} as const;
   }
   const person = await activePerson(tx, familyId, key.personId);

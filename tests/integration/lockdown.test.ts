@@ -6,9 +6,9 @@ import {afterEach, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
 import {families, people} from "../../src/server/db/schema";
 import {createFamily, changeCoOrganizer, saveMember} from "../../src/server/auth/families";
-import {issueKey, redeemKey, signInWithPin, type Device, type KeyKind} from "../../src/server/auth/access";
+import {issueKey, issueOrganizerKey, markKeySent, redeemKey, signInWithPin, type Device, type KeyKind} from "../../src/server/auth/access";
 import {account, disputeEvent, endSessions} from "../../src/server/auth/security";
-import {authEvents, passkeys, personalKeys, pinCredentials, sessions} from "../../src/server/auth/schema";
+import {authEvents, passkeys, personalKeys, pinCredentials, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {createCodePreview} from "../../src/server/auth/code-preview";
 import type {Viewer} from "../../src/server/auth";
@@ -95,7 +95,9 @@ it.each(["unredeemed key", "PIN descendant", "appointment"])("locks down the fam
   )));
   await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, f.at(9)))).resolves.toBe("lockdown");
   const storedSessions = await tx(f.familyId, (t) => t.select().from(sessions));
-  expect(storedSessions.every(({revokedAt, trusted}) => revokedAt !== null && !trusted)).toBe(true);
+  expect(storedSessions.every(({revokedAt}) => revokedAt !== null)).toBe(true);
+  expect(storedSessions.find(({id}) => id === intruder.id)?.trusted).toBe(false);
+  expect(storedSessions.find(({id}) => id === safe.session!.id)?.trusted).toBe(true);
   await expect(resolve(f.owner.cookie)).resolves.toBeNull();
   await expect(resolve(co.session!.cookie)).resolves.toBeNull();
   await expect(resolve(safe.session!.cookie)).resolves.toBeNull();
@@ -200,14 +202,100 @@ it("uses the earliest disputed session as the cutoff across successive lockdowns
   expect(credential.pinHash).toBeNull();
 });
 
-it("redeems only the exact key and device bound into a valid typed-code preview", async () => {
+it.each([
+  {role: "organizer", kind: "resetPreparedWithoutRequest"},
+  {role: "organizer", kind: "resetSent"},
+  {role: "co-organizer", kind: "resetPreparedWithoutRequest"},
+  {role: "co-organizer", kind: "resetSent"},
+] as const)("locks down an unredeemed $role key reported through $kind activity", async ({role, kind}) => {
+  const f = await fixture();
+  const co = await f.add("Co-organizer");
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
+  const reporter = role === "organizer" ? f.viewer : (await resolve(co.session!.cookie))!;
+  const intruder = (await f.login(reporter.personId, device(), f.at(3))).session!;
+  const intruderViewer = (await resolve(intruder.cookie))!;
+  const recent = await f.add("Recent member", true, f.at(3.5));
+  const selfReset = await f.issue(intruderViewer, reporter.personId, "reset", f.at(4));
+  const takeover = await f.issue(intruderViewer, role === "organizer" ? co.id : f.viewer.personId, "reset", f.at(5));
+  if (kind === "resetSent") await expect(tx(f.familyId, (t) => markKeySent(t, intruderViewer, selfReset.id!, f.at(5)))).resolves.toBe(true);
+  const [key] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, selfReset.id!)));
+  expect(key.usedSessionId).toBeNull();
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.keyId, selfReset.id!), eq(authEvents.kind, kind),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, eventId, f.at(6)))).resolves.toBe("lockdown");
+  for (const session of [f.owner, co.session!, intruder]) await expect(resolve(session.cookie)).resolves.toBeNull();
+  for (const reset of [selfReset, takeover]) await expect(f.redeem(reset.token!, device(), f.at(7))).resolves.toEqual({error: "unavailable"});
+  const [record] = await tx(f.familyId, (t) => t.select().from(sessionDisputes).where(eq(sessionDisputes.eventId, eventId)));
+  expect(record.disputedSessionId).toBe(intruder.id);
+  const [member] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, recent.id)));
+  expect(member.needsNewKey).toBe(true);
+});
+
+it("locks down an organizer key report with no issuing or redeeming session", async () => {
+  const f = await fixture();
+  const recovery = await tx(f.familyId, (t) => issueOrganizerKey(t, f.familyId, pepper, f.at(4)));
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(eq(authEvents.keyId, recovery.id!)));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, f.at(5)))).resolves.toBe("lockdown");
+  await expect(resolve(f.owner.cookie)).resolves.toBeNull();
+  await expect(f.redeem(recovery.token!, device(), f.at(6))).resolves.toEqual({error: "unavailable"});
+});
+
+it("preserves known-phone PIN recovery and previous device restrictions through lockdown", async () => {
+  const f = await fixture();
+  const member = await f.add("PIN-only member");
+  const badPhone = device();
+  const badSession = (await f.login(member.id, badPhone, f.at(1))).session!;
+  const [{id: memberEvent}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, badSession.id), eq(authEvents.kind, "newDevice"),
+  )));
+  const knownSession = (await f.login(member.id, member.phone, f.at(1.5))).session!;
+  const reporter = (await resolve(knownSession.cookie))!;
+  await expect(tx(f.familyId, (t) => disputeEvent(t, reporter, memberEvent, f.at(2)))).resolves.toBe(true);
+  await tx(f.familyId, (t) => t.update(sessions).set({expiresAt: f.at(3)}).where(eq(sessions.id, member.session!.id)));
+  const intruder = (await f.login(f.viewer.personId, device(), f.at(4))).session!;
+  const [{id: organizerEvent}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, organizerEvent, f.at(5)))).resolves.toBe("lockdown");
+  const stored = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.personId, member.id)));
+  expect(stored.find(({id}) => id === knownSession.id)).toMatchObject({revokedAt: f.at(5), trusted: true});
+  expect(stored.find(({id}) => id === badSession.id)?.trusted).toBe(false);
+  await expect(resolve(knownSession.cookie)).resolves.toBeNull();
+  const [credential] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, member.id)));
+  expect(credential.newDevicesLocked).toBe(true);
+  expect(credential.pinHash).not.toBeNull();
+  await expect(f.login(member.id, badPhone, f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
+  await expect(f.login(member.id, device(), f.at(6))).resolves.toEqual({error: "newDevicesLocked"});
+  const returned = (await f.login(member.id, member.phone, f.at(6))).session!;
+  await expect(resolve(returned.cookie)).resolves.toMatchObject({personId: member.id});
+});
+
+it("keeps an unchanged co-organizer appointment's original grant time through lockdown", async () => {
+  const f = await fixture();
+  const co = await f.add("Co-organizer");
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(1)));
+  const intruder = (await f.login(f.viewer.personId, device(), f.at(3))).session!;
+  await expect(tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co.id, f.at(4)))).resolves.toBeNull();
+  const [before] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, co.id)));
+  expect(before.coOrganizerGrantedAt).toEqual(f.at(1));
+  const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, f.at(5)))).resolves.toBe("lockdown");
+  const [after] = await tx(f.familyId, (t) => t.select().from(people).where(eq(people.id, co.id)));
+  expect(after).toMatchObject({role: "co_organizer", coOrganizerGrantedAt: f.at(1)});
+});
+
+it("accepts slow PIN entry only for the exact key and device bound into a typed-code preview", async () => {
   const f = await fixture();
   const first = await f.add("First", false);
   const second = await f.add("Second", false);
   const one = await f.issue(f.viewer, first.id, "print");
   const two = await f.issue(f.viewer, second.id, "print");
   const phone = device();
-  const proof = createCodePreview(pepper, f.familyId, {id: one.id!, personId: first.id}, one.code!, phone.hash, f.at(0));
+  const previewedAt = new Date();
+  const proof = createCodePreview(pepper, f.familyId, {id: one.id!, personId: first.id}, one.code!, phone.hash);
   const redeem = (value: string, preview: string | null, chosenDevice = phone, at = f.at(1)) => tx(f.familyId, (t) => redeemKey(t, {
     familyId: f.familyId, value, typed: true, preview, pin, confirmation: pin, pepper, device: chosenDevice, currentViewer: null, now: at,
   }));
@@ -215,8 +303,7 @@ it("redeems only the exact key and device bound into a valid typed-code preview"
   await expect(redeem(one.code!, proof, device())).resolves.toEqual({error: "previewAgain"});
   await expect(redeem(one.code!, null)).resolves.toEqual({error: "previewAgain"});
   await expect(redeem(one.code!, `${proof.slice(0, -1)}${proof.endsWith("0") ? "1" : "0"}`)).resolves.toEqual({error: "previewAgain"});
-  await expect(redeem(one.code!, proof, phone, f.at(6))).resolves.toEqual({error: "previewAgain"});
-  const joined = (await redeem(one.code!, proof)).session!;
+  const joined = (await redeem(one.code!, proof, phone, new Date(previewedAt.getTime() + 30 * 60_000))).session!;
   await expect(resolve(joined.cookie)).resolves.toMatchObject({personId: first.id});
   const [other] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, two.id!)));
   expect(other.usedAt).toBeNull();

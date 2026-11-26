@@ -50,7 +50,7 @@ async function fixture() {
   const redeem = (value: string, device: Device, typed = false, at = now, chosenPin = pin) =>
     tx(familyId, async (t) => {
       const key = typed ? await inspectKey(t, familyId, value, at, pepper) : null;
-      const preview = key ? createCodePreview(pepper, familyId, key, value, device.hash, at) : null;
+      const preview = key ? createCodePreview(pepper, familyId, key, value, device.hash) : null;
       return redeemKey(t, {familyId, value, typed, preview, pin: chosenPin, confirmation: chosenPin, pepper, device, currentViewer: null, now: at});
     });
   const login = (attempted: string, device: Device, at = now) =>

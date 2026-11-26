@@ -1,4 +1,4 @@
-import {and, asc, desc, eq, gte, inArray, isNull, ne} from "drizzle-orm";
+import {and, asc, desc, eq, gte, inArray, isNull, ne, or} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
@@ -50,15 +50,19 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
   if (!await revalidateViewer(tx, viewer)) return false;
-  const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId})
+  const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId, at: authEvents.at})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
   if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown") return false;
+  const person = await activePerson(tx, familyId, personId);
+  const organizer = person?.role === "organizer" || person?.role === "co_organizer";
   let targetId = event.sessionId;
   if (event.keyId) {
-    const [key] = await tx.select({sessionId: personalKeys.usedSessionId}).from(personalKeys).where(and(
+    const [key] = await tx.select({
+      sessionId: personalKeys.usedSessionId, issuedBy: personalKeys.issuedBy, issuedBySessionId: personalKeys.issuedBySessionId,
+    }).from(personalKeys).where(and(
       eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), eq(personalKeys.id, event.keyId),
     ));
-    targetId ??= key?.sessionId ?? null;
+    targetId ??= key?.sessionId ?? (organizer || key?.issuedBy === personId ? key?.issuedBySessionId : null) ?? null;
   }
   const disputedSessionId = targetId === sessionId ? null : targetId;
   const familySessions = disputedSessionId ? await tx.select({
@@ -109,12 +113,11 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     familyId, eventId, personId, disputedSessionId, reportedBySessionId: sessionId, at: now,
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
-  if (!target) return true;
-  const person = await activePerson(tx, familyId, personId);
-  if (target.hadOrganizerAccess || person?.role === "organizer" || person?.role === "co_organizer") {
-    await lockDownFamily(tx, familyId, now);
+  if (organizer || target?.hadOrganizerAccess) {
+    await lockDownFamily(tx, familyId, now, event.at, [...sessionIds]);
     return "lockdown" as const;
   }
+  if (!target) return true;
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), inArray(personalKeys.id, [...keyIds]),
     isNull(personalKeys.usedAt), isNull(personalKeys.revokedAt),
@@ -132,12 +135,12 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   return true;
 }
 
-async function lockDownFamily(tx: FamilyTransaction, familyId: string, now: Date) {
+async function lockDownFamily(tx: FamilyTransaction, familyId: string, now: Date, reportedAt: Date, affectedSessionIds: string[]) {
   const [earliest] = await tx.select({at: sessions.createdAt}).from(sessionDisputes).innerJoin(sessions, and(
     eq(sessions.familyId, sessionDisputes.familyId), eq(sessions.id, sessionDisputes.disputedSessionId),
   )).where(eq(sessionDisputes.familyId, familyId)).orderBy(asc(sessions.createdAt)).limit(1);
-  const since = earliest.at;
-  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(eq(sessions.familyId, familyId));
+  const since = earliest?.at ?? reportedAt;
+  await tx.update(sessions).set({revokedAt: now}).where(eq(sessions.familyId, familyId));
   await tx.update(personalKeys).set({revokedAt: now}).where(and(eq(personalKeys.familyId, familyId), isNull(personalKeys.usedAt)));
   await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(
     eq(people.familyId, familyId), eq(people.role, "co_organizer"), gte(people.coOrganizerGrantedAt, since),
@@ -146,6 +149,9 @@ async function lockDownFamily(tx: FamilyTransaction, familyId: string, now: Date
   const cleared = await tx.update(pinCredentials).set({pinHash: null, newDevicesLocked: true}).where(and(
     eq(pinCredentials.familyId, familyId), gte(pinCredentials.changedAt, since),
   )).returning({personId: pinCredentials.personId});
+  await tx.update(sessions).set({trusted: false}).where(and(
+    eq(sessions.familyId, familyId), or(inArray(sessions.id, affectedSessionIds), inArray(sessions.personId, cleared.map(({personId}) => personId))),
+  ));
   await tx.update(people).set({needsNewKey: true}).where(and(eq(people.familyId, familyId), inArray(people.id, cleared.map(({personId}) => personId))));
   await tx.update(people).set({needsNewKey: true}).where(and(eq(people.familyId, familyId), eq(people.role, "organizer")));
   const members = await tx.select({personId: people.id}).from(people).where(and(eq(people.familyId, familyId), isNull(people.removedAt)));
