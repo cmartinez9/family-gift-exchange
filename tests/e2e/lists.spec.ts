@@ -68,13 +68,13 @@ for (const language of ["en", "es"] as const) {
       await page.getByRole("link", {name: lists.editProfile}).click();
       const tops = page.getByLabel(lists.size.tops);
       await tops.fill("M");
-      await expect(page.getByRole("status")).toHaveText("");
+      await expect(page.getByRole("main").getByRole("status")).toHaveText("");
       await tops.blur();
-      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
       const shoeSystem = page.getByLabel(lists.size.shoeSystem);
       await shoeSystem.selectOption("eu");
       await shoeSystem.blur();
-      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
       const shoeSize = page.getByLabel(lists.size.shoes, {exact: true});
       const profileSaves: Request[] = [];
       const recordSave = (request: Request) => {
@@ -85,13 +85,13 @@ for (const language of ["en", "es"] as const) {
       await expect(shoeSize).toHaveValue("39");
       expect(profileSaves).toHaveLength(0);
       await shoeSize.blur();
-      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
       expect(profileSaves).toHaveLength(1);
       page.off("request", recordSave);
       const color = page.getByLabel(lists.aboutField.colors);
       await color.fill("Verde");
       await color.blur();
-      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
       await page.getByRole("link", {name: lists.backToList}).click();
       await expect(page.getByRole("region", {name: lists.sizes}).getByText("39", {exact: true})).toBeVisible();
       await expect(page.getByRole("region", {name: lists.about}).getByText("Verde", {exact: true})).toBeVisible();
@@ -99,7 +99,7 @@ for (const language of ["en", "es"] as const) {
 
       await page.getByRole("link", {name: lists.editProfile}).click();
       await page.getByLabel(lists.noClothes).check();
-      await expect(page.getByRole("status")).toHaveText(lists.saved);
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(lists.saved);
       await page.getByRole("link", {name: lists.backToList}).click();
       await expect(page.getByText(lists.noClothes)).toBeVisible();
       await expect(page.getByText("39", {exact: true})).toHaveCount(0);

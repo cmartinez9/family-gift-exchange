@@ -174,12 +174,17 @@ test.describe("the design gallery", () => {
     const surface = page.locator("[data-edge-swipe]");
     await expect(page.getByRole("heading", {name: "A pushed page"})).toBeVisible();
     const box = (await surface.boundingBox())!;
-    const pointer = surface.evaluate((element) => new Promise<number>((resolve) => {
-      element.addEventListener("pointerdown", (event) => resolve((event as PointerEvent).pointerId), {once: true});
-    }));
+    const pointer = await surface.evaluateHandle((element) => {
+      const captured = {id: null as number | null};
+      element.addEventListener("pointerdown", (event) => {
+        captured.id = (event as PointerEvent).pointerId;
+      }, {once: true});
+      return captured;
+    });
     await page.mouse.move(box.x + 5, 400);
     await page.mouse.down();
-    const pointerId = await pointer;
+    const pointerId = await pointer.evaluate(({id}) => id);
+    expect(pointerId).not.toBeNull();
     await page.mouse.move(box.x + 175, 400, {steps: 10});
     await expect(surface).toHaveCSS("transform", "matrix(1, 0, 0, 1, 170, 0)");
     await surface.dispatchEvent("pointercancel", {pointerId});
