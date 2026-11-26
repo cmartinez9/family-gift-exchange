@@ -11,6 +11,7 @@ test("opens the exchange, switches language, and keeps the outbox private", asyn
   await expect(page).toHaveURL(/\/es$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page.getByRole("heading", {name: "Intercambio familiar de regalos"})).toBeVisible();
+  await expect(page).toHaveTitle("Intercambio familiar de regalos");
   expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 
   const devMessages = await request.get("/dev/messages");
