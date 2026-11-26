@@ -26,6 +26,8 @@ On someone else's list, choose **I'm getting this** to reserve a gift. Other mem
 
 Open **Notifications** from your account or family management screen to read notices and choose **Mark as read**. The app uses this inbox and optional home-screen notifications; it sends no email or texts.
 
+When an item you've marked **I'm getting this** is edited or removed, you receive a general notice without the item or buyer's name. Participating members also receive notices when the budget changes after a draw.
+
 For home-screen setup, open **Put this on your home screen? Show me how** in the app and follow the instructions for your phone. Open the app from its new icon, sign in, then choose **Notifications → Turn on notifications for this device** and allow the browser prompt. Enable notifications on each device and after each new sign-in. Use **Turn off notifications for this device** to stop alerts there; the inbox remains available. If permission was denied, allow notifications in your device or browser settings and try again.
 
 Helpers receive device alerts for the people they help on their enabled devices. Switch to the person's profile under **People you help**, then open **Notifications** to read their notices.

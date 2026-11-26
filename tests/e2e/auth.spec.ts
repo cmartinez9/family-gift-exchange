@@ -198,6 +198,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await expect(row.getByText(/Asked for a new key on/)).toBeVisible();
     await page.getByRole("link", {name: "Notifications (1 unread)"}).click();
     await expect(page.getByText("Pino asked for a PIN reset.")).toBeVisible();
+    await page.screenshot({path: test.info().outputPath("pin-reset-inbox.png"), fullPage: true});
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await page.getByRole("button", {name: "Mark as read"}).click();
     await expect(page.getByText(/ · Read$/)).toBeVisible();
@@ -222,6 +223,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
 
     await page.goto("/es/family/group-chat");
     await expect(page.getByRole("heading", {name: "Mensajes para el chat familiar"})).toBeVisible();
+    await page.screenshot({path: test.info().outputPath("family-chat-message-es.png"), fullPage: true});
   } finally {
     await guest.close();
     await removeFamily(familyId);
@@ -259,18 +261,19 @@ test("asks for device notification permission only after a tap and saves or remo
   const {db, close} = connectDatabase(process.env.DATABASE_URL!);
   try {
     await page.goto("/en/notifications");
+    const deviceControls = page.getByRole("region", {name: "Home-screen notifications", exact: true});
     const enable = page.getByRole("button", {name: "Turn on notifications for this device"});
     await expect(enable).toBeVisible();
     expect(await page.evaluate(() => sessionStorage.getItem("test-notification-permission"))).toBeNull();
     await enable.click();
-    await expect(page.getByRole("status")).toHaveText("Notifications are on for this device.");
+    await expect(deviceControls.getByRole("status")).toHaveText("Notifications are on for this device.");
     expect(await page.evaluate(() => sessionStorage.getItem("test-notification-permission"))).toBe("asked");
     const sessionId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[1];
     const subscriptions = () => runForFamily(db, familyId, (tx) => tx.select().from(pushSubscriptions));
     expect(await subscriptions()).toMatchObject([{endpoint, sessionId}]);
 
     await page.getByRole("button", {name: "Turn off notifications for this device"}).click();
-    await expect(page.getByRole("status")).toHaveText("Notifications are off for this device.");
+    await expect(deviceControls.getByRole("status")).toHaveText("Notifications are off for this device.");
     expect(await subscriptions()).toEqual([]);
   } finally {
     await close();

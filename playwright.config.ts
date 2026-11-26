@@ -18,6 +18,7 @@ const design = /design\.spec\.ts$/;
 const phone = {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true};
 process.env.E2E_AUTH_SECRET ??= randomBytes(32).toString("base64url");
 process.env.E2E_ORGANIZER_INVITE_CODE ??= randomBytes(24).toString("base64url");
+process.env.E2E_CRON_SECRET ??= process.env.CRON_SECRET || randomBytes(32).toString("base64url");
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -39,6 +40,7 @@ export default defineConfig({
       AUTH_ORIGIN: origin,
       AUTH_SECRET: process.env.E2E_AUTH_SECRET,
       ORGANIZER_INVITE_CODE: process.env.E2E_ORGANIZER_INVITE_CODE,
+      CRON_SECRET: process.env.E2E_CRON_SECRET,
       VERCEL_ENV: "preview",
       VAPID_SUBJECT: origin,
       VAPID_PUBLIC_KEY: vapid.publicKey,

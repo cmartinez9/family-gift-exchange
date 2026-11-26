@@ -10,7 +10,10 @@ type ItemEvent = {
   change: "edited" | "deleted";
 };
 
-/** Phase 4 can enqueue within the originating transaction. personId is the destination. */
+/**
+ * Enqueue in the originating transaction. For item changes, personId is already
+ * resolved even for claims without an exchange; item details must stay out of notification payloads.
+ */
 export interface ListEvents {
   claimedItemChanged(tx: FamilyTransaction, event: ItemEvent): Promise<void>;
   budgetChanged(tx: FamilyTransaction, event: {familyId: string; exchangeId: string}): Promise<void>;

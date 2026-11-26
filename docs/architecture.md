@@ -36,11 +36,11 @@ For deployments, `DATABASE_URL` should connect as a runtime login allowed to ass
 
 ## Notifications
 
-The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. Production queues Web Push for opted-in devices and flushes after the request commits. Other environments record captured content without contacting devices. The outbox backs the in-app inbox and its read state independently of push delivery status. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
+The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. In production, notices enter the inbox and push delivery runs after the request commits for opted-in devices. Other environments record captured content without contacting devices. The outbox backs the in-app inbox and its read state independently of push delivery status. The `/dev/messages` viewer is available when the app runs under `pnpm dev` and returns 404 on production builds, including Vercel previews.
 
 Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily schedule is defined in [`vercel.json`](../vercel.json). The job queues reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
 
-The [`event hooks`](../src/server/messages/events.ts) let draw and list mutations enqueue notifications in the same transaction. Their Phase 2 and 3 callers are still placeholders in this checkout; PIN reset requests are connected in the sign-in flow.
+The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. The draw hooks await Phase 2 integration.
 
 ## Tests
 
