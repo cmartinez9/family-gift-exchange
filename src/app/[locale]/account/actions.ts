@@ -10,7 +10,7 @@ import {revalidateViewer, uuidPattern} from "@/server/auth/session";
 import {lockFamily} from "@/server/auth/access";
 import {people} from "@/server/db/schema";
 import {withFamily} from "@/server/db/client";
-import {repairDisputedReveals} from "@/server/draw";
+import {DrawError, repairDisputedReveals} from "@/server/draw";
 import type {AuthResult} from "../sign-in/actions";
 
 export async function switchProfile(personId: string): Promise<AuthResult> {
@@ -44,11 +44,18 @@ export async function reportSession(sessionId: string): Promise<AuthResult> {
 
 async function finishReport(viewer: Awaited<ReturnType<typeof requireViewer>>, recorded: Awaited<ReturnType<typeof disputeEvent>>): Promise<AuthResult> {
   if (!recorded) return {error: "unavailable"};
-  await repairDisputedReveals(viewer);
+  let repairError: AuthResult["error"];
+  try {
+    await repairDisputedReveals(viewer);
+  } catch (error) {
+    if (!(error instanceof DrawError) || (error.code !== "repairImpossible" && error.code !== "checkTimedOut")) throw error;
+    repairError = "repairRequired";
+  }
   if (recorded === "lockdown") {
     await clearSession();
     redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
   }
+  if (repairError) return {error: repairError};
   redirect(`/${await getLocale()}/account?reported=1`);
 }
 

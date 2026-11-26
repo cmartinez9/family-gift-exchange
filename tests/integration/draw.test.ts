@@ -1,4 +1,5 @@
 import {randomBytes, randomUUID} from "node:crypto";
+import {renderToStaticMarkup} from "react-dom/server";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
@@ -16,13 +17,38 @@ import {digest, findViewer, parseSession, secret} from "../../src/server/auth/se
 import {requireIssuedKey} from "../helpers/issued-key";
 import {possibleDraws} from "../helpers/possible-draws";
 import * as solver from "../../src/server/draw/solver";
-import {reportEvent, reportSession} from "../../src/app/[locale]/account/actions";
+import AccountPage from "../../src/app/[locale]/account/page";
+import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
-const signedIn = vi.hoisted(() => ({viewer: null as DrawViewer | null}));
+const signedIn = vi.hoisted(() => ({viewer: null as DrawViewer | null, clearSession: vi.fn()}));
 vi.mock("server-only", () => ({}));
-vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
+vi.mock("next-intl/server", async () => {
+  const {createTranslator} = await import("next-intl");
+  const {default: messages} = await import("../../messages/en.json");
+  return {
+    getLocale: async () => "en",
+    getTranslations: async (namespace: "auth" | "draw") => createTranslator({locale: "en", messages, namespace}),
+    getFormatter: async () => ({dateTime: (date: Date) => date.toISOString()}),
+  };
+});
+vi.mock("@/i18n/navigation", async () => {
+  const {createElement} = await import("react");
+  return {Link: ({href, children}: {href: string; children: import("react").ReactNode}) => createElement("a", {href}, children)};
+});
+vi.mock("../../src/app/[locale]/sign-in/controls", async () => {
+  const {createElement} = await import("react");
+  return {
+    AuthForm: ({label, children}: {label: string; children?: import("react").ReactNode}) => createElement(
+      "form", null, children, createElement("button", {type: "submit"}, label),
+    ),
+    PinFields: () => null,
+  };
+});
+vi.mock("@/server/auth/request", async (original) => ({
+  ...await original<typeof import("../../src/server/auth/request")>(), clearSession: signedIn.clearSession,
+}));
 vi.mock("next/navigation", () => ({redirect: (url: string) => { throw new Error(`redirect:${url}`); }}));
 vi.mock("@/server/auth", async (original) => ({
   ...await original<typeof import("../../src/server/auth")>(),
@@ -71,6 +97,7 @@ afterAll(async () => {
 afterEach(() => {
   vi.restoreAllMocks();
   signedIn.viewer = null;
+  signedIn.clearSession.mockClear();
 });
 
 function cycle(ids: readonly string[]) {
@@ -605,4 +632,55 @@ it("applies the secrecy constraint to a confirmed redraw with a pending disputed
     && pairs.get(f.ids[1]) !== f.ids[2]);
   expect(new Set(alternatives.map((pairs) => pairs.get(f.ids[1]))).size).toBeGreaterThan(1);
   expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.disputedRevealRepairedAt).toBeInstanceOf(Date);
+});
+
+it("keeps every account usable after an impossible private repair while blocking sealed data", async () => {
+  const f = await fixture({count: 5, active: 4});
+  await runForFamily(app.db, f.familyId, (tx) => tx.update(people).set({helperId: f.ids[1]})
+    .where(and(eq(people.familyId, f.familyId), eq(people.id, f.ids[4]))));
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids.slice(0, 4)));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  await revealMyPerson(f.viewers[1], f.exchangeId, 1);
+  const question = await askYourPerson(f.viewers[1], f.exchangeId, 1, "Favorite color?");
+  await answerQuestion(f.viewers[2], f.exchangeId, question.id, 1, "Moonlight blue");
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, f.ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const owner = {...f.viewers[1], sessionId: session.id};
+  signedIn.viewer = owner;
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  await expect(reportSession(f.viewers[1].sessionId)).resolves.toEqual({error: "repairRequired"});
+  const disputes = await runForFamily(app.db, f.familyId, (tx) => listSessionDisputes(tx, f.familyId, owner.personId));
+  expect(disputes.map(({sessionId}) => sessionId)).toContain(f.viewers[1].sessionId);
+  expect(await runForFamily(app.db, f.familyId, (tx) => account(tx, owner))).toMatchObject({
+    helpers: [{id: f.ids[4], name: names[4]}],
+    activity: expect.arrayContaining([expect.objectContaining({sessionId: f.viewers[1].sessionId, disputed: expect.any(String)})]),
+  });
+  expect(await ownRevealOpenings(owner)).toEqual([expect.objectContaining({sessionId: f.viewers[1].sessionId, disputed: true})]);
+  for (const viewer of [f.organizer, owner, f.coOrganizer, f.viewers[3]]) {
+    signedIn.viewer = viewer;
+    const html = renderToStaticMarkup(await AccountPage({searchParams: Promise.resolve({})}));
+    expect(html).toContain("Sign-in activity");
+    expect(html).toContain("Switch person or sign out");
+    expect(html).toContain('href="/exchanges"');
+  }
+  await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(askYourPerson(owner, f.exchangeId, 1, "Still there?")).rejects.toMatchObject({code: "repairImpossible"});
+  await expect(answerQuestion(f.viewers[2], f.exchangeId, question.id, 1, "Another answer"))
+    .rejects.toMatchObject({code: "repairImpossible"});
+  expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.version).toBe(1);
+  await expect(runDraw(f.organizer, f.exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "confirmationRequired"});
+  await expect(runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"}))
+    .rejects.toMatchObject({code: "repairImpossible"});
+  signedIn.viewer = owner;
+  await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/account");
+  signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
+  expect(signedIn.viewer).toMatchObject({actingAs: f.ids[4]});
+  const html = renderToStaticMarkup(await AccountPage({searchParams: Promise.resolve({})}));
+  expect(html).toContain(`helping ${names[4]}.`);
+  await expect(signOut(false)).rejects.toThrow("redirect:/en/sign-in");
+  expect(signedIn.clearSession).toHaveBeenCalledOnce();
+  expect(await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!))).toBeNull();
+  expect(await runForFamily(app.db, f.familyId, (tx) => listSessionDisputes(tx, f.familyId, owner.personId))).toEqual(disputes);
 });

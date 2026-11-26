@@ -3,7 +3,7 @@ import {listSessionDisputes} from "../auth/security";
 import {sessions} from "../auth/schema";
 import type {FamilyTransaction} from "../db/database";
 import {exchanges, participants, people} from "../db/schema";
-import {authorizeSubject, DrawError, type DrawViewer} from "./access";
+import {authorizeSubject, DrawError, withDrawFamily, type DrawViewer} from "./access";
 import {recordId} from "./inputs";
 import {drawOpenings, drawReports} from "./schema";
 import {
@@ -77,7 +77,7 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
 }
 
 export async function ownRevealOpenings(viewer: DrawViewer, id?: string) {
-  return auditedDraw(viewer.familyId, async (tx) => {
+  return withDrawFamily(viewer.familyId, async (tx) => {
     await authorizeSubject(tx, viewer);
     if (id) await loadExchange(tx, viewer.familyId, recordId(id));
     const disputes = await listSessionDisputes(tx, viewer.familyId, viewer.personId);

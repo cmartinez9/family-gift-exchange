@@ -183,7 +183,8 @@
       "familyLockdown": "Everyone was signed out for safety.",
       "needsNewKey": "This account needs a new private key.",
       "operatorRecovery": "Ask the person who runs this app for a new organizer key.",
-      "previewAgain": "Check your code again before continuing."
+      "previewAgain": "Check your code again before continuing.",
+      "repairRequired": "Your report was saved. The draw stays locked for safety. Try again, or ask an organizer to review the exchange and confirm a new draw."
     },
     "revealActivity": "Your person opened on other devices",
     "noRevealActivity": "Your person has not been opened from another sign-in.",

@@ -183,7 +183,8 @@
       "familyLockdown": "Se cerraron todas las sesiones por seguridad.",
       "needsNewKey": "Esta cuenta necesita una llave privada nueva.",
       "operatorRecovery": "Pídele una llave nueva de organizador a la persona que administra esta aplicación.",
-      "previewAgain": "Vuelve a verificar tu código antes de continuar."
+      "previewAgain": "Vuelve a verificar tu código antes de continuar.",
+      "repairRequired": "Se guardó tu reporte. El sorteo sigue bloqueado por seguridad. Inténtalo de nuevo o pídele a un organizador que revise el intercambio y confirme un nuevo sorteo."
     },
     "revealActivity": "Tu persona se abrió en otros dispositivos",
     "noRevealActivity": "Tu persona no se ha abierto desde otro inicio de sesión.",
