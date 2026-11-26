@@ -36,6 +36,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByLabel(auth.pin, {exact: true}).fill(pin);
       await page.getByLabel(auth.confirmPin).fill(pin);
       await page.getByRole("button", {name: auth.createFamily}).click();
+      await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
       await page.getByRole("link", {name: auth.notNow}).click();
       familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
       const scoped = <T,>(fn: Parameters<typeof runForFamily<T>>[2]) => runForFamily(db, familyId!, fn);
@@ -61,6 +62,7 @@ for (const language of ["en", "es"] as const) {
       await buyer.getByLabel(auth.pin, {exact: true}).fill(pin);
       await buyer.getByLabel(auth.confirmPin).fill(pin);
       await buyer.getByRole("button", {name: auth.savePin}).click();
+      await expect(buyer.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
       await buyer.getByRole("link", {name: auth.notNow}).click();
 
       const roster = await scoped((tx) => tx.select().from(people));
@@ -88,6 +90,7 @@ for (const language of ["en", "es"] as const) {
       await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
       await page.getByRole("textbox", {name: lists.note, exact: true}).fill("Red box instead");
       await page.getByRole("button", {name: lists.saveItem}).click();
+      await expect(card.getByText("Red box instead", {exact: true})).toBeVisible();
       await card.getByText(lists.deleteItem, {exact: true}).click();
       await card.getByRole("button", {name: lists.confirmDeleteButton}).click();
       await expect(card).toHaveCount(0);
@@ -151,9 +154,11 @@ for (const language of ["en", "es"] as const) {
       await page.goto(`/${language}/lists`);
       await page.getByText(lists.budget, {exact: true}).first().click();
       await page.getByLabel(lists.budget, {exact: true}).fill("45");
-      await page.getByRole("button", {name: lists.saveBudget}).click();
+      const saveBudget = page.getByRole("button", {name: lists.saveBudget, exact: true});
+      await saveBudget.click();
       await expect.poll(async () => (await scoped((tx) => tx.select().from(outbox))).filter(({template}) => template === "budget-changed").length).toBe(3);
-      await page.getByRole("button", {name: lists.saveBudget}).click();
+      await saveBudget.click();
+      await expect(saveBudget).toBeEnabled();
       const budgetRows = (await scoped((tx) => tx.select().from(outbox))).filter(({template}) => template === "budget-changed");
       expect(budgetRows.map(({personId}) => personId).sort()).toEqual([ownerId, buyerId, dependentId].sort());
 

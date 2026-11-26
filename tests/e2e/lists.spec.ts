@@ -20,6 +20,7 @@ async function startFamily(page: Page, language: "en" | "es") {
   await page.getByLabel(auth.pin, {exact: true}).fill(pin);
   await page.getByLabel(auth.confirmPin).fill(pin);
   await page.getByRole("button", {name: auth.createFamily}).click();
+  await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
   await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session");
@@ -135,6 +136,7 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     await memberPage.getByLabel(en.auth.pin, {exact: true}).fill(pin);
     await memberPage.getByLabel(en.auth.confirmPin).fill(pin);
     await memberPage.getByRole("button", {name: en.auth.savePin}).click();
+    await expect(memberPage.getByRole("heading", {name: en.auth.facePrompt})).toBeVisible();
     await memberPage.getByRole("link", {name: en.auth.notNow}).click();
 
     await page.goto("/en/lists");
@@ -196,6 +198,7 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
 
     await memberPage.getByRole("link", {name: en.lists.getting}).click();
     await memberPage.getByLabel(en.lists.bought).check();
+    await expect(memberPage.getByLabel(en.lists.bought)).toBeEnabled();
     await memberPage.getByLabel(en.lists.wrapped).check();
     await expect(memberPage.getByLabel(en.lists.wrapped)).toBeEnabled();
     await memberPage.reload();
