@@ -2,6 +2,9 @@
 
 import {useTranslations} from "next-intl";
 import {useState, useSyncExternalStore} from "react";
+import {Button} from "@/components/ui/button";
+import {Card} from "@/components/ui/card";
+import {Icon} from "@/components/ui/icon";
 import {disableDeviceNotifications, enableDeviceNotifications} from "./actions";
 
 function ignoreBrowserChanges() {
@@ -71,16 +74,24 @@ export function DeviceNotifications({publicKey, initiallyEnabled}: {
   }
 
   return (
-    <section aria-labelledby="device-notifications-title" className="space-y-2">
-      <h2 id="device-notifications-title" className="text-xl font-semibold">{t("title")}</h2>
+    <Card as="section" aria-labelledby="device-notifications-title" className="gap-3">
+      <div className="flex items-start gap-3.5 max-[299px]:flex-col">
+        <span aria-hidden="true" className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-[var(--track)]">
+          <Icon name="bell" size={22} strokeWidth={2.3} />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
+          <h2 id="device-notifications-title" className="text-card-title">{t("title")}</h2>
+          <p className="text-body text-[var(--fg-muted)]">{t("lead")}</p>
+        </div>
+      </div>
       {enabled || (publicKey && browserSupportsPush) ? (
-        <button type="button" className="min-h-12 rounded border border-current px-3" onClick={toggle} disabled={pending}>
+        <Button variant={enabled ? "soft" : "card"} icon={enabled ? undefined : "bell"} onClick={toggle} disabled={pending}>
           {t(enabled ? "disable" : "enable")}
-        </button>
+        </Button>
       ) : (
-        <p>{t(publicKey ? "unsupported" : "unavailable")}</p>
+        <p className="text-body font-semibold">{t(publicKey ? "unsupported" : "unavailable")}</p>
       )}
-      <p role="status">{feedback ? t(feedback) : ""}</p>
-    </section>
+      <p role="status" className="text-body font-semibold empty:hidden">{feedback ? t(feedback) : ""}</p>
+    </Card>
   );
 }

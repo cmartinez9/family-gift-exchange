@@ -8,6 +8,7 @@ import {notFound} from "next/navigation";
 import type {ReactNode} from "react";
 import {RegisterNotificationWorker} from "@/components/notifications/register-worker";
 import {routing} from "@/i18n/routing";
+import {HelpingBanner} from "./helping/banner";
 
 export async function generateMetadata({params}: {params: Promise<{locale: string}>}) {
   const {locale} = await params;
@@ -48,6 +49,7 @@ export default async function LocaleLayout({
             family: {label: ui("tabs.family"), href: "/family"},
           }} />
         </NextIntlClientProvider>
+        <HelpingBanner />
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
         <RegisterNotificationWorker />
       </body>

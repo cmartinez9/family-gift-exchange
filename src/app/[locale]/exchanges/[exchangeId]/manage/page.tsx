@@ -3,6 +3,7 @@ import {Link} from "@/i18n/navigation";
 import {requireViewer} from "@/server/auth";
 import {checkSealedDraw, DrawError, drawFeasibility, organizerExchange, redrawConfirmation} from "@/server/draw";
 import {manage, openPreview} from "../../actions";
+import {CloseSeason} from "../../close-season";
 import {DetailsFields, DrawRecovery, drawPage} from "../../components";
 import {DrawForm} from "../../form";
 import {button, control, heading, link, panel, screen, subheading} from "../../styles";
@@ -231,12 +232,7 @@ export default async function ManagePage({params, searchParams}: {
               </form>
             </details>
           )}
-          <details className={panel}>
-            <summary className={link}>{t("close")}</summary>
-            <DrawForm action={manage.bind(null, id, {kind: "close"})} label={t("closeConfirm")}>
-              <p>{t("closeHelp")}</p>
-            </DrawForm>
-          </details>
+          <CloseSeason exchangeId={id} name={name} />
         </>
       )}
     </main>

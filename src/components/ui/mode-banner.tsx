@@ -12,9 +12,10 @@ export function ModeBanner({icon, children, action, label}: {
 }) {
   return (
     <div role={label ? "region" : undefined} aria-label={label}
-      className="flex h-14 items-center gap-3 bg-ink pr-2 pl-edge text-snow-white" data-mode-banner="">
+      className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 bg-ink py-1 pr-2 pl-edge text-snow-white" data-mode-banner="">
       <Icon name={icon} size={22} className="text-gold" />
-      <p className="min-w-0 flex-1 truncate text-body-strong">{children}</p>
+      {/* the words wrap, and at the largest text size the button moves under them, rather than cutting a name off */}
+      <p className="min-w-[6em] flex-1 py-2.5 text-body-strong">{children}</p>
       {action}
     </div>
   );

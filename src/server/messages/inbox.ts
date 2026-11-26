@@ -53,6 +53,7 @@ export function listNotifications(viewer: InboxViewer) {
         language: notice.language,
         isRead: notice.readAt !== null,
         isPinResetRequest: content.template === "pin-reset-request",
+        template: content.template,
         ...renderMessage(notice.language, content),
       }];
     });

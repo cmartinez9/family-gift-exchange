@@ -73,6 +73,10 @@ vi.mock("../../src/app/[locale]/exchanges/form", async () => {
     "form", null, children, createElement("button", {type: "submit"}, label),
   )};
 });
+vi.mock("../../src/app/[locale]/exchanges/close-season-sheet", async () => {
+  const {createElement} = await import("react");
+  return {CloseSeasonSheet: ({labels}: {labels: {open: string}}) => createElement("button", {type: "button"}, labels.open)};
+});
 vi.mock("@/server/auth/request", async (original) => ({
   ...await original<typeof import("../../src/server/auth/request")>(), clearSession: signedIn.clearSession,
   currentDeviceKind: async () => "iphone",
@@ -864,7 +868,7 @@ it.each(["local repair", "confirmed redraw"])("restores the four-person A B C D 
   await answerQuestion(recipient, f.exchangeId, replacementQuestion.id, 2, "Yes");
   expect((await listOwnQuestions(owner, f.exchangeId)).outgoing).toContainEqual(expect.objectContaining({answer: "Yes"}));
   signedIn.viewer = owner;
-  await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/account");
+  await expect(switchProfile(f.ids[4])).rejects.toThrow("redirect:/en/helping");
   signedIn.viewer = await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!));
   expect(signedIn.viewer).toMatchObject({actingAs: f.ids[4]});
   const html = await renderAccountPage();

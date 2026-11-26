@@ -20,7 +20,8 @@ export async function switchProfile(personId: string): Promise<AuthResult> {
   const viewer = await requireViewer();
   const changed = await withFamily(viewer.familyId, (tx) => actFor(tx, viewer, personId));
   if (!changed) return {error: "forbidden"};
-  redirect(`/${await getLocale()}/account`);
+  // Helping someone starts where they need you; coming back to yourself returns to your account.
+  redirect(`/${await getLocale()}/${personId === viewer.personId ? "account" : "helping"}`);
 }
 
 export async function signOut(all: boolean): Promise<AuthResult> {

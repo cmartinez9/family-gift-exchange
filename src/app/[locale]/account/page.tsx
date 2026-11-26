@@ -5,7 +5,6 @@ import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {Card, Chevron, ListRow, Rows} from "@/components/ui/card";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
-import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
 import {AppLink} from "@/components/ui/navigation";
 import {BackRow} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
@@ -83,13 +82,6 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
         <TextButton type="submit">{t("signOut")}</TextButton>
       </ActForm>
     )}>
-      {actingFor && (
-        <ModeBanner icon="user" label={t("label")} action={(
-          <ActForm action={switchProfile.bind(null, viewer.personId)}>
-            <button type="submit" className={modeActionClass}>{t("stopHelping")}</button>
-          </ActForm>
-        )}>{t("helping", {name: actingFor.name})}</ModeBanner>
-      )}
       <BackRow href="/" parent={t("home")} backLabel={ui("back")} />
       <div className="flex items-center gap-4 px-edge pt-4">
         <Avatar name={name} size={64} on="ground" />

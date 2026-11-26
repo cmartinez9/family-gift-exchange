@@ -202,7 +202,11 @@ test("assigned helper manages a person without a phone and cannot use organizer 
     await expect(page.getByRole("heading", {name: "Grandma", exact: true})).toHaveCount(0);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Grandma", exact: true}).click();
-    await expect(page.getByText("You're helping Grandma", {exact: true})).toBeVisible();
+    // With no person to open yet, helping starts on Grandma's list, under the helping banner.
+    await expect(page).toHaveURL(/\/en\/lists\/[0-9a-f-]+$/);
+    await expect(page.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Grandma");
+    await page.goto("/en/account");
+    await expect(page.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Grandma");
     await expect(page.getByRole("link", {name: "Manage my family"})).toHaveCount(0);
     await capture(page, info, "helper-profile");
     await page.goto("/en/family/keys");

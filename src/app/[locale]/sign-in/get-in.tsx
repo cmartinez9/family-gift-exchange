@@ -26,6 +26,7 @@ import {
 } from "./actions";
 import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
+import {HelpingKey} from "./helping";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -206,9 +207,11 @@ export function KeyWelcome({familyId, value, typed, entry, sender, otherLanguage
 
   if (phase === "helper") {
     return (
-      <Screen actions={<Button variant="outline" icon="back" onClick={() => setPhase("hello")}>{t("helperBack")}</Button>}>
+      <Screen>
         <WelcomeSteps step={1} />
-        <PageTitle title={t("helperTitle", {name: entry.name})} lead={auth("helperInstructions", {name: entry.name})} className="pt-8" />
+        <div className="px-edge pt-8 pb-6">
+          <HelpingKey name={entry.name} typed={typed} onHandOver={() => setPhase("pin")} onBack={() => setPhase("hello")} />
+        </div>
       </Screen>
     );
   }

@@ -264,7 +264,9 @@ test("a draw avoids households, helper pairs, and keep-apart pairs while a helpe
     for (const index of [0, 1, 2, 4, 5]) actual.set(f.names[index], await open(f.devices[index].page, f.member));
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Help Person D", exact: true}).click();
-    await expect(page.getByText("You're helping Person D", {exact: true})).toBeVisible();
+    // Person D's person is still wrapped, so handing over the phone is the helper's next step.
+    await expect(page.getByRole("heading", {name: "Person D's person is ready"})).toBeVisible();
+    await expect(page.getByRole("region", {name: "Helping mode"})).toContainText("You're helping Person D");
     actual.set("Person D", await open(page, f.member));
     await capture(page, info, "helper-own-dependent-reveal");
     expect(new Set(actual.values()).size).toBe(6);

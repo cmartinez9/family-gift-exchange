@@ -23,7 +23,7 @@ async function capture(page: Page, name: string) {
 for (const language of ["en", "es"] as const) {
   test(`ordinary wishlist and budget mutations notify privately, and reminders and helper inboxes work in ${language}`, async ({page, browser, browserName, request}) => {
     test.setTimeout(120_000);
-    const {auth, lists, notify, getIn} = language === "en" ? en : es;
+    const {auth, helping, lists, notify, getIn} = language === "en" ? en : es;
     const {db, close} = connectDatabase(process.env.DATABASE_URL!);
     const guest = await browser.newContext({
       ...devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"], ignoreHTTPSErrors: true,
@@ -180,7 +180,7 @@ for (const language of ["en", "es"] as const) {
 
       await buyer.goto(`/${language}/account`);
       await buyer.getByRole("button", {name: auth.helpAs.replace("{name}", "Cedar"), exact: true}).click();
-      await expect(buyer.getByText(getIn.you.helping.replace("{name}", "Cedar"), {exact: true})).toBeVisible();
+      await expect(buyer.getByRole("region", {name: helping.label})).toContainText(helping.banner.replace("{name}", "Cedar"));
       await buyer.goto(`/${language}/notifications`);
       await expect(buyer.getByRole("heading", {name: notify.templates["names-drawn"].title, exact: true})).toBeVisible();
       await expect(buyer.getByRole("heading", {name: notify.templates["claimed-item-changed"].title, exact: true})).toHaveCount(0);
