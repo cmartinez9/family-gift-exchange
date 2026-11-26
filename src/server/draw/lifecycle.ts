@@ -83,7 +83,7 @@ export async function runDraw(
     const active = new Set(snapshot.roster.map(({id}) => id));
     const exposed = [...((await disputedGivers(tx, familyId)).get(exchange.id) ?? [])].filter((id) => active.has(id));
     const pairs = previous && exposed.length
-      ? await privateDrawRepair(tx, familyId, snapshot, previous, exposed, deadline(1500), true)
+      ? await privateDrawRepair(tx, familyId, exchange, snapshot, previous, exposed, deadline(1500), true)
       : solveDraw(snapshotRules(snapshot), {checkTime: deadline(1500)});
     if (!pairs) throw new DrawError(exposed.length ? "repairImpossible" : "drawImpossible");
 

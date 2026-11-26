@@ -1,6 +1,7 @@
 import fc from "fast-check";
-import {expect, it} from "vitest";
+import {expect, it, vi} from "vitest";
 import {insertIntoDraw, removeFromDraw, repairDraw, repairReportedPair} from "../../src/server/draw/repair";
+import * as solver from "../../src/server/draw/solver";
 import {possibleDraws} from "../helpers/possible-draws";
 import {
   checkRules, drawRules, inspectDraw, solveDraw, type DrawPerson, type KeepApartPair, type Pairs,
@@ -193,7 +194,7 @@ it("chooses the smallest private repair for A B C D E F with organizer E and a d
   const minimum = Math.min(...safe.map(changedCount));
   expect(minimum).toBe(3);
   for (let attempt = 0; attempt < 12; attempt++) {
-    const next = repairDraw(rules, previous, ["B"], undefined, {observers: ["E"]})!;
+    const next = repairDraw(rules, previous, ["B"], undefined, {observers: ["E"], seenGivers: []})!;
     expect(validate(people, [], next)).toBe(true);
     expect(changedCount(next)).toBe(minimum);
     expect(next.get("B")).not.toBe("C");
@@ -207,6 +208,41 @@ it("does not publish a private repair when organizer observations determine the 
   const people = ids.map((id) => ({id, householdId: null, helperId: null}));
   const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
   const rules = drawRules(people, []);
-  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"]})).toBeNull();
-  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], fullRedraw: true})).toBeNull();
+  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], seenGivers: []})).toBeNull();
+  expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], seenGivers: [], fullRedraw: true})).toBeNull();
+});
+
+it("keeps B ambiguous after conditioning on the opened count with only B D E seen", () => {
+  const ids = ["A", "B", "C", "D", "E", "F"];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, i) => [id, ids[(i + 1) % ids.length]]));
+  const seenGivers = ["B", "D", "E"];
+  const changedCount = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const seenCount = (pairs: Pairs) => seenGivers.filter((id) => pairs.get(id) === previous.get(id)).length;
+  const all = possibleDraws(ids).filter((pairs) => pairs.get("B") !== "C");
+  const safe = all.filter((pairs) => all.some((other) => changedCount(other) === changedCount(pairs)
+    && other.get("E") === pairs.get("E") && seenCount(other) === seenCount(pairs)
+    && other.get("B") !== pairs.get("B")));
+  const minimum = Math.min(...safe.map(changedCount));
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(function preferred<T>(values: Iterable<T>): T[] {
+    const choices = [...values];
+    if (!choices.every((value) => typeof value === "number")) return choices.reverse();
+    const preferred = choices.some((value) => value === 1) ? [5] : [3, 4];
+    const rank = (value: T) => {
+      const index = preferred.indexOf(Number(value));
+      return index < 0 ? preferred.length + Number(value) : index;
+    };
+    return choices.sort((a, b) => rank(a) - rank(b));
+  });
+  try {
+    const next = repairDraw(drawRules(people, []), previous, ["B"], undefined, {observers: ["E"], seenGivers})!;
+    expect(next).not.toBeNull();
+    expect(validate(people, [], next)).toBe(true);
+    expect(changedCount(next)).toBe(minimum);
+    const alternatives = all.filter((pairs) => changedCount(pairs) === changedCount(next)
+      && pairs.get("E") === next.get("E") && seenCount(pairs) === seenCount(next));
+    expect(new Set(alternatives.map((pairs) => pairs.get("B"))).size).toBeGreaterThan(1);
+  } finally {
+    shuffle.mockRestore();
+  }
 });

@@ -684,3 +684,58 @@ it("keeps every account usable after an impossible private repair while blocking
   expect(await runForFamily(app.db, f.familyId, (tx) => findViewer(tx, parseSession(session.cookie)!))).toBeNull();
   expect(await runForFamily(app.db, f.familyId, (tx) => listSessionDisputes(tx, f.familyId, owner.personId))).toEqual(disputes);
 });
+
+it("keeps repaired recipients private at the same opened count and preserves unaffected seen versions", async () => {
+  const f = await fixture({count: 7, organizerIndex: 4, coOrganizerIndex: null});
+  const ids = f.ids.slice(0, 6);
+  const previous = cycle(ids);
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1});
+  const seenGivers = [ids[1], ids[3], ids[4]];
+  for (const index of [1, 3, 4]) await revealMyPerson(f.viewers[index], f.exchangeId, 2);
+  await runForFamily(app.db, f.familyId, async (tx) => {
+    await tx.update(participants).set({seenVersion: 1}).where(and(
+      eq(participants.familyId, f.familyId), eq(participants.exchangeId, f.exchangeId), eq(participants.personId, ids[0]),
+    ));
+    await tx.insert(participants).values({
+      familyId: f.familyId, exchangeId: f.exchangeId, personId: f.ids[6], status: "out", seenVersion: 2,
+    });
+  });
+  expect((await organizerExchange(f.organizer, f.exchangeId)).seenCount).toBe(3);
+  const owner = {...f.viewers[1], sessionId: (await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, ids[1], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ))).id};
+  signedIn.viewer = owner;
+  await expect(reportSession(f.viewers[1].sessionId)).rejects.toThrow("redirect:/en/account?reported=1");
+  const state = await organizerExchange(f.organizer, f.exchangeId);
+  expect(state.exchange.version).toBe(3);
+  const saved = await runForFamily(app.db, f.familyId, (tx) => tx.select({
+    id: participants.personId, status: participants.status, seen: participants.seenVersion,
+  }).from(participants).where(and(eq(participants.familyId, f.familyId), eq(participants.exchangeId, f.exchangeId))));
+  const actual = new Map(await Promise.all(f.viewers.slice(0, 6).map(async (viewer, index) => [
+    viewer.personId, (await revealMyPerson(index === 1 ? owner : viewer, f.exchangeId, 3)).person.id,
+  ] as const)));
+  const count = (pairs: ReadonlyMap<string, string>) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const opened = (pairs: ReadonlyMap<string, string>) => seenGivers.filter((id) => pairs.get(id) === previous.get(id)).length;
+  expect(state.seenCount).toBe(opened(actual));
+  const all = possibleDraws(ids).filter((pairs) => pairs.get(ids[1]) !== ids[2]);
+  const safe = all.filter((pairs) => all.some((other) => count(other) === count(pairs)
+    && other.get(ids[4]) === pairs.get(ids[4]) && opened(other) === opened(pairs)
+    && other.get(ids[1]) !== pairs.get(ids[1])));
+  expect(count(actual)).toBe(Math.min(...safe.map(count)));
+  const alternatives = all.filter((pairs) => count(pairs) === count(actual)
+    && pairs.get(ids[4]) === actual.get(ids[4]) && opened(pairs) === state.seenCount);
+  expect(new Set(alternatives.map((pairs) => pairs.get(ids[1]))).size).toBeGreaterThan(1);
+  for (const row of saved) {
+    if (row.status === "out") {
+      expect(row.seen).toBe(2);
+    } else if (actual.get(row.id) !== previous.get(row.id)) {
+      expect(row.seen).toBeNull();
+    } else {
+      expect(row.seen).toBe(seenGivers.includes(row.id) ? 3 : row.id === ids[0] ? 1 : null);
+    }
+  }
+  verifyNoPairing(state);
+});

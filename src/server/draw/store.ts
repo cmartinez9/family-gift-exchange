@@ -278,7 +278,7 @@ export async function disputedGivers(tx: FamilyTransaction, familyId: string) {
 }
 
 export async function privateDrawRepair(
-  tx: FamilyTransaction, familyId: string, snapshot: RuleSnapshot, previous: Pairs,
+  tx: FamilyTransaction, familyId: string, exchange: Exchange, snapshot: RuleSnapshot, previous: Pairs,
   givers: readonly string[], checkTime: () => void, fullRedraw = false,
 ) {
   const organizers = await tx.select({id: people.id}).from(people).where(and(
@@ -286,7 +286,9 @@ export async function privateDrawRepair(
   ));
   const organizerIds = new Set(organizers.map(({id}) => id));
   const observers = snapshot.roster.filter(({id, helperId}) => organizerIds.has(helperId ?? id)).map(({id}) => id);
-  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, fullRedraw});
+  const seenGivers = fullRedraw ? [] : (await currentParticipants(tx, familyId, exchange.id))
+    .filter(({status, seenVersion}) => status === "in" && seenVersion === exchange.version).map(({id}) => id);
+  return repairDraw(snapshotRules(snapshot), previous, givers, checkTime, {observers, seenGivers, fullRedraw});
 }
 
 async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string, decrypt: DrawDecryptor) {
@@ -296,7 +298,7 @@ async function reconcileDisputedReveals(tx: FamilyTransaction, familyId: string,
     const snapshot = await loadSnapshot(tx, familyId, exchangeId);
     const previous = await loadPairs(tx, familyId, exchange, decrypt, "repair");
     const end = performance.now() + 1500;
-    const next = await privateDrawRepair(tx, familyId, snapshot, previous, [...givers], () => {
+    const next = await privateDrawRepair(tx, familyId, exchange, snapshot, previous, [...givers], () => {
       if (performance.now() > end) throw new DrawError("checkTimedOut");
     });
     await writeRepair(tx, familyId, exchange, snapshot, previous, next);

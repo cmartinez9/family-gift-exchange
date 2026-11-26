@@ -12,7 +12,7 @@ export function removeFromDraw(rules: DrawRules, pairs: Pairs, leaving: string, 
 
 export function repairDraw(
   rules: DrawRules, previous: Pairs, mustChange: readonly string[], checkTime?: () => void,
-  privacy?: {observers: readonly string[]; fullRedraw?: boolean},
+  privacy?: {observers: readonly string[]; seenGivers: readonly string[]; fullRedraw?: boolean},
 ): Pairs | null {
   const {people, choices, indices} = rules;
   if (people.length < minimumPeople || mustChange.some((id) => !indices.has(id))) return null;
@@ -30,7 +30,9 @@ export function repairDraw(
   function accept(changed: number) {
     if (!validPairs(rules, next)) return false;
     if (!privacy || !required.size) return true;
-    const observation = JSON.stringify([privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id))]);
+    const seenCount = privacy.fullRedraw ? 0 : privacy.seenGivers.filter((id) =>
+      next.has(id) && next.get(id) === previous.get(id)).length;
+    const observation = JSON.stringify([privacy.fullRedraw ? null : changed, observers.map((id) => next.get(id)), seenCount]);
     const group = groups.get(observation) ?? {
       pairs: [], recipients: new Map([...required].map((id) => [id, new Set<string>()])),
     };
