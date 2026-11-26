@@ -58,7 +58,6 @@ function usePinCompletion(onComplete: (pin: string) => void, suspended = false) 
   };
 }
 
-/** Calls a PIN server action with the digits as form fields. A successful action redirects. */
 export function pinForm(pin: string, confirmation = pin) {
   const data = new FormData();
   data.set("pin", pin);
@@ -68,7 +67,7 @@ export function pinForm(pin: string, confirmation = pin) {
 
 /**
  * Make a 4-digit PIN (1.3 to 1.5): type four digits, see at once why an easy one is refused, then type it
- * once more. `save` gets the PIN when both match; it redirects on success or returns why it could not.
+ * once more. `save` gets the PIN when both match, owns navigation on success, and returns an error on failure.
  */
 export function MakePin({save, top}: {
   save: (pin: string) => Promise<AuthResult | void>;

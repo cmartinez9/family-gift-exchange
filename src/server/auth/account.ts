@@ -115,8 +115,8 @@ export async function faceIdOnDevice(tx: FamilyTransaction, viewer: Viewer) {
 }
 
 /**
- * Family activity: what every grown-up may see. It never names who has whom, and never names the person
- * behind a PIN reset or a key opened twice. Only joining is shown with a name.
+ * Only joining may include a person's name; PIN resets and disputed-key activity must stay anonymous.
+ * Pairing details must never enter this projection.
  */
 export async function familyActivity(tx: FamilyTransaction, familyId: string) {
   const rows = await tx.select({

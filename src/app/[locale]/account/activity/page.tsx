@@ -14,7 +14,6 @@ export async function generateMetadata() {
   return screenTitle("activity.title");
 }
 
-/** Family activity (11.7): what every grown-up may see. Never who has whom, never who reported what. */
 export default async function FamilyActivityPage() {
   const viewer = await requireViewer();
   const t = await getTranslations("getIn.activity");

@@ -1,6 +1,4 @@
-import {mkdirSync} from "node:fs";
-import {randomUUID} from "node:crypto";
-import {join} from "node:path";
+import {randomBytes, randomUUID} from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type BrowserContext, type Page} from "@playwright/test";
 import {and, eq} from "drizzle-orm";
@@ -10,12 +8,13 @@ import {issueKey, redeemKey, signInDevice, type Device} from "../../src/server/a
 import {createFamily, saveMember} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {families, people} from "../../src/server/db/schema";
+import {families, items, outbox, people, sizes} from "../../src/server/db/schema";
+import {pinCredentials} from "../../src/server/auth/schema";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {settled, signInWithPin, typePin} from "../helpers/pin-pad";
 
 // Getting in, onboarding, coming back, and your account (flows 1, 2, 10 and 11 of the final design).
-// Every screen is checked with axe and saved at 390 by 844 under test-results/design/.
+// Every screen is checked with axe and saved at 390 by 844 in Playwright's output directory.
 
 const t = en.getIn;
 const pin = "4268";
@@ -101,9 +100,9 @@ async function shot(page: Page, name: string) {
   await settled(page);
   expect((await new AxeBuilder({page}).analyze()).violations, name).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${name} fits the phone`).toBe(true);
-  const directory = join("test-results", "design", test.info().project.name);
-  mkdirSync(directory, {recursive: true});
-  await page.screenshot({path: join(directory, `${name}.png`)});
+  const path = test.info().outputPath(`${name}.png`);
+  await page.screenshot({path});
+  await test.info().attach(name, {path, contentType: "image/png"});
 }
 
 let family: Family;
@@ -346,5 +345,444 @@ test("in Spanish, at the largest text size, and with full motion", async ({brows
     expect(await stitches.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
   } finally {
     await still.close();
+  }
+});
+
+/** Read persisted user data after UI actions; this is evidence of saves, not a stub of the server. */
+async function storedSizes(familyId: string, personId: string) {
+  const {db, close} = database();
+  try {
+    const rows = await runForFamily(db, familyId, (tx) => tx.select({kind: sizes.kind, value: sizes.value})
+      .from(sizes).where(and(eq(sizes.familyId, familyId), eq(sizes.personId, personId))));
+    return Object.fromEntries(rows.map(({kind, value}) => [kind, value]));
+  } finally {
+    await close();
+  }
+}
+
+async function storedItems(familyId: string) {
+  const {db, close} = database();
+  try {
+    return await runForFamily(db, familyId, (tx) => tx.select({ownerId: items.ownerId, kind: items.kind, title: items.title, note: items.note})
+      .from(items).where(eq(items.familyId, familyId)));
+  } finally {
+    await close();
+  }
+}
+
+async function chooseSystem(page: Page, current: string, next: string) {
+  await page.getByRole("button", {name: current, exact: true}).click();
+  await page.getByRole("dialog").getByText(next, {exact: true}).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: next, exact: true})).toBeEnabled();
+}
+
+// These regressions use fresh families so recovery limits and profile changes cannot affect other flows.
+test("regression: shoe systems keep ordered valid sizes and a failed choice can be retried", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await signedIn(page.context(), f.sessions.Ana, origin);
+    await page.goto("/en/welcome/sizes");
+    const tops = page.getByRole("group", {name: t.sizes.tops});
+    await tops.getByText("S", {exact: true}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).tops).toBe("S");
+    await page.context().setOffline(true);
+    await tops.getByText("M", {exact: true}).click();
+    await expect(page.getByText(t.sizes.failed, {exact: true})).toBeVisible();
+    await expect(tops.getByRole("radio", {name: "S", exact: true})).toBeChecked();
+    await page.context().setOffline(false);
+    await tops.getByText("M", {exact: true}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).tops).toBe("M");
+
+    await chooseSystem(page, t.sizes.systemNone, "Men's US");
+    for (let i = 0; i < 14; i++) await page.getByRole("button", {name: t.sizes.bigger}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).shoes).toBe("13.5");
+    await expect(page.getByText("13½", {exact: true})).toBeVisible();
+    await chooseSystem(page, "Men's US", "EU");
+    await expect(page.getByText(t.sizes.pickOne, {exact: true})).toBeVisible();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).shoes ?? "").toBe("");
+    await page.getByRole("button", {name: t.sizes.bigger}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).shoes).toBe("38");
+    await chooseSystem(page, "EU", "Kids' US");
+    await page.getByRole("button", {name: t.sizes.bigger}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).shoes).toBe("1C");
+    await chooseSystem(page, "Kids' US", "Women's US");
+    await page.getByRole("button", {name: t.sizes.bigger}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).shoes).toBe("7.5");
+    await shot(page, "shoe-system-reselection");
+    await page.goto("/en/account");
+    await expect(page.getByRole("link", {name: /^My sizes/})).toContainText("Tops M · Shoes 7½");
+    await shot(page, "account-with-saved-shoes");
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: offline words and a large camera photo remain retryable and save to the list", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await signedIn(page.context(), f.sessions.Ana, origin);
+    await page.goto("/en/welcome/list");
+    await page.getByLabel(t.add.what).fill("Coffee with Grandma");
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("alert").filter({hasText: t.add.failed})).toBeVisible();
+    await expect(page.getByLabel(t.add.what)).toHaveValue("Coffee with Grandma");
+    await shot(page, "offline-words-preserved");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "ALL SET!"})).toBeVisible();
+    await expect.poll(async () => (await storedItems(f.familyId)).map(({title}) => title)).toContain("Coffee with Grandma");
+
+    await page.goto("/en/welcome/list");
+    const {default: sharp} = await import("sharp");
+    const buffer = await sharp(randomBytes(3000 * 3000 * 3), {raw: {width: 3000, height: 3000, channels: 3}})
+      .jpeg({quality: 96}).toBuffer();
+    expect(buffer.byteLength).toBeGreaterThan(6_000_000);
+    await page.locator('input[type="file"]').setInputFiles({name: "camera.jpg", mimeType: "image/jpeg", buffer});
+    await expect(page.getByRole("button", {name: t.add.add, exact: true})).toBeEnabled();
+    const preparedBytes = await page.getByRole("img", {name: t.add.photoAlt}).evaluate(async (image) =>
+      (await (await fetch((image as HTMLImageElement).src)).blob()).size);
+    expect(preparedBytes).toBeLessThan(3_000_000);
+    await page.getByLabel(t.add.photoTitle).fill("A cozy Christmas blanket");
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("alert").filter({hasText: t.add.failed})).toBeVisible();
+    await expect(page.getByLabel(t.add.photoTitle)).toHaveValue("A cozy Christmas blanket");
+    await expect(page.getByRole("img", {name: t.add.photoAlt})).toBeVisible();
+    await shot(page, "offline-photo-preserved");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "ALL SET!"})).toBeVisible();
+    await page.goto(`/en/lists/${f.ids.Ana}`);
+    await expect(page.getByText("A cozy Christmas blanket", {exact: true})).toBeVisible();
+    await expect.poll(() => page.locator("main img").evaluateAll((images) => images.some((image) => (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+    await shot(page, "camera-photo-saved");
+    await test.info().attach("camera-upload-sizes", {body: JSON.stringify({originalBytes: buffer.byteLength, preparedBytes}), contentType: "application/json"});
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: link preview and save recover from offline while preserving link and note", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await signedIn(page.context(), f.sessions.Ana, origin);
+    await page.goto("/en/welcome/list");
+    await page.getByRole("button", {name: t.add.paste}).click();
+    await page.context().setOffline(true);
+    await page.getByLabel(t.paste.field).fill("shop.example.com/scarf");
+    await expect(page.getByRole("alert").filter({hasText: t.paste.failed})).toBeVisible();
+    await expect(page.getByRole("status").filter({hasText: "Getting the picture"})).toHaveCount(0);
+    await shot(page, "offline-preview-feedback");
+    await page.context().setOffline(false);
+    await page.getByLabel(t.paste.field).fill("shop.example.com/green-scarf");
+    await expect(page.getByRole("button", {name: t.add.add, exact: true})).toBeEnabled({timeout: 30_000});
+    await page.getByLabel(t.paste.noteField).fill("Forest green, please");
+    await page.getByRole("button", {name: t.paste.want}).click();
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("alert").filter({hasText: t.add.failed})).toBeVisible();
+    await expect(page.getByLabel(t.paste.noteField)).toHaveValue("Forest green, please");
+    await expect(page.getByLabel(t.paste.field)).toHaveValue("shop.example.com/green-scarf");
+    await shot(page, "offline-link-draft-preserved");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "ALL SET!"})).toBeVisible();
+    await expect.poll(async () => (await storedItems(f.familyId)).map(({note}) => note)).toContain("Forest green, please");
+    await test.info().attach("saved-link", {body: JSON.stringify(await storedItems(f.familyId)), contentType: "application/json"});
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: another tab switching to Help Leo rejects Ana's old draft and shows Leo's sizes", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await signedIn(page.context(), f.sessions.Ana, origin);
+    await page.goto("/en/welcome/sizes");
+    await page.getByRole("group", {name: t.sizes.tops}).getByText("S", {exact: true}).click();
+    await expect.poll(async () => (await storedSizes(f.familyId, f.ids.Ana)).tops).toBe("S");
+    await page.goto("/en/welcome/list");
+    await page.getByLabel(t.add.what).fill("Ana's private draft");
+    const other = await page.context().newPage();
+    await other.goto("/en/account");
+    await other.getByRole("button", {name: "Help Leo", exact: true}).click();
+    await expect(other.getByText("You're helping Leo", {exact: true})).toBeVisible();
+    await expect(other.getByRole("link", {name: /^My sizes/})).toContainText(t.you.sizesNone);
+    await other.goto("/en/welcome/sizes");
+    await other.getByRole("group", {name: t.sizes.tops}).getByText("M", {exact: true}).click();
+    await expect.poll(async () => {
+      const {db, close} = database();
+      try {
+        return await runForFamily(db, f.familyId, (tx) => tx.select({value: sizes.value}).from(sizes)
+          .innerJoin(people, and(eq(people.familyId, sizes.familyId), eq(people.id, sizes.personId)))
+          .where(and(eq(sizes.familyId, f.familyId), eq(people.displayName, "Leo"), eq(sizes.kind, "tops"))));
+      } finally { await close(); }
+    }).toEqual([{value: "M"}]);
+    await other.goto("/en/account");
+    await expect(other.getByRole("link", {name: /^My sizes/})).toContainText("Tops M");
+    await shot(other, "helper-profile-summary");
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("alert").filter({hasText: t.add.failed})).toBeVisible();
+    await expect(page.getByLabel(t.add.what)).toHaveValue("Ana's private draft");
+    expect(await storedItems(f.familyId)).toEqual([]);
+    await shot(page, "stale-owner-draft-rejected");
+    await other.getByRole("button", {name: t.you.stopHelping}).click();
+    await expect(other.getByRole("link", {name: /^My sizes/})).toContainText("Tops S");
+    await other.close();
+    await page.getByRole("button", {name: t.add.add, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "ALL SET!"})).toBeVisible();
+    expect(await storedItems(f.familyId)).toEqual([{ownerId: f.ids.Ana, kind: "note", title: "Ana's private draft", note: null}]);
+  } finally {
+    await remove(f.familyId);
+  }
+});
+
+test("regression: Forgot suspends the pending PIN and correcting a digit submits only the corrected PIN", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await page.emulateMedia({reducedMotion: "no-preference"});
+    await page.goto(f.keys.Rosa);
+    await page.waitForLoadState("networkidle");
+    let submissions = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname.includes("/key/")) submissions++;
+    });
+    await typePin(page, "4267");
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await expect(page.getByRole("dialog", {name: t.used.options})).toBeVisible();
+    await page.waitForTimeout(400); // Beyond the product's 260ms settling interval.
+    expect(submissions).toBe(0);
+    await page.getByRole("button", {name: en.ui.close, exact: true}).click();
+    await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
+    await typePin(page, "7");
+    await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
+    await typePin(page, "8");
+    await expect(page.getByRole("heading", {name: "Rosa", exact: true})).toBeVisible();
+    expect(submissions).toBe(1);
+    await shot(page, "corrected-pin-signed-in");
+  } finally {
+    await remove(f.familyId);
+  }
+});
+
+test("regression: PIN creation and returning sign-in recover from transport failures", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await page.emulateMedia({reducedMotion: "no-preference"});
+    await page.goto(f.keys.Marta);
+    await page.getByRole("button", {name: t.hello.yes}).click();
+    await page.waitForLoadState("networkidle");
+    await typePin(page, "4267");
+    await page.getByRole("button", {name: t.pin.delete, exact: true}).click();
+    await page.waitForTimeout(400);
+    await expect(page.getByRole("heading", {name: t.pin.makeTitle})).toBeVisible();
+    await expect(page.getByRole("img", {name: "3 of 4 digits typed"})).toBeVisible();
+    await typePin(page, "8");
+    await expect(page.getByRole("heading", {name: t.pin.againTitle})).toBeVisible();
+    await page.context().setOffline(true);
+    await typePin(page, pin);
+    await expect(page.getByRole("alert").filter({hasText: en.auth.feedback.connectionFailed})).toBeVisible();
+    await expect(page.getByRole("heading", {name: t.pin.makeTitle})).toBeVisible();
+    await shot(page, "offline-pin-creation-retry");
+    await page.context().setOffline(false);
+    await typePin(page, pin);
+    await expect(page.getByRole("heading", {name: t.pin.againTitle})).toBeVisible();
+    await typePin(page, pin);
+    await expect(page.getByRole("heading", {name: t.face.title})).toBeVisible();
+    await page.goto("/en/account");
+    await page.getByRole("button", {name: t.you.signOut, exact: true}).click();
+    await expect(page).toHaveURL(/\/en\/sign-in$/);
+    await page.goto(`/en/sign-in?family=${f.familyId}&person=${f.ids.Rosa}`);
+    await expect(page.getByRole("heading", {name: t.enter.title})).toBeVisible();
+    await page.context().setOffline(true);
+    await typePin(page, pin);
+    await expect(page.getByRole("alert").filter({hasText: en.auth.feedback.connectionFailed})).toBeVisible();
+    await shot(page, "offline-enter-pin-retry");
+    await page.context().setOffline(false);
+    await typePin(page, pin);
+    await expect(page.getByRole("heading", {name: "Rosa", exact: true})).toBeVisible();
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: used-key recovery keeps errors visible and reporting does not block replacement requests", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await page.goto(f.keys.Rosa);
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await page.context().setOffline(true);
+    const ask = page.getByRole("button", {name: "Ask Christian for a new key", exact: true});
+    await ask.click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText(en.auth.feedback.connectionFailed);
+    await expect(ask).toBeEnabled();
+    await page.getByRole("button", {name: t.used.never, exact: true}).click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText(en.auth.feedback.connectionFailed);
+    await shot(page, "offline-used-key-recovery");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: t.used.never, exact: true}).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await expect(ask).toBeEnabled();
+    await ask.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Repeat through the public UI up to the real daily server limit.
+    for (let i = 0; i < 2; i++) {
+      await page.reload();
+      await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+      await ask.click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+    await page.reload();
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await ask.click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText(en.auth.feedback.tryLater);
+    await expect(ask).toBeEnabled();
+    await shot(page, "daily-recovery-limit-visible");
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: Forgot and printed-code preview explain offline failures and allow a retry", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await page.goto(`/en/sign-in?family=${f.familyId}&person=${f.ids.Beto}`);
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: "Ask Christian for a new key", exact: true}).click();
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(en.auth.feedback.connectionFailed);
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: "Ask Christian for a new key", exact: true}).click();
+    await expect(page.getByRole("status").filter({hasText: "Christian has been asked"})).toBeVisible();
+    await page.goto(`/en/sign-in?family=${f.familyId}&join=1`);
+    await page.getByLabel(en.auth.keyCode).fill("ABC234");
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: en.auth.checkCode}).click();
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(en.auth.feedback.connectionFailed);
+    await expect(page.getByRole("button", {name: en.auth.checkCode})).toBeEnabled();
+    await shot(page, "offline-code-preview-retry");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: en.auth.checkCode}).click();
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(en.auth.feedback.unavailable);
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: a locked PIN counts down and can be retried after the server lock expires", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await signInWithPin(page, f.familyId, "Beto", "1111");
+    await expect(page.getByRole("alert").filter({hasText: "4 more tries"})).toBeVisible();
+    for (const [wrong, left] of [["1112", "3 more tries"], ["1113", "2 more tries"], ["1114", "1 more try."]]) {
+      await typePin(page, wrong);
+      await expect(page.getByRole("alert").filter({hasText: left})).toBeVisible();
+    }
+    await typePin(page, "1115");
+    await expect(page.getByRole("heading", {name: t.locked.title})).toBeVisible();
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: "Ask Christian for a new PIN", exact: true}).click();
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(en.auth.feedback.connectionFailed);
+    await page.context().setOffline(false);
+    await page.clock.install();
+    await page.clock.fastForward(60_000);
+    await expect(page.getByRole("img", {name: "Try again in 14 minutes"})).toBeVisible();
+    // Advance the client timer and expire only this fixture's real persisted server lock.
+    const {db, close} = database();
+    try {
+      await runForFamily(db, f.familyId, (tx) => tx.update(pinCredentials).set({lockedUntil: new Date(Date.now() - 1)})
+        .where(and(eq(pinCredentials.familyId, f.familyId), eq(pinCredentials.personId, f.ids.Beto))));
+    } finally { await close(); }
+    await page.clock.fastForward(14 * 60_000);
+    await expect(page.getByText(t.locked.ready, {exact: true})).toBeVisible();
+    await page.screenshot({path: test.info().outputPath("expired-lock-retry.png")});
+    await page.getByRole("button", {name: t.locked.retry, exact: true}).click();
+    await typePin(page, pin);
+    await expect(page.getByRole("heading", {name: "Beto", exact: true})).toBeVisible();
+  } finally {
+    await page.context().setOffline(false);
+    await remove(f.familyId);
+  }
+});
+
+test("regression: opening a reset notice clears its unread indicator and family activity explains its audience", async ({page}) => {
+  const f = await seed(origin);
+  try {
+    await page.goto(`/en/sign-in?family=${f.familyId}&person=${f.ids.Ana}`);
+    await page.getByRole("button", {name: t.enter.forgot, exact: true}).click();
+    await page.getByRole("button", {name: "Ask Christian for a new key", exact: true}).click();
+    await expect(page.getByRole("status").filter({hasText: "Christian has been asked"})).toBeVisible();
+    await signedIn(page.context(), f.sessions.christian, origin);
+    await page.goto("/en/account");
+    await expect(page.getByRole("link", {name: /^Notices/})).toContainText("1 new");
+    await page.getByRole("link", {name: /^Notices/}).click();
+    await page.getByRole("button", {name: /View PIN reset requests/}).click();
+    await expect(page).toHaveURL(/\/en\/family$/);
+    await page.goto("/en/account");
+    await expect(page.getByRole("link", {name: /^Notices/})).not.toContainText("1 new");
+    const {db, close} = database();
+    try {
+      const rows = await runForFamily(db, f.familyId, (tx) => tx.select({readAt: outbox.readAt}).from(outbox).where(eq(outbox.familyId, f.familyId)));
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every(({readAt}) => readAt !== null)).toBe(true);
+      await test.info().attach("persisted-notice-read", {body: JSON.stringify(rows), contentType: "application/json"});
+    } finally { await close(); }
+    await shot(page, "reset-notice-read");
+    await page.goto("/en/account/activity");
+    await expect(page.getByText(t.activity.lead, {exact: true})).toBeVisible();
+    await page.goto("/es/account/activity");
+    await expect(page.getByText(es.getIn.activity.lead, {exact: true})).toBeVisible();
+    await shot(page, "spanish-family-activity-audience");
+  } finally {
+    await remove(f.familyId);
+  }
+});
+
+test("regression: an installed passkey stays shown as on after cookies are cleared", async ({page, browserName}) => {
+  test.skip(browserName !== "chromium", "Virtual platform authenticator uses Chromium CDP");
+  const f = await seed(origin);
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {options: {
+      protocol: "ctap2", transport: "internal", hasResidentKey: true,
+      hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true,
+    }});
+    await signedIn(page.context(), f.sessions.Ana, origin);
+    await page.goto("/en/face-id");
+    await page.getByRole("button", {name: t.face.yes, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+    await page.context().clearCookies();
+    await page.goto("/en");
+    await page.getByRole("button", {name: en.auth.signInFaceId, exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+    await expect(page.getByRole("listitem").filter({has: page.getByText(t.you.faceId, {exact: true})})).toContainText("On for this");
+    await expect(page.getByRole("link", {name: t.you.newPinGo, exact: true})).toBeVisible();
+    await shot(page, "passkey-after-clearing-cookies");
+    await page.getByRole("link", {name: /^Your phones/}).click();
+    await expect(page.getByRole("listitem").filter({has: page.getByText(t.phones.thisOne, {exact: true})})).toContainText(t.phones.faceOn);
+    await shot(page, "current-phone-passkey-status");
+    await page.goBack();
+    await page.getByRole("link", {name: t.you.newPinGo, exact: true}).click();
+    await typePin(page, "5937");
+    await expect(page.getByRole("heading", {name: t.pin.againTitle})).toBeVisible();
+    await typePin(page, "5937");
+    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+    await page.getByRole("button", {name: t.you.signOut, exact: true}).click();
+    await expect(page).toHaveURL(/\/en\/sign-in$/);
+    await signInWithPin(page, f.familyId, "Ana", "5937");
+    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+    await shot(page, "changed-account-pin-signed-in");
+  } finally {
+    await remove(f.familyId);
   }
 });

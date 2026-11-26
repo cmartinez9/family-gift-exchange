@@ -40,7 +40,6 @@ export async function generateMetadata() {
   return screenTitle("you.label");
 }
 
-/** You (11.1): everything personal, behind your avatar at Home's top right. */
 export default async function AccountPage({searchParams}: {searchParams: Promise<{reported?: string; face?: string}>}) {
   const viewer = await requireViewer();
   const t = await getTranslations("getIn.you");
