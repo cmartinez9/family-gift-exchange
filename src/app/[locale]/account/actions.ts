@@ -32,6 +32,10 @@ export async function reportEvent(eventId: string): Promise<AuthResult> {
   const viewer = await requireViewer();
   const recorded = await withFamily(viewer.familyId, (tx) => disputeEvent(tx, viewer, eventId, new Date()));
   if (!recorded) return {error: "unavailable"};
+  if (recorded === "lockdown") {
+    await clearSession();
+    redirect(`/${await getLocale()}/sign-in?family=${viewer.familyId}&safety=1`);
+  }
   redirect(`/${await getLocale()}/account?reported=1`);
 }
 

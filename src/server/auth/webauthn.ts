@@ -92,7 +92,7 @@ export async function registrationFinish(viewer: Viewer, device: Device, respons
     const session = await revalidateViewer(tx, viewer);
     if (!session) return false;
     const [inserted] = await tx.insert(passkeys).values({
-      familyId, personId, deviceHash: session.deviceHash, id: credential.id,
+      familyId, personId, deviceHash: session.deviceHash, id: credential.id, enrolledAt: new Date(),
       publicKey: Buffer.from(credential.publicKey).toString("base64url"), counter: String(credential.counter),
     }).onConflictDoNothing().returning({id: passkeys.id});
     return Boolean(inserted);
@@ -115,6 +115,7 @@ export async function authenticationFinish(device: Device, response: Authenticat
     if (!await lockFamily(tx, familyId)) return null;
     const person = await activePerson(tx, familyId, personId);
     if (!person || person.helperId || !response.id) return null;
+    if (person.role === "organizer" && person.needsNewKey) return null;
     const [stored] = await tx.select().from(passkeys).where(and(
       eq(passkeys.familyId, familyId), eq(passkeys.personId, personId), eq(passkeys.id, response.id), isNull(passkeys.revokedAt),
     ));
@@ -154,12 +155,13 @@ export async function changePinAfterFaceId(viewer: Viewer, device: Device, pin: 
   return withFamily(familyId, async (tx) => {
     await lockFamily(tx, familyId);
     if (!await revalidateViewer(tx, viewer)) return "faceAgain";
+    if ((await activePerson(tx, familyId, personId))?.needsNewKey) return "needsNewKey";
     const now = new Date();
     const [use] = await tx.insert(authLimits).values({
       familyId, bucket: `pin-change:${sessionId}`, windowStartedAt: now, count: 1,
     }).onConflictDoNothing().returning({bucket: authLimits.bucket});
     if (!use) return "faceAgain";
-    await tx.update(pinCredentials).set({pinHash: await hashPin(authenticatorSecret(), pin), ...clearedAttempts})
+    await tx.update(pinCredentials).set({pinHash: await hashPin(authenticatorSecret(), pin), changedAt: now, ...clearedAttempts})
       .where(and(eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId)));
     jar.set(changePinCookie, "", {...privateCookie, maxAge: 0});
     return null;

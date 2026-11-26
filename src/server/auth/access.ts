@@ -6,6 +6,7 @@ import type {Viewer} from "./index";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
 import {createSession, digest, revalidateViewer, secret, seasonSeconds, uuidPattern} from "./session";
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
+import {validCodePreview} from "./code-preview";
 
 export type DeviceKind = "iphone" | "ipad" | "android" | "computer" | "other";
 export type Device = {hash: string; kind: DeviceKind; network: string | null};
@@ -86,6 +87,7 @@ export async function inspectKey(tx: FamilyTransaction, familyId: string, token:
   const [usedDevice] = key.usedSessionId ? await tx.select({kind: sessions.deviceKind}).from(sessions)
     .where(and(eq(sessions.familyId, familyId), eq(sessions.id, key.usedSessionId))) : [];
   return {
+    id: key.id,
     personId: person.id, name: person.displayName, familyName: family.name,
     usedAt: key.usedAt, usedDevice: usedDevice?.kind,
     available: !key.revokedAt && !key.usedAt && key.expiresAt > now,
@@ -100,6 +102,7 @@ export async function issueKey(
   if (!await isManager(tx, viewer)) return {error: "forbidden"} as const;
   const person = await activePerson(tx, familyId, personId);
   if (!person || person.helperId || (viewer.personId === personId && kind !== "reset")) return {error: "unavailable"} as const;
+  if (person.role === "organizer" && person.needsNewKey) return {error: "operatorRecovery"} as const;
   return prepareKey(tx, familyId, person, viewer.personId, viewer.sessionId, kind, pepper, now);
 }
 
@@ -209,7 +212,7 @@ async function isTrustedDevice(tx: FamilyTransaction, familyId: string, personId
 export async function redeemKey(
   tx: FamilyTransaction, input: {
     familyId: string; value: string; typed: boolean; pepper: string; pin: string; confirmation: string;
-    device: Device; currentViewer: Viewer | null; now: Date;
+    device: Device; currentViewer: Viewer | null; now: Date; preview?: string | null;
   },
 ) {
   const {familyId, value, typed, pepper, pin, confirmation, device, currentViewer, now} = input;
@@ -224,6 +227,9 @@ export async function redeemKey(
   }
   const key = await lookupKey(tx, familyId, pepper, value, typed);
   if (!key || key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
+  if (typed && (typeof input.preview !== "string" || !validCodePreview(input.preview, pepper, familyId, key, value, device.hash, now))) {
+    return {error: "previewAgain"} as const;
+  }
   const person = await activePerson(tx, familyId, key.personId);
   if (!person || person.helperId) return {error: "unavailable"} as const;
   if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
@@ -234,8 +240,9 @@ export async function redeemKey(
   if (Boolean(previous) !== (key.kind === "reset")) return {error: "unavailable"} as const;
 
   const pinHash = await hashPin(pepper, pin);
-  await tx.insert(pinCredentials).values({familyId, personId: person.id, pinHash, joinedAt: now})
-    .onConflictDoUpdate({target: [pinCredentials.familyId, pinCredentials.personId], set: {pinHash, ...clearedAttempts}});
+  await tx.insert(pinCredentials).values({familyId, personId: person.id, pinHash, joinedAt: now, changedAt: now})
+    .onConflictDoUpdate({target: [pinCredentials.familyId, pinCredentials.personId], set: {pinHash, changedAt: now, ...clearedAttempts}});
+  await tx.update(people).set({needsNewKey: false}).where(and(eq(people.familyId, familyId), eq(people.id, person.id)));
   if (key.kind === "reset") {
     await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
       eq(sessions.familyId, familyId), eq(sessions.personId, person.id),
@@ -271,6 +278,7 @@ export async function signInWithPin(
   const person = await activePerson(tx, familyId, personId);
   const row = person && !person.helperId ? await credential(tx, familyId, person.id) : null;
   if (!row) return {error: "invalidPin"} as const;
+  if (person?.needsNewKey || !row.pinHash) return {error: "needsNewKey"} as const;
   if (row.lockedUntil && row.lockedUntil > now) return {error: "pinLocked"} as const;
   const trusted = await isTrustedDevice(tx, familyId, personId, device.hash, now);
   if (row.newDevicesLocked && !trusted) return {error: "newDevicesLocked"} as const;

@@ -14,6 +14,7 @@ export const sessions = pgTable("sessions", {
   expiresAt: instant("expires_at").notNull(),
   revokedAt: instant("revoked_at"),
   trusted: boolean("trusted").default(true).notNull(),
+  hadOrganizerAccess: boolean("had_organizer_access").default(false).notNull(),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
   index("sessions_person_idx").on(table.familyId, table.personId),
@@ -37,7 +38,8 @@ export const sessions = pgTable("sessions", {
 export const pinCredentials = pgTable("pin_credentials", {
   familyId: familyId(),
   personId: uuid("person_id").notNull(),
-  pinHash: text("pin_hash").notNull(),
+  pinHash: text("pin_hash"),
+  changedAt: instant("changed_at").defaultNow().notNull(),
   joinedAt: instant("joined_at").defaultNow().notNull(),
   failedInWindow: integer("failed_in_window").default(0).notNull(),
   failedToday: integer("failed_today").default(0).notNull(),
@@ -125,6 +127,7 @@ export const passkeys = pgTable("passkeys", {
   personId: uuid("person_id").notNull(),
   deviceHash: text("device_hash").notNull(),
   publicKey: text("public_key").notNull(),
+  enrolledAt: instant("enrolled_at").defaultNow().notNull(),
   counter: text("counter").notNull(),
   revokedAt: instant("revoked_at"),
 }, (table) => [
@@ -141,7 +144,7 @@ export const authEvents = pgTable("auth_events", {
   id: uuid("id").defaultRandom().notNull(),
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
-    "keyPrepared", "keySent", "keyUsed", "keyDisputed", "newDevice", "pinLocked", "newDevicesLocked",
+    "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
     "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed",
   ]}).notNull(),
   deviceKind: text("device_kind"),

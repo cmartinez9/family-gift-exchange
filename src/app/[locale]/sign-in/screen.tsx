@@ -5,11 +5,11 @@ import {signInFamily} from "@/server/auth/families";
 import {rememberedFamily} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
-import {AuthForm, EnterCode, FaceIdButton, PinFields, ResetButton} from "./controls";
+import {AuthFeedback, AuthForm, EnterCode, FaceIdButton, PinFields, ResetButton} from "./controls";
 import {inputClass, linkClass} from "./styles";
 import {enterPin, openFamily} from "./actions";
 
-type Search = {family?: string; person?: string; join?: string};
+type Search = {family?: string; person?: string; join?: string; safety?: string};
 
 export async function SignInScreen({search = {}}: {search?: Search}) {
   const t = await getTranslations("auth");
@@ -32,16 +32,17 @@ export async function SignInScreen({search = {}}: {search?: Search}) {
 
   return (
     <section className="space-y-4">
+      {search.safety === "1" && <AuthFeedback state={{success: "familyLockdown"}} />}
       <FaceIdButton />
       {family && familyId ? (
         <>
           <h2 className="text-xl font-semibold">{family.name}</h2>
           {selected ? (
             <>
-              <AuthForm action={enterPin.bind(null, familyId, selected.id)} label={t("signIn")}>
+              {selected.needsNewKey ? <AuthFeedback state={{error: "needsNewKey"}} /> : <AuthForm action={enterPin.bind(null, familyId, selected.id)} label={t("signIn")}>
                 <p>{t("enterPinFor", {name: selected.name})}</p>
                 <PinFields />
-              </AuthForm>
+              </AuthForm>}
               <ResetButton familyId={familyId} personId={selected.id} />
               <Link href={familyUrl} className={linkClass}>{t("otherName")}</Link>
             </>

@@ -137,7 +137,8 @@
       "resetPreparedWithoutRequest": "A new key was prepared without a PIN reset request.",
       "resetSent": "A new key was sent to reset your PIN.",
       "resetUsed": "A new key was used to replace your PIN.",
-      "keyDisputed": "Someone with your used key reported that its first use was not them."
+      "keyDisputed": "Someone with your used key reported that its first use was not them.",
+      "familyLockdown": "Everyone was signed out for safety."
     },
     "feedback": {
       "pinLength": "Enter four digits.",
@@ -166,7 +167,11 @@
       "shareUnavailable": "The share menu isn't available here. Try WhatsApp or copy the message.",
       "faceAgain": "Sign in with Face ID again before changing your PIN.",
       "pinChanged": "Your new PIN is ready.",
-      "keyDisputed": "Reported. Your account has not been changed. Ask the organizer for a new private key."
+      "keyDisputed": "Reported. Your account has not been changed. Ask the organizer for a new private key.",
+      "familyLockdown": "Everyone was signed out for safety.",
+      "needsNewKey": "This account needs a new private key.",
+      "operatorRecovery": "Ask the person who runs this app for a new organizer key.",
+      "previewAgain": "Check your code again before continuing."
     }
   }
 }

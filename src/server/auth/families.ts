@@ -23,7 +23,7 @@ export async function createFamily(tx: FamilyTransaction, input: {
   await tx.insert(families).values({id: familyId, name: familyName, defaultLanguage: language});
   await tx.insert(people).values({familyId, id: personId, displayName, language, role: "organizer"});
   await tx.update(families).set({createdBy: personId}).where(eq(families.id, familyId));
-  await tx.insert(pinCredentials).values({familyId, personId, pinHash: await hashPin(pepper, pin), joinedAt: now});
+  await tx.insert(pinCredentials).values({familyId, personId, pinHash: await hashPin(pepper, pin), joinedAt: now, changedAt: now});
   const [{id: exchangeId}] = await tx.insert(exchanges).values({familyId, name: familyName}).returning({id: exchanges.id});
   await tx.insert(participants).values({familyId, exchangeId, personId, joinedAt: now});
   return signInDevice(tx, familyId, personId, device, now);
@@ -41,7 +41,7 @@ const peopleOnly = (familyId: string) => and(eq(people.familyId, familyId), isNu
 export async function signInFamily(tx: FamilyTransaction, familyId: string) {
   const [family] = await tx.select({name: families.name}).from(families).where(eq(families.id, familyId));
   if (!family) return null;
-  const names = await tx.select({id: people.id, name: people.displayName}).from(people)
+  const names = await tx.select({id: people.id, name: people.displayName, needsNewKey: people.needsNewKey}).from(people)
     .innerJoin(pinCredentials, and(eq(pinCredentials.familyId, people.familyId), eq(pinCredentials.personId, people.id)))
     .where(and(peopleOnly(familyId), isNull(people.helperId))).orderBy(people.displayName, people.id);
   return {name: family.name, names};
@@ -55,6 +55,7 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     id: people.id, name: people.displayName, helperId: people.helperId,
     householdId: people.householdId, language: people.language, role: people.role,
     joinedAt: pinCredentials.joinedAt,
+    needsNewKey: people.needsNewKey,
   }).from(people).leftJoin(pinCredentials, and(eq(pinCredentials.familyId, people.familyId), eq(pinCredentials.personId, people.id)))
     .where(peopleOnly(familyId)).orderBy(people.displayName);
   const sent = await tx.selectDistinct({personId: personalKeys.personId}).from(personalKeys)
@@ -156,7 +157,7 @@ export async function removeMember(tx: FamilyTransaction, viewer: Viewer, person
   return null;
 }
 
-export async function changeCoOrganizer(tx: FamilyTransaction, viewer: Viewer, personId: string | null) {
+export async function changeCoOrganizer(tx: FamilyTransaction, viewer: Viewer, personId: string | null, now = new Date()) {
   const {familyId} = viewer;
   await lockFamily(tx, familyId);
   if (!await isManager(tx, viewer)) return "forbidden";
@@ -164,8 +165,13 @@ export async function changeCoOrganizer(tx: FamilyTransaction, viewer: Viewer, p
     const person = await activePerson(tx, familyId, personId);
     if (!person || person.helperId || person.role === "organizer") return "unavailable";
   }
-  await tx.update(people).set({role: "member"}).where(and(peopleOnly(familyId), eq(people.role, "co_organizer")));
-  if (personId) await tx.update(people).set({role: "co_organizer"}).where(and(peopleOnly(familyId), eq(people.id, personId)));
+  await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(peopleOnly(familyId), eq(people.role, "co_organizer")));
+  if (personId) {
+    await tx.update(people).set({role: "co_organizer", coOrganizerGrantedAt: now}).where(and(peopleOnly(familyId), eq(people.id, personId)));
+    await tx.update(sessions).set({hadOrganizerAccess: true}).where(and(
+      eq(sessions.familyId, familyId), eq(sessions.personId, personId), isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
+    ));
+  }
   return null;
 }
 

@@ -1,4 +1,4 @@
-import {and, desc, eq, inArray, isNull, ne} from "drizzle-orm";
+import {and, asc, desc, eq, gte, inArray, isNull, ne} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
@@ -52,7 +52,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   if (!await revalidateViewer(tx, viewer)) return false;
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
-  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed") return false;
+  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown") return false;
   let targetId = event.sessionId;
   if (event.keyId) {
     const [key] = await tx.select({sessionId: personalKeys.usedSessionId}).from(personalKeys).where(and(
@@ -62,7 +62,8 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   }
   const disputedSessionId = targetId === sessionId ? null : targetId;
   const familySessions = disputedSessionId ? await tx.select({
-    id: sessions.id, personId: sessions.personId, hash: sessions.deviceHash, passkeyId: sessions.passkeyId,
+    id: sessions.id, personId: sessions.personId, hash: sessions.deviceHash, passkeyId: sessions.passkeyId, createdAt: sessions.createdAt,
+    hadOrganizerAccess: sessions.hadOrganizerAccess,
   }).from(sessions).where(eq(sessions.familyId, familyId)) : [];
   const target = familySessions.find((session) => session.id === disputedSessionId && session.personId === personId);
   const familyCredentials = target ? await tx.select({id: passkeys.id, personId: passkeys.personId, hash: passkeys.deviceHash})
@@ -73,10 +74,11 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const deviceHashes = new Set(target ? [`${target.personId}.${target.hash}`] : []);
   const credentialIds = new Set(target?.passkeyId ? [target.passkeyId] : []);
   const sessionIds = new Set(target ? [target.id] : []);
+  const causalSessionIds = new Set(target ? [target.id] : []);
   const keyIds = new Set<string>();
   let expanded = true;
   while (expanded) {
-    const size = deviceHashes.size + credentialIds.size + sessionIds.size + keyIds.size;
+    const size = deviceHashes.size + credentialIds.size + sessionIds.size + causalSessionIds.size + keyIds.size;
     for (const credential of familyCredentials) {
       if (deviceHashes.has(`${credential.personId}.${credential.hash}`)) credentialIds.add(credential.id);
     }
@@ -86,15 +88,19 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
       if (sessionIds.has(session.id) || deviceHashes.has(device) || (session.passkeyId && credentialIds.has(session.passkeyId))) {
         sessionIds.add(session.id);
         deviceHashes.add(device);
+        if (target && session.createdAt >= target.createdAt) causalSessionIds.add(session.id);
       }
     }
     for (const key of familyKeys) {
-      if (key.issuedBySessionId && sessionIds.has(key.issuedBySessionId)) {
+      if (key.issuedBySessionId && causalSessionIds.has(key.issuedBySessionId)) {
         keyIds.add(key.id);
-        if (key.usedSessionId && key.usedSessionId !== sessionId) sessionIds.add(key.usedSessionId);
+        if (key.usedSessionId && key.usedSessionId !== sessionId) {
+          sessionIds.add(key.usedSessionId);
+          causalSessionIds.add(key.usedSessionId);
+        }
       }
     }
-    expanded = size !== deviceHashes.size + credentialIds.size + sessionIds.size + keyIds.size;
+    expanded = size !== deviceHashes.size + credentialIds.size + sessionIds.size + causalSessionIds.size + keyIds.size;
   }
   if (event.keyId) await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), eq(personalKeys.id, event.keyId),
@@ -104,6 +110,11 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   }).onConflictDoNothing().returning({id: sessionDisputes.eventId});
   if (!record) return true;
   if (!target) return true;
+  const person = await activePerson(tx, familyId, personId);
+  if (target.hadOrganizerAccess || person?.role === "organizer" || person?.role === "co_organizer") {
+    await lockDownFamily(tx, familyId, now);
+    return "lockdown" as const;
+  }
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), inArray(personalKeys.id, [...keyIds]),
     isNull(personalKeys.usedAt), isNull(personalKeys.revokedAt),
@@ -119,6 +130,26 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
     eq(pinCredentials.familyId, familyId), inArray(pinCredentials.personId, affectedPeople),
   ));
   return true;
+}
+
+async function lockDownFamily(tx: FamilyTransaction, familyId: string, now: Date) {
+  const [earliest] = await tx.select({at: sessions.createdAt}).from(sessionDisputes).innerJoin(sessions, and(
+    eq(sessions.familyId, sessionDisputes.familyId), eq(sessions.id, sessionDisputes.disputedSessionId),
+  )).where(eq(sessionDisputes.familyId, familyId)).orderBy(asc(sessions.createdAt)).limit(1);
+  const since = earliest.at;
+  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(eq(sessions.familyId, familyId));
+  await tx.update(personalKeys).set({revokedAt: now}).where(and(eq(personalKeys.familyId, familyId), isNull(personalKeys.usedAt)));
+  await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(
+    eq(people.familyId, familyId), eq(people.role, "co_organizer"), gte(people.coOrganizerGrantedAt, since),
+  ));
+  await tx.update(passkeys).set({revokedAt: now}).where(and(eq(passkeys.familyId, familyId), gte(passkeys.enrolledAt, since)));
+  const cleared = await tx.update(pinCredentials).set({pinHash: null, newDevicesLocked: true}).where(and(
+    eq(pinCredentials.familyId, familyId), gte(pinCredentials.changedAt, since),
+  )).returning({personId: pinCredentials.personId});
+  await tx.update(people).set({needsNewKey: true}).where(and(eq(people.familyId, familyId), inArray(people.id, cleared.map(({personId}) => personId))));
+  await tx.update(people).set({needsNewKey: true}).where(and(eq(people.familyId, familyId), eq(people.role, "organizer")));
+  const members = await tx.select({personId: people.id}).from(people).where(and(eq(people.familyId, familyId), isNull(people.removedAt)));
+  await tx.insert(authEvents).values(members.map(({personId}) => ({familyId, personId, kind: "familyLockdown" as const, at: now})));
 }
 
 /** Phase 2 can read reports for the current family and person from this projection. */

@@ -3,10 +3,10 @@ import {and, eq} from "drizzle-orm";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {withFamily} from "../../src/server/db/client";
-import {families} from "../../src/server/db/schema";
-import {createFamily, readiness} from "../../src/server/auth/families";
+import {families, people} from "../../src/server/db/schema";
+import {createFamily, readiness, saveMember} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
-import {authEvents, passkeys, sessions} from "../../src/server/auth/schema";
+import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent} from "../../src/server/auth/security";
 import {getViewer, type Viewer} from "../../src/server/auth";
 import {requestDevice, setSession} from "../../src/server/auth/request";
@@ -35,15 +35,20 @@ async function resolve(cookie: string) {
   return withFamily(parsed.familyId, (tx) => findViewer(tx, parsed));
 }
 
-async function fixture() {
+async function fixture(organizer = false) {
   const familyId = randomUUID();
   const session = await withFamily(familyId, (tx) => createFamily(tx, {
     familyId, familyName: "Passkey fixture", displayName: "Northstar", language: "en", pin, pepper,
     device: device(), now: new Date(),
   }));
   cleanup.add(familyId);
-  const viewer = (await resolve(session.cookie))!;
-  return {familyId, viewer, session};
+  const manager = (await resolve(session.cookie))!;
+  if (organizer) return {familyId, viewer: manager, session};
+  await withFamily(familyId, (tx) => saveMember(tx, manager, null, {name: "Member", language: "en", helperId: null, householdId: null}));
+  const [{id: personId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(and(eq(people.familyId, familyId), eq(people.displayName, "Member"))));
+  const key = await withFamily(familyId, (tx) => issueKey(tx, manager, personId, "share", pepper, new Date()));
+  const joined = (await withFamily(familyId, (tx) => redeemKey(tx, {familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: device(), currentViewer: null, now: new Date()}))).session!;
+  return {familyId, viewer: (await resolve(joined.cookie))!, session: joined};
 }
 
 async function enroll(familyId: string, personId: string, enrollmentDevice: Device, viewer?: Viewer) {
@@ -320,7 +325,7 @@ it("keeps enrollment linked to its authorizing session when only the device cook
 });
 
 it("surfaces reset throttling after the previous requests have been answered", async () => {
-  const {familyId, viewer} = await fixture();
+  const {familyId, viewer} = await fixture(true);
   for (let i = 0; i < 3; i++) {
     await expect(forgotPin(familyId, viewer.personId)).resolves.toEqual({success: "resetRequested"});
   }
@@ -332,4 +337,34 @@ it("surfaces reset throttling after the previous requests have been answered", a
   await expect(withFamily(familyId, (tx) => readiness(tx, recovered, new Date()))).resolves.toMatchObject({requests: []});
   await expect(forgotPin(familyId, viewer.personId)).resolves.toEqual({error: "tryLater"});
   await expect(withFamily(familyId, (tx) => readiness(tx, recovered, new Date()))).resolves.toMatchObject({requests: []});
+});
+
+it("keeps older member Face ID usable after lockdown while organizer recovery requires a new key", async () => {
+  const {familyId, viewer, session: owner} = await fixture(true);
+  const before = new Date(Date.now() - 3_600_000);
+  await withFamily(familyId, async (tx) => {
+    await tx.update(pinCredentials).set({changedAt: before}).where(eq(pinCredentials.familyId, familyId));
+    await tx.update(sessions).set({createdAt: before}).where(eq(sessions.id, owner.id));
+    await saveMember(tx, viewer, null, {name: "Member", language: "en", helperId: null, householdId: null});
+  });
+  const [{id: memberId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(eq(people.displayName, "Member")));
+  const key = await withFamily(familyId, (tx) => issueKey(tx, viewer, memberId, "share", pepper, before));
+  const memberPhone = device();
+  const member = (await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: memberPhone, currentViewer: null, now: before,
+  }))).session!;
+  const memberCredential = await enroll(familyId, memberId, memberPhone, (await resolve(member.cookie))!);
+  const ownerCredential = await enroll(familyId, viewer.personId, device());
+  await withFamily(familyId, (tx) => tx.update(passkeys).set({enrolledAt: before}).where(eq(passkeys.familyId, familyId)));
+  const intruder = (await withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, pin, pepper, device(), new Date()))).session!;
+  const [{id: eventId}] = await withFamily(familyId, (tx) => tx.select().from(authEvents).where(and(
+    eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
+  )));
+  await expect(withFamily(familyId, (tx) => disputeEvent(tx, viewer, eventId, new Date()))).resolves.toBe("lockdown");
+  await expect(ownerCredential.authenticate(device())).resolves.toBeNull();
+  const returned = (await memberCredential.authenticate(device()))!.session;
+  await expect(resolve(returned.cookie)).resolves.toMatchObject({personId: memberId});
+  const returnedViewer = (await resolve(returned.cookie))!;
+  const activity = await withFamily(familyId, (tx) => account(tx, returnedViewer));
+  expect(activity.activity.filter(({kind}) => kind === "familyLockdown")).toHaveLength(1);
 });

@@ -2,7 +2,7 @@ import {getTranslations} from "next-intl/server";
 import {sectionClass} from "./styles";
 import {SignInScreen} from "./screen";
 
-export default async function SignInPage({searchParams}: {searchParams: Promise<{family?: string; person?: string; join?: string}>}) {
+export default async function SignInPage({searchParams}: {searchParams: Promise<{family?: string; person?: string; join?: string; safety?: string}>}) {
   const t = await getTranslations("auth");
   return (
     <main className={sectionClass}>

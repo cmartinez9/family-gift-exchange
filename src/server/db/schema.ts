@@ -65,6 +65,8 @@ export const people = pgTable("people", {
   helperId: uuid("helper_id"),
   householdId: uuid("household_id"),
   role: personRole("role").default("member").notNull(),
+  coOrganizerGrantedAt: instant("co_organizer_granted_at"),
+  needsNewKey: boolean("needs_new_key").default(false).notNull(),
   noClothes: boolean("no_clothes").default(false).notNull(),
   removedAt: instant("removed_at"),
 }, (table) => [

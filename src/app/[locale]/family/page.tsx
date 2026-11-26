@@ -77,6 +77,7 @@ export default async function FamilyPage() {
             return (
               <li key={id} className="space-y-1 border-b border-current/25 pb-4">
                 <h3 className="font-semibold">{name}</h3>
+                {member.needsNewKey && <p>{t("feedback.needsNewKey")}</p>}
                 <p>{helperId ? t("lookedAfter", {name: visibleMembers.get(helperId) ?? ""}) : t(`status.${status}`)}</p>
                 {device && <p>{t(`device.${device.kind}` as Parameters<typeof t>[0])}</p>}
                 {request && (

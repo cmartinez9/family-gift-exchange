@@ -1,6 +1,6 @@
 "use client";
 
-import {useActionState, useState, useTransition, type ReactNode} from "react";
+import {useActionState, useRef, useState, useTransition, type ReactNode} from "react";
 import {startAuthentication, startRegistration} from "@simplewebauthn/browser";
 import {useFormatter, useTranslations} from "next-intl";
 import {Link, useRouter} from "@/i18n/navigation";
@@ -145,7 +145,7 @@ export function KeyClaim({familyId, value, typed, entry}: KeyClaimProps) {
         </>
       )}
       {choice === "me" && (
-        <AuthForm action={useKey.bind(null, familyId, value, typed)} label={t("savePin")}>
+        <AuthForm action={useKey.bind(null, familyId, value, typed, entry.preview ?? null)} label={t("savePin")}>
           <p>{t("makePin")}</p>
           <PinFields create />
         </AuthForm>
@@ -157,19 +157,29 @@ export function KeyClaim({familyId, value, typed, entry}: KeyClaimProps) {
 export function EnterCode({familyId}: {familyId: string}) {
   const t = useTranslations("auth");
   const [code, setCode] = useState("");
-  const [result, setResult] = useState<CodeResult>({});
+  const [result, setResult] = useState<CodeResult & {code?: string}>({});
+  const version = useRef(0);
   const [pending, transition] = useTransition();
 
-  if (result.key) return <KeyClaim familyId={familyId} value={code} typed entry={result.key} />;
+  if (result.key && result.code) return <KeyClaim familyId={familyId} value={result.code} typed entry={result.key} />;
   return (
     <form className="space-y-3" onSubmit={(event) => {
       event.preventDefault();
-      transition(async () => setResult(await previewCode(familyId, code)));
+      const submittedCode = code;
+      const request = ++version.current;
+      transition(async () => {
+        const response = await previewCode(familyId, submittedCode);
+        if (request === version.current) setResult({...response, code: submittedCode});
+      });
     }}>
       <label className="block">
         {t("keyCode")}
         <input className={inputClass} name="code" value={code} maxLength={6} minLength={6} autoCapitalize="characters"
-          autoComplete="off" spellCheck={false} required onChange={(event) => setCode(event.target.value.toUpperCase().trim())} />
+          autoComplete="off" spellCheck={false} required onChange={(event) => {
+            version.current++;
+            setResult({});
+            setCode(event.target.value.toUpperCase().trim());
+          }} />
       </label>
       <button type="submit" className={buttonClass} disabled={pending}>{t("checkCode")}</button>
       <AuthFeedback state={result} />

@@ -84,8 +84,10 @@ export async function createSession(
 ) {
   const id = randomUUID();
   const token = secret();
+  const [person] = await tx.select({role: people.role}).from(people).where(and(eq(people.familyId, familyId), eq(people.id, personId)));
   await tx.insert(sessions).values({
     familyId, id, personId, actingAs: personId, deviceHash, deviceKind, passkeyId,
+    hadOrganizerAccess: person.role === "organizer" || person.role === "co_organizer",
     tokenHash: digest(token), createdAt: now, expiresAt: new Date(now.getTime() + seasonSeconds * 1000),
   });
   return {id, cookie: `${familyId}.${id}.${token}`};

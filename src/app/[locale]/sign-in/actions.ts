@@ -13,6 +13,7 @@ import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
 import {appOrigin, requestDevice, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
+import {createCodePreview} from "@/server/auth/code-preview";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {
   authenticationFinish, authenticationStart, changePinAfterFaceId, registrationFinish, registrationStart,
@@ -94,7 +95,7 @@ export async function reportUsedKey(familyId: string, value: string, typed: bool
 }
 
 export type CodeResult = AuthResult & {
-  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string};
+  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string};
 };
 
 export async function previewCode(familyId: string, code: string): Promise<CodeResult> {
@@ -108,16 +109,17 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
     const key = await inspectKey(tx, familyId, code, now, authenticatorSecret());
     if (!key || (!key.available && !key.usedAt)) return {error: "unavailable"};
     if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) return {error: "otherPerson"};
-    return {key: {...key, usedAt: key.usedAt?.toISOString() ?? null}};
+    return {key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
+      preview: createCodePreview(authenticatorSecret(), familyId, key, code, device.hash, now)}};
   });
 }
 
-export async function useKey(familyId: string, value: string, typed: boolean, _: AuthResult, data: FormData): Promise<AuthResult> {
+export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, _: AuthResult, data: FormData): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean") return {error: "unavailable"};
   const currentViewer = await getViewer();
   const device = await requestDevice();
   const result = await withFamily(familyId, (tx) => redeemKey(tx, {
-    familyId, value, typed, device, currentViewer,
+    familyId, value, typed, preview, device, currentViewer,
     pin: field(data, "pin"), confirmation: field(data, "confirmation"),
     pepper: authenticatorSecret(), now: new Date(),
   }));

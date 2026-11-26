@@ -13,6 +13,7 @@ import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, sa
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {findViewer, parseSession, digest, secret} from "../../src/server/auth/session";
 import {account, actFor, disputeEvent, endSessions, listKeyDisputes, listSessionDisputes} from "../../src/server/auth/security";
+import {createCodePreview} from "../../src/server/auth/code-preview";
 import {day, fifteenMinutes} from "../../src/server/auth/pin";
 
 vi.mock("server-only", () => ({}));
@@ -47,7 +48,11 @@ async function fixture() {
   const issue = (kind: "share" | "qr" | "print" | "reset" = "share", at = now) =>
     tx(familyId, (t) => issueKey(t, viewer, personId, kind, pepper, at));
   const redeem = (value: string, device: Device, typed = false, at = now, chosenPin = pin) =>
-    tx(familyId, (t) => redeemKey(t, {familyId, value, typed, pin: chosenPin, confirmation: chosenPin, pepper, device, currentViewer: null, now: at}));
+    tx(familyId, async (t) => {
+      const key = typed ? await inspectKey(t, familyId, value, at, pepper) : null;
+      const preview = key ? createCodePreview(pepper, familyId, key, value, device.hash, at) : null;
+      return redeemKey(t, {familyId, value, typed, preview, pin: chosenPin, confirmation: chosenPin, pepper, device, currentViewer: null, now: at});
+    });
   const login = (attempted: string, device: Device, at = now) =>
     tx(familyId, (t) => signInWithPin(t, familyId, personId, attempted, pepper, device, at));
 
@@ -324,22 +329,24 @@ it.each(["prepared", "sent"])("invalidates a %s self-issued reset key when its o
     eq(authEvents.familyId, f.familyId), eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
   expect(keyId).toBeNull();
-  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe(true);
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe("lockdown");
   await expect(resolve(intruder.cookie)).resolves.toBeNull();
   await expect(f.redeem(reset.token!, makeDevice(), false, now, newPin)).resolves.toEqual({error: "unavailable"});
   await expect(f.redeem(reset.code!, makeDevice(), true, now, newPin)).resolves.toEqual({error: "unavailable"});
   const [stored] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, reset.id!)));
   expect(stored).toMatchObject({revokedAt: now, usedAt: null});
   const [after] = await tx(f.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, f.viewer.personId)));
-  expect(after.pinHash).toBe(before.pinHash);
-  await expect(resolve(f.organizer.cookie)).resolves.toMatchObject({personId: f.viewer.personId});
-  await expect(f.redeem(invitation.token!, makeDevice())).resolves.toHaveProperty("session");
-  const recovery = await tx(f.familyId, (t) => issueKey(t, f.viewer, f.viewer.personId, "reset", pepper, now));
-  const recovered = (await f.redeem(recovery.token!, makeDevice(), false, now, newPin)).session!;
+  expect(before.pinHash).not.toBeNull();
+  expect(after.pinHash).toBeNull();
+  await expect(resolve(f.organizer.cookie)).resolves.toBeNull();
+  await expect(f.redeem(invitation.token!, makeDevice())).resolves.toEqual({error: "unavailable"});
+  const {stdout} = await runOperator(f.familyId);
+  const recovery = new URL(JSON.parse(stdout).url).pathname.split("~")[1];
+  const recovered = (await f.redeem(recovery, makeDevice(), false, now, newPin)).session!;
   await expect(resolve(recovered.cookie)).resolves.toMatchObject({personId: f.viewer.personId, isOrganizer: true});
 });
 
-it("preserves a co-organizer's recovery key when the organizer disputes another session", async () => {
+it("voids co-organizer recovery keys during an organizer lockdown", async () => {
   const f = await fixture();
   const co = await f.add("Pinecone");
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co));
@@ -353,15 +360,14 @@ it("preserves a co-organizer's recovery key when the organizer disputes another 
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
     eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
-  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe(true);
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe("lockdown");
   await expect(resolve(intruder.cookie)).resolves.toBeNull();
-  await expect(resolve(f.organizer.cookie)).resolves.toMatchObject({personId: f.viewer.personId});
-  const recovered = (await f.redeem(reset.token!, makeDevice(), false, now, newPin)).session!;
-  await expect(resolve(recovered.cookie)).resolves.toMatchObject({personId: f.viewer.personId, isOrganizer: true});
-  await expect(resolve(coSession.cookie)).resolves.toMatchObject({personId: co, isOrganizer: true});
+  await expect(resolve(f.organizer.cookie)).resolves.toBeNull();
+  await expect(f.redeem(reset.token!, makeDevice(), false, now, newPin)).resolves.toEqual({error: "unavailable"});
+  await expect(resolve(coSession.cookie)).resolves.toBeNull();
 });
 
-it("blocks co-organizer reset-key takeover and preserves keys issued by another organizer session", async () => {
+it("blocks co-organizer takeover and voids every key during an organizer lockdown", async () => {
   const f = await fixture();
   const co = await f.add("Pinecone");
   await tx(f.familyId, (t) => changeCoOrganizer(t, f.viewer, co));
@@ -381,7 +387,7 @@ it("blocks co-organizer reset-key takeover and preserves keys issued by another 
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
     eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
-  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe(true);
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe("lockdown");
   for (const key of badKeys) {
     await expect(f.redeem(key.token!, makeDevice(), false, now, newPin)).resolves.toEqual({error: "unavailable"});
     const [stored] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, key.id!)));
@@ -389,15 +395,14 @@ it("blocks co-organizer reset-key takeover and preserves keys issued by another 
   }
   await expect(f.redeem(reset.code!, makeDevice(), true, now, newPin)).resolves.toEqual({error: "unavailable"});
   await expect(resolve(intruder.cookie)).resolves.toBeNull();
-  await expect(resolve(f.organizer.cookie)).resolves.toMatchObject({personId: f.viewer.personId});
-  await expect(resolve(coSession.cookie)).resolves.toMatchObject({personId: co, isOrganizer: true});
+  await expect(resolve(f.organizer.cookie)).resolves.toBeNull();
+  await expect(resolve(coSession.cookie)).resolves.toBeNull();
   for (const key of [goodInvitation, goodReset]) {
     const [stored] = await tx(f.familyId, (t) => t.select().from(personalKeys).where(eq(personalKeys.id, key.id!)));
-    expect(stored).toMatchObject({issuedBySessionId: f.viewer.sessionId, revokedAt: null, usedAt: null});
+    expect(stored).toMatchObject({issuedBySessionId: f.viewer.sessionId, revokedAt: now, usedAt: null});
   }
-  await expect(f.redeem(goodInvitation.token!, makeDevice())).resolves.toHaveProperty("session");
-  const recovered = (await f.redeem(goodReset.token!, makeDevice(), false, now, newPin)).session!;
-  await expect(resolve(recovered.cookie)).resolves.toMatchObject({personId: f.viewer.personId, isOrganizer: true});
+  await expect(f.redeem(goodInvitation.token!, makeDevice())).resolves.toEqual({error: "unavailable"});
+  await expect(f.redeem(goodReset.token!, makeDevice(), false, now, newPin)).resolves.toEqual({error: "unavailable"});
 });
 
 it("revokes keys and cross-identity sessions enabled by an already-redeemed key from the disputed session", async () => {
@@ -423,7 +428,7 @@ it("revokes keys and cross-identity sessions enabled by an already-redeemed key 
   const [{id: eventId}] = await tx(f.familyId, (t) => t.select().from(authEvents).where(and(
     eq(authEvents.sessionId, intruder.id), eq(authEvents.kind, "newDevice"),
   )));
-  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe(true);
+  await expect(tx(f.familyId, (t) => disputeEvent(t, f.viewer, eventId, now))).resolves.toBe("lockdown");
   await expect(f.redeem(takeover.token!, makeDevice(), false, now, newPin)).resolves.toEqual({error: "unavailable"});
   for (const session of [intruder, descendant, member]) {
     await expect(resolve(session.cookie)).resolves.toBeNull();
@@ -433,11 +438,10 @@ it("revokes keys and cross-identity sessions enabled by an already-redeemed key 
   await expect(tx(f.familyId, (t) => issueKey(t, coViewer, f.viewer.personId, "reset", pepper, now)))
     .resolves.toEqual({error: "forbidden"});
   await expect(tx(f.familyId, (t) => signInWithPin(t, f.familyId, co, newPin, pepper, coDevice, now)))
-    .resolves.toEqual({error: "newDevicesLocked"});
-  await expect(f.login(pin, memberDevice)).resolves.toEqual({error: "newDevicesLocked"});
-  await expect(resolve(f.organizer.cookie)).resolves.toMatchObject({personId: f.viewer.personId});
-  const joined = (await f.redeem(goodKey.token!, makeDevice())).session!;
-  await expect(resolve(joined.cookie)).resolves.toMatchObject({personId: other});
+    .resolves.toEqual({error: "needsNewKey"});
+  await expect(f.login(pin, memberDevice)).resolves.toEqual({error: "needsNewKey"});
+  await expect(resolve(f.organizer.cookie)).resolves.toBeNull();
+  await expect(f.redeem(goodKey.token!, makeDevice())).resolves.toEqual({error: "unavailable"});
 });
 
 it("rejects queued recovery and revocation requests authenticated before organizer recovery", async () => {
