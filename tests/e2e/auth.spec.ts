@@ -125,7 +125,7 @@ test("registers a discoverable credential and signs in from the bare app address
   const familyId = await startFamily(page, `Icicle ${randomUUID().slice(0, 6)}`);
   try {
     await page.getByRole("button", {name: "Yes, use Face ID"}).click();
-    await expect(page.getByRole("heading", {name: "Who's ready"})).toBeVisible();
+    await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
     await page.context().clearCookies();
     await page.goto("/en");
     await page.getByRole("button", {name: "Sign in with Face ID"}).click();

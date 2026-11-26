@@ -635,7 +635,8 @@
       "fixedOpen": "Abrir mi nueva persona",
       "helpingDone": "Mi cuenta",
       "statusTitle": "Tu persona",
-      "backHome": "Inicio"
+      "backHome": "Inicio",
+      "answer": "Responder"
     },
     "setup": {
       "progress": "Paso {step} de {total}",

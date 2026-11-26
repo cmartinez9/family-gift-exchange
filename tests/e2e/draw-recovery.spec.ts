@@ -45,7 +45,9 @@ async function fixture(browser: Browser, count: number, organizer = 0, coOrganiz
   async function device(index: number) {
     const token = secret();
     const session = await runForFamily(database.db, familyId, (tx) => createSession(tx, familyId, ids[index], digest(token), "iphone", new Date()));
-    const context = await browser.newContext({viewport: {width: 393, height: 851}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true});
+    // reduced motion: each reveal opens at once, so many devices fit in one test
+    const context = await browser.newContext({viewport: {width: 393, height: 851}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
+      reducedMotion: "reduce"});
     contexts.push(context);
     await context.addCookies([
       {name: "__Host-fge-session", value: session.cookie, url: "https://localhost:3100", secure: true, httpOnly: true, sameSite: "Lax"},
@@ -85,7 +87,7 @@ async function open(page: Page, path: string) {
 }
 
 async function ask(page: Page, text: string) {
-  await page.getByRole("button", {name: /^Ask .+ a question$/}).click();
+  await page.getByRole("button", {name: /^Ask .+ (a question|for ideas)$/}).first().click();
   await page.getByLabel("Your anonymous question").fill(text);
   await page.getByRole("button", {name: "Send my question", exact: true}).click();
 }
@@ -197,7 +199,7 @@ test("organizer cannot infer a repaired recipient from their match, question ret
     const seen = Number(seenText.split(" ")[0]);
     const oneLoop = await organizer.getByText("The draw forms one loop.", {exact: true}).count() === 1;
     await capture(organizer, info, "organizer-public-proof");
-    await organizer.goto(f.member);
+    await organizer.goto(`${f.member}?answer=1`);
     const questionRetained = await organizer.getByText("Recognizable question from D", {exact: true}).count() === 1;
     const actual = new Map<string, string>();
     for (let index = 0; index < 6; index++) {
@@ -411,9 +413,10 @@ test("uses a valid multi-loop fallback when keep-apart rules make one loop impos
       await f.database.db.insert(keepApart).values({familyId: f.familyId, exchangeId: f.exchangeId, personA, personB, reason: "custom"});
     }
     const page = f.devices[0].page;
-    await page.goto(f.manage);
-    await page.locator("summary").filter({hasText: /^Draw names$/}).click();
-    await page.getByRole("button", {name: "Yes, draw names", exact: true}).click();
+    await page.goto(`${f.manage}/draw`);
+    await page.getByRole("button", {name: "Draw names", exact: true}).click();
+    // reduced motion skips the ceremony straight to the seal
+    await expect(page.getByRole("heading", {name: "Names are drawn"})).toBeVisible();
     await page.getByRole("link", {name: "Check the sealed draw", exact: true}).click();
     await expect(page.getByRole("heading", {name: "The sealed draw passes all the rules."})).toBeVisible();
     await expect(page.getByText("The draw uses more than one loop.", {exact: true})).toBeVisible();
@@ -541,6 +544,8 @@ test("reporting a session during a real link fetch prevents its pending wishlist
 });
 
 test("dropouts and late joiners preserve unaffected matches while a confirmed redraw clears openings and questions", async ({browser}, info) => {
+  // each dropout and late joiner now confirms in a sheet, and openings may replay the reveal
+  test.setTimeout(90_000);
   const f = await fixture(browser, 6);
   try {
     for (const device of f.devices) await open(device.page, f.member);

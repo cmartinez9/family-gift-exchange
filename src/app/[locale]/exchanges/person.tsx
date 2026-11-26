@@ -85,6 +85,12 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
     return (
       <Screen ground="red" back={back}>
         {banner}
+        {incoming.length > 0 && (
+          // a question for you can be answered before you open your own person
+          <ModeBanner icon="message" action={<AppLink href={answerHref} transition="push" className={modeActionClass}>{t("person.answer")}</AppLink>}>
+            {t("person.incomingCard")}
+          </ModeBanner>
+        )}
         <UnravelReveal key={attempt} name={person?.name ?? null} onStart={() => open()}
           labels={{
             ready: t("person.revealReady"), readyHint: t("person.revealReadyHint"),
@@ -97,10 +103,12 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
             <Button icon="arrow" onClick={() => setView("person")}>{t("person.seePage", {name: person.name})}</Button>
           )} />
         {error && (
-          <div className="absolute inset-x-edge top-[150px] z-10">
-            <ErrorBlock title={error} action={
-              <Button variant="card" onClick={() => setAttempt((value) => value + 1)}>{t("person.tryAgain")}</Button>
-            } />
+          <div className="absolute inset-x-edge top-[150px] z-10 flex flex-col gap-2">
+            <ErrorBlock title={error} />
+            <Button variant="outline" onClick={() => {
+              setError(null);
+              setAttempt((value) => value + 1);
+            }}>{t("person.tryAgain")}</Button>
           </div>
         )}
       </Screen>

@@ -15,14 +15,14 @@ export function RosterFields({people, legend, you, hideLegend = false}: {
       <legend className={hideLegend ? "sr-only" : "pb-1 text-body font-bold text-[var(--fg-muted)]"}>{legend}</legend>
       <div className="fge-rows flex flex-col">
         {people.map(({id, displayName, participating, available}) => (
-          <label key={id} className="flex min-h-16 cursor-pointer items-center gap-3.5 py-2 has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+          <label key={id} className="relative flex min-h-16 cursor-pointer items-center gap-3.5 py-2 has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
             <Avatar name={displayName} size={44} />
             <span className="min-w-0 flex-1 text-row-title break-words">
               {displayName}{you?.id === id && <span className="font-medium text-[var(--fg-muted)]"> · {you.label}</span>}
             </span>
             <input name="people" value={id} type="checkbox" defaultChecked={participating && available} disabled={!available}
-              className="peer sr-only" />
-            <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full border-[2.5px] border-ink/30 text-transparent
+              className="peer absolute top-1/2 right-0 size-12 -translate-y-1/2 cursor-pointer appearance-none opacity-0" />
+            <span aria-hidden="true" className="pointer-events-none flex size-8 shrink-0 items-center justify-center rounded-full border-[2.5px] border-ink/30 text-transparent
               peer-checked:border-ink peer-checked:bg-ink peer-checked:text-snow-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-3 peer-focus-visible:outline-ink">
               <Icon name="check" size={19} strokeWidth={3} />
             </span>

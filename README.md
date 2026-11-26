@@ -14,17 +14,17 @@ Review [Notices](#notifications) for key use, new devices, and replacement keys.
 
 ## Run an exchange
 
-As an organizer, open **Exchanges** and choose the current exchange, then set its details and **Who's taking part?**. A family can have one active exchange; close it before starting another. Set households, helpers, and keep-apart pairs before drawing.
+As an organizer, open **Exchanges** and choose the current exchange. Setup takes five steps: **The exchange** (name, gift day, place, budget and when lists are due), **Who's in** (add names, or paste a list, and tick who takes part), **Who lives where** (households, helpers and keep-apart pairs), **Draw names**, and **Send keys**. A family can have one active exchange; close it before starting another. After the draw, the exchange's page shows whose lists are ready and opens who's in, PIN reset requests, the exchange details, and people and houses.
 
-**Draw names** gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. A fresh draw tries one big loop first and permits separate valid loops when that is impossible; repairs can also produce separate valid loops. Past years do not restrict matches.
+**Draw names** checks the rules first and says what to fix, then gives everyone one person to buy for and one person buying for them. At least four people must take part, and everyone needs at least two eligible recipients. The draw excludes yourself, two-person swaps, people in the same household, helper/person pairs, and explicit keep-apart pairs. A fresh draw tries one big loop first and permits separate valid loops when that is impossible; repairs can also produce separate valid loops. Past years do not restrict matches.
 
-Members choose **Open your person** to see their own recipient, then **Open {name}'s wishlist** to open that exact person's list, even when relatives share a name. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
+Members hold the knitted gift, or tap **Or tap here to open it**, to see their own recipient the first time; afterwards **Open your person** shows their page, with the person's sizes, likes and list against the budget. **Open {name}'s wishlist** opens that exact person's list, even when relatives share a name. Helpers switch profiles to open the people they help. Organizers use **Check the sealed draw** to verify the rules, roster, and seal without seeing pairings; they see an aggregate opened count. **Preview as a member** hides recipients and questions. **Test the draw rules** checks feasibility with repeated simulated draws and returns no pairings.
 
 The first opening locks the draw. **Replace the entire draw** then requires the displayed confirmation phrase. A full redraw clears everyone's opened status and all questions, even when someone happens to draw the same person again.
 
-Use **Dropouts and late joiners** to remove or add someone after drawing. Local repairs preserve unaffected matches, opened status, and questions; changed matches must be opened again and lose their old questions. If a local repair cannot satisfy the rules, use a confirmed full redraw with an adjusted roster. After opening their recipient, a member can also use **Something wrong? → Try to fix my match** once per exchange to request the smallest valid change to their match.
+Use **Dropouts and late joiners** to remove or add someone after drawing; each change asks first and says who is affected. Local repairs preserve unaffected matches, opened status, and questions; changed matches must be opened again and lose their old questions. If a local repair cannot satisfy the rules, use a confirmed full redraw with an adjusted roster. After opening their recipient, a member can also use **Something wrong? → Get a new person** once per exchange to request the smallest valid change to their match.
 
-After opening your person, use **Ask your person** to send an anonymous question. The recipient answers under **Questions for you**; only the asker sees the answer. Helpers can use these controls for the profiles they manage.
+After opening your person, use **Ask {name} a question** to send an anonymous question. The recipient answers from **A question for you** on their person's page; only the asker sees the answer. Helpers can use these controls for the profiles they manage.
 
 Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
 
@@ -50,7 +50,7 @@ For home-screen setup, open **Put this on your home screen? Show me how** on **Y
 
 Helpers receive device alerts for the people they help on their enabled devices. [Switch to the person's profile](#join-and-return), then open **Notices** to read their messages.
 
-Organizers can open **Manage my family → Messages for the family chat**, choose a topic, and use **Edit** to change its prepared message before copying or sharing through the phone's share menu or WhatsApp. Edits stay with each topic while the page is open. The organizer chooses when and where to send it.
+Organizers can open **Manage my family → Messages for the family chat** (or **Tell the family** from **Send keys**), choose a topic, and use **Edit** to change its prepared message before copying or sharing through the phone's share menu or WhatsApp. Edits stay with each topic while the page is open. The organizer chooses when and where to send it.
 
 ## Run locally
 

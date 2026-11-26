@@ -76,7 +76,7 @@ test("runs a private practice season through the browser", async ({page, browser
     await expect(page.getByText(`Sent to ${recipient}`, {exact: true})).toBeVisible();
     await page.getByRole("link", {name: "Practice exchange"}).click();
     await page.getByRole("link", {name: recipient, exact: true}).click();
-    await page.getByRole("link", {name: /A question for you/}).click();
+    await page.getByRole("link", {name: "Answer", exact: true}).click();
     await expect(page.getByText("Any favorite colors?", {exact: true})).toBeVisible();
     await expect(page.getByText("Pinewisp", {exact: false})).toHaveCount(0);
     await page.getByLabel("Your answer").fill("Midnight purple");
@@ -108,6 +108,8 @@ test("runs a private practice season through the browser", async ({page, browser
 });
 
 test("keeps real previews sealed and resets the lock only after typed confirmation", async ({page}, info) => {
+  // five setup steps and the draw ceremony take longer than a single form did
+  test.setTimeout(90_000);
   const family = await newOrganizer(page);
   try {
     for (const name of ["Snowstep", "Brighttwig", "Lanternseed"]) {
@@ -121,6 +123,7 @@ test("keeps real previews sealed and resets the lock only after typed confirmati
     }
     await page.getByRole("link", {name: "Exchanges"}).click();
     await page.getByRole("link", {name: family.name}).click();
+    await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
     const manage = page.url();
 
     // setup: the exchange, who's in, who lives where, then the draw

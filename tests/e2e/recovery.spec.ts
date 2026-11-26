@@ -21,7 +21,7 @@ async function createFamily(page: Page) {
   await expect(page.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
   const familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
   await page.getByRole("link", {name: "Not now"}).click();
-  await expect(page.getByRole("heading", {name: "Who's ready"})).toBeVisible();
+  await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
   return familyId;
 }
 
@@ -462,7 +462,7 @@ test("family creation rejects an invalid organizer invitation before creating a 
   await page.getByLabel("4-digit PIN").fill(pin);
   await page.getByLabel("Type the PIN again").fill(pin);
   await page.getByRole("button", {name: "Create my family"}).click();
-  await expect(page.locator("p[role=alert]")).toHaveText("That organizer invitation code didn't match.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("That organizer invitation code didn't match.");
   expect((await page.context().cookies()).some(({name}) => name === "__Host-fge-session")).toBe(false);
   await capture(page, info, "invalid-organizer-invitation");
   const familyId = await createFamily(page);

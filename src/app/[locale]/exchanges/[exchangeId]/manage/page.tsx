@@ -98,7 +98,7 @@ async function Hub({state, viewer, check}: {state: OrganizerState; viewer: Viewe
   return (
     <Screen back="/">
       <BackRow href="/" parent={t("person.backHome")} backLabel={ui("back")}
-        right={<AppLink href={`/exchanges/${id}`} prefetch={false} className="fge-press inline-flex min-h-12 items-center px-3 text-body font-semibold text-snow-white underline underline-offset-4">{t("yourPerson")}</AppLink>} />
+        right={<AppLink href={`/exchanges/${id}`} prefetch={false} className="fge-press inline-flex min-h-12 max-w-[45%] items-center px-3 text-right text-body font-semibold text-snow-white underline underline-offset-4">{t("yourPerson")}</AppLink>} />
       <PageTitle title={name} lead={t("season.lead")} />
       {state.exchange.disputedRevealRepairedAt && <div className="px-edge pt-3"><Card><p role="status" className="text-body">{t("disputedRevealRepaired")}</p></Card></div>}
 

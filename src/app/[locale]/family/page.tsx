@@ -82,9 +82,9 @@ export default async function FamilyPage() {
   const viewer = await requireViewer();
   const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
   if (!board) notFound();
-  const [t, draw, ui, format, chat, inbox, unread] = await Promise.all([
+  const [t, draw, ui, format, chat, inbox, lists, unread] = await Promise.all([
     getTranslations("auth"), getTranslations("draw"), getTranslations("ui"), getFormatter(),
-    getTranslations("notify.groupChat"), getTranslations("notify.inbox"), getUnreadCount(viewer),
+    getTranslations("notify.groupChat"), getTranslations("notify.inbox"), getTranslations("lists"), getUnreadCount(viewer),
   ]);
   const visibleMembers = new Map(board.members.map(({id, name}) => [id, name]));
   const coOrganizer = board.members.find(({role}) => role === "co_organizer");
@@ -224,14 +224,16 @@ export default async function FamilyPage() {
           <Card flush className="px-5 py-1">
             <Rows as="ul">
               {[
-                ...(board.canSendKeys ? [{href: "/family/keys", icon: "share" as const, title: t("sendKeys")}] : []),
-                {href: "/family/group-chat", icon: "message" as const, title: chat("title")},
+                ...(board.canSendKeys ? [{href: "/family/keys", icon: "share" as const, title: t("sendKeys"), ours: true}] : []),
+                {href: "/family/group-chat", icon: "message" as const, title: chat("title"), ours: true},
+                {href: "/exchanges", icon: "gift" as const, title: draw("title"), ours: true},
+                {href: "/lists", icon: "list" as const, title: lists("familyLists")},
                 {href: "/notifications", icon: "bell" as const, title: unread ? inbox("bellUnread", {count: unread}) : inbox("title")},
-                {href: "/exchanges", icon: "gift" as const, title: draw("title")},
                 {href: "/account", icon: "user" as const, title: t("openAccount")},
-              ].map(({href, icon, title}) => (
+              ].map(({href, icon, title, ours}) => (
                 <li key={href}>
-                  <AppLink href={href} transition="push" prefetch={false} className="fge-press block">
+                  {/* pages built on Screen slide in; the others load as they always have */}
+                  <AppLink href={href} transition={ours ? "push" : undefined} prefetch={false} className="fge-press block">
                     <ListRow as="span" lead={<IconDisc icon={icon} />} title={title} trail={<Chevron />} />
                   </AppLink>
                 </li>
