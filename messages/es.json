@@ -1,0 +1,15 @@
+{
+  "home": {
+    "title": "Intercambio familiar de regalos",
+    "language": "Idioma"
+  },
+  "devMessages": {
+    "title": "Mensajes capturados",
+    "empty": "Todavía no se han capturado mensajes.",
+    "created": "Fecha de captura",
+    "channel": "Canal",
+    "template": "Plantilla",
+    "language": "Idioma",
+    "person": "ID de la persona"
+  }
+}

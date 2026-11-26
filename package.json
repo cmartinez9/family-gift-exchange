@@ -1,0 +1,53 @@
+{
+  "name": "family-gift-exchange",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": "26.x"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "check:i18n": "tsx scripts/check-i18n.ts",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "pnpm db:migrate && vitest run --project integration",
+    "test:e2e": "playwright test",
+    "test:all": "pnpm lint && pnpm typecheck && pnpm check:i18n && pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.6",
+    "next-intl": "4.16.2",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.1",
+    "@playwright/test": "1.65.1",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.11",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.3",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.11",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.6",
+    "fast-check": "4.11.0",
+    "tailwindcss": "4.3.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.1.2"
+  }
+}
