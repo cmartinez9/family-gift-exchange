@@ -45,7 +45,7 @@ export function EdgeSwipeBack({href, children}: {href: string; children: ReactNo
       shade.style.transform = `translateX(${-117 + dx * 0.3}px)`;
       shade.style.filter = `brightness(${0.8 + (0.2 * dx) / element.offsetWidth})`;
     };
-    const up = (event: PointerEvent) => {
+    const end = (event: PointerEvent) => {
       if (!drag || event.pointerId !== drag.id) return;
       const {dx, t0, horizontal} = drag;
       drag = null;
@@ -55,7 +55,7 @@ export function EdgeSwipeBack({href, children}: {href: string; children: ReactNo
       shade.style.transform = "";
       shade.style.filter = "";
       const reduce = prefersReducedMotion();
-      if (dx > BACK_SWIPE_DISTANCE || velocity > FLICK_VELOCITY) {
+      if (event.type === "pointerup" && (dx > BACK_SWIPE_DISTANCE || velocity > FLICK_VELOCITY)) {
         haptic("soft");
         const leave = element.animate([{transform: `translateX(${dx}px)`}, {transform: "translateX(100%)"}],
           {duration: reduce ? 0 : DURATION.backSwipeFinish, easing: "ease-out", fill: "forwards"});
@@ -71,13 +71,13 @@ export function EdgeSwipeBack({href, children}: {href: string; children: ReactNo
 
     element.addEventListener("pointerdown", down);
     element.addEventListener("pointermove", move);
-    element.addEventListener("pointerup", up);
-    element.addEventListener("pointercancel", up);
+    element.addEventListener("pointerup", end);
+    element.addEventListener("pointercancel", end);
     return () => {
       element.removeEventListener("pointerdown", down);
       element.removeEventListener("pointermove", move);
-      element.removeEventListener("pointerup", up);
-      element.removeEventListener("pointercancel", up);
+      element.removeEventListener("pointerup", end);
+      element.removeEventListener("pointercancel", end);
     };
   }, [href, router]);
 

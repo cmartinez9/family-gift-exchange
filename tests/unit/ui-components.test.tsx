@@ -16,6 +16,7 @@ import {KnitMotif} from "@/components/ui/knit/knit-motif";
 import {StitchedText} from "@/components/ui/knit/stitched-text";
 import {ModeBanner} from "@/components/ui/mode-banner";
 import {ClaimCard} from "@/components/ui/motion/claim";
+import {EdgeSwipeBack} from "@/components/ui/motion/edge-swipe";
 import {HAPTIC_PATTERNS, haptic} from "@/components/ui/motion/haptic";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {UnravelReveal, type RevealLabels} from "@/components/ui/motion/unravel-reveal";
@@ -26,11 +27,13 @@ import {StepBar} from "@/components/ui/step-bar";
 import {TabBar, TabBarHost, TabRoot} from "@/components/ui/tab-bar";
 import {ToastHost, dismissToast, toast} from "@/components/ui/toast";
 
+const {push} = vi.hoisted(() => ({push: vi.fn()}));
+
 vi.mock("@/i18n/navigation", () => ({
   Link: ({href, children, transitionTypes, ...rest}: {href: string; children: ReactNode; transitionTypes?: string[]}) => (
     <a href={href} data-transition={transitionTypes?.join(" ")} {...rest}>{children}</a>
   ),
-  useRouter: () => ({push: vi.fn()}),
+  useRouter: () => ({push}),
 }));
 
 const html = (node: ReactNode) => renderToStaticMarkup(<>{node}</>);
@@ -39,6 +42,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  push.mockReset();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   window.matchMedia = vi.fn().mockReturnValue({matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn()});
   // jsdom has no Web Animations API
@@ -55,6 +59,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -267,6 +272,51 @@ describe("PIN, steps, countdown and blocks", () => {
 });
 
 describe("motion and feedback", () => {
+  it.each([
+    ["pointercancel", 160, 1000, false],
+    ["pointercancel", 40, 20, false],
+    ["pointerup", 160, 1000, true],
+    ["pointerup", 40, 20, true],
+    ["pointerup", 40, 1000, false],
+  ] as const)("settles a %s back gesture of %ipx over %ims (navigate: %s)", async (endType, distance, elapsed, navigates) => {
+    await render(<EdgeSwipeBack href="/family"><p>Your person</p></EdgeSwipeBack>);
+    const page = container.querySelector<HTMLDivElement>("[data-edge-swipe]")!;
+    const shade = page.previousElementSibling as HTMLDivElement;
+    Object.defineProperty(page, "setPointerCapture", {value: vi.fn()});
+    Object.defineProperty(page, "offsetWidth", {value: 390});
+    const animations: Array<{onfinish: (() => void) | null}> = [];
+    const animate = vi.fn(() => {
+      const animation = {onfinish: null as (() => void) | null};
+      animations.push(animation);
+      return animation as unknown as Animation;
+    });
+    page.animate = animate;
+    shade.animate = animate;
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const pointer = (type: string, clientX: number) => page.dispatchEvent(new PointerEvent(type, {
+      pointerId: 1, button: 0, clientX, clientY: 100, bubbles: true,
+    }));
+
+    pointer("pointerdown", 10);
+    pointer("pointermove", 10 + distance);
+    expect(page.style.transform).toBe(`translateX(${distance}px)`);
+    expect(shade.style.display).toBe("block");
+    clock.mockReturnValue(elapsed);
+    pointer(endType, 10 + distance);
+    expect(push).not.toHaveBeenCalled();
+    expect(animations.length).toBeGreaterThan(0);
+    animations.forEach((animation) => animation.onfinish?.());
+
+    if (navigates) {
+      expect(push).toHaveBeenCalledOnce();
+      expect(push).toHaveBeenCalledWith("/family");
+    } else {
+      expect(push).not.toHaveBeenCalled();
+      expect(page.style.transform).toBe("");
+      expect(shade.style.display).toBe("none");
+    }
+  });
+
   it("vibrates where the phone can, and does nothing where it cannot", () => {
     const vibrate = vi.fn().mockReturnValue(true);
     vi.stubGlobal("navigator", {vibrate});
@@ -331,6 +381,7 @@ describe("motion and feedback", () => {
     const tap = [...container.querySelectorAll("button")].find((button) => button.textContent === "Or tap here to open it")!;
     await act(async () => tap.click());
     expect(container.querySelector("[data-reveal]")?.getAttribute("data-reveal")).toBe("revealed");
+    expect(progress.getAttribute("aria-valuenow")).toBe("100");
     expect(container.querySelectorAll(".fge-nm[data-on='true']").length).toBeGreaterThan(0);
     expect(container.textContent).toContain("You're giving to BETO");
   });

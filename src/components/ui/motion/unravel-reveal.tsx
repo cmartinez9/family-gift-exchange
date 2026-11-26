@@ -160,6 +160,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   const finish = useCallback((instant: boolean) => {
     const s = state.current;
     s.done = true;
+    progress.current?.setAttribute("aria-valuenow", "100");
     cancelAnimationFrame(frames.current.yarn);
     setPhase("revealed");
     setAnnounce(`${labels.lead} ${name}`);
