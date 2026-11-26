@@ -136,8 +136,8 @@ async function renderAccountPage() {
   const messages = signedIn.locale === "es" ? (await import("../../messages/es.json")).default
     : (await import("../../messages/en.json")).default;
   const stream = await renderToReadableStream(createElement(NextIntlClientProvider, {
-    locale: signedIn.locale, messages, children: await AccountPage({searchParams: Promise.resolve({})}),
-  }));
+    locale: signedIn.locale, messages,
+  } as Parameters<typeof NextIntlClientProvider>[0], await AccountPage({searchParams: Promise.resolve({})})));
   return new Response(stream).text();
 }
 
