@@ -4,8 +4,8 @@ import sharp from "sharp";
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
 import {withFamily} from "../../src/server/db/client";
 import {signInDevice} from "../../src/server/auth/access";
-import {actFor, disputeSession} from "../../src/server/auth/security";
-import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
+import {actFor, disputeSession, endSessions} from "../../src/server/auth/security";
+import {createSession, digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {sessions} from "../../src/server/auth/schema";
 import {exchanges, families, items, people} from "../../src/server/db/schema";
 import {
@@ -15,6 +15,7 @@ import {
 import {claimItem, getGettingList, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 import type {ListPhotoStorage} from "../../src/server/lists/photo-storage";
 import type {ListViewer} from "../../src/server/lists/access";
+import type {LinkPreview} from "../../src/server/lists/link-preview";
 
 vi.mock("server-only", () => ({}));
 
@@ -35,6 +36,7 @@ function viewer(personId: string, actingAs = personId, family = familyId) {
 
 const organizer = viewer(organizerId);
 const helper = viewer(helperId, lookedAfterId);
+const helperSelf = viewer(helperId);
 const owner = viewer(ownerId);
 const buyer = viewer(buyerId);
 const outsider = viewer(outsiderId, outsiderId, otherFamilyId);
@@ -59,7 +61,7 @@ beforeAll(async () => {
       {id: largeListPersonId, familyId, displayName: "Snowdrop"},
     ]);
     await tx.insert(people).values({id: lookedAfterId, familyId, displayName: "Acornkin", helperId});
-    for (const actor of [organizer, helper, owner, buyer, largeListActor]) {
+    for (const actor of [organizer, helper, helperSelf, owner, buyer, largeListActor]) {
       const session = await signInDevice(tx, familyId, actor.personId, {hash: digest(secret()), kind: "iphone", network: null}, new Date());
       actor.sessionId = session.id;
       if (actor.actingAs !== actor.personId) {
@@ -93,7 +95,7 @@ describe("wishlist access and claims", () => {
     await expect(addWritten({...buyer, actingAs: lookedAfterId}, lookedAfterId, "Invalid helper")).rejects.toMatchObject({
       code: "forbidden",
     });
-    await expect(addWritten({...helper, actingAs: helperId}, lookedAfterId, "Switch to helping first")).rejects.toMatchObject({
+    await expect(addWritten(helperSelf, lookedAfterId, "Switch to helping first")).rejects.toMatchObject({
       code: "forbidden",
     });
     const item = await addWritten(helper, lookedAfterId, "Model train");
@@ -145,7 +147,7 @@ describe("wishlist access and claims", () => {
     await Promise.all([setClaimTick(winner, item.id, "bought", true), setClaimTick(winner, item.id, "wrapped", true)]);
     expect(await getGettingList(winner)).toContainEqual({
       itemId: item.id, title: item.title, ownerId, ownerName: "Frostpaw", kind: item.kind, price: item.price,
-      store: item.store, hasPhoto: false, bought: true, wrapped: true,
+      store: item.store, hasPhoto: false, updatedAt: item.updatedAt, bought: true, wrapped: true,
     });
     expect((await getGettingList(other)).some((entry) => entry.itemId === item.id)).toBe(false);
     await undoClaim(winner, item.id);
@@ -162,16 +164,16 @@ describe("wishlist access and claims", () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await expect(editListItem(owner, ownerId, item.id, {note: "Any shade"}, {events: failingEvents}))
-        .resolves.toEqual({...item, note: "Any shade"});
+        .resolves.toEqual({...item, note: "Any shade", updatedAt: expect.any(Date)});
       expect(warning).toHaveBeenCalledOnce();
     } finally {
       warning.mockRestore();
     }
     expect((await getWishlist(owner, ownerId)).items.find(({id}) => id === item.id))
-      .toEqual({...item, note: "Any shade"});
+      .toEqual({...item, note: "Any shade", updatedAt: expect.any(Date)});
 
     const edited = await editListItem(owner, ownerId, item.id, {note: "Any color"}, {events});
-    expect(edited).toEqual({...item, note: "Any color"});
+    expect(edited).toEqual({...item, note: "Any color", updatedAt: expect.any(Date)});
     await moveListItem(owner, ownerId, item.id, "up");
     await removeListItem(owner, ownerId, item.id, {events});
     expect(events.claimedItemChanged).toHaveBeenCalledTimes(2);
@@ -263,6 +265,35 @@ describe("live list authorization", () => {
 });
 
 describe("list editing", () => {
+  it.each(["add", "edit"] as const)("rejects an in-flight %s after its session is revoked", async (operation) => {
+    const session = await withFamily(familyId, (tx) => createSession(tx, familyId, ownerId, randomUUID(), "test", new Date()));
+    const actor = {...owner, sessionId: session.id};
+    const preview: LinkPreview = {url: "https://gift.example.com/new", title: "New gift", price: null, store: "gift.example.com", icon: "store"};
+    const existing = operation === "edit"
+      ? await addListItem(actor, ownerId, {kind: "link", link: "gift.example.com/old"}, {
+        resolve: async () => ({...preview, url: "https://gift.example.com/old"}),
+      })
+      : null;
+    const before = await getWishlist(owner, ownerId);
+    const ready = Promise.withResolvers<void>();
+    const resumed = Promise.withResolvers<LinkPreview>();
+    const services = {resolve: async () => {
+      ready.resolve();
+      return resumed.promise;
+    }};
+    const saving = existing
+      ? editListItem(actor, ownerId, existing.id, {link: preview.url}, services)
+      : addListItem(actor, ownerId, {kind: "link", link: preview.url}, services);
+    await ready.promise;
+    try {
+      await withFamily(familyId, (tx) => endSessions(tx, actor, new Date(), false));
+    } finally {
+      resumed.resolve(preview);
+    }
+    await expect(saving).rejects.toMatchObject({code: "forbidden"});
+    expect(await getWishlist(owner, ownerId)).toEqual(before);
+  });
+
   it("normalizes item fields and reorders using the saved list order", async () => {
     const lower = await addListItem(helper, lookedAfterId, {kind: "note", title: "  Blue mittens  ", price: "10,25"});
     const upper = await addWritten(helper, lookedAfterId, "Knitting book");

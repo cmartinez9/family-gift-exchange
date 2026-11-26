@@ -2,7 +2,7 @@
 
 import {useActionState, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
-import {Button, TextButton, type ButtonVariant} from "@/components/ui/button";
+import {Button} from "@/components/ui/button";
 import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -22,14 +22,11 @@ export function FormFeedback({error, className}: {error?: Feedback; className?: 
 }
 
 export function ListForm({
-  action, label, variant = "card", text = false, icon, className, children,
+  action, label, variant = "card", className, children,
 }: {
   action: (state: FormState, form: FormData) => Promise<FormState>;
   label: string;
-  variant?: ButtonVariant;
-  /** An underlined text button instead of a pill. */
-  text?: boolean;
-  icon?: Parameters<typeof Button>[0]["icon"];
+  variant?: "card" | "outline";
   className?: string;
   children?: ReactNode;
 }) {
@@ -41,9 +38,7 @@ export function ListForm({
   return (
     <form action={dispatch} className={cn("flex flex-col gap-3", className)}>
       {children}
-      {text
-        ? <TextButton type="submit" disabled={pending} className="-ml-3 self-start">{pending ? t("saving") : label}</TextButton>
-        : <Button type="submit" variant={variant} icon={icon} disabled={pending}>{pending ? t("saving") : label}</Button>}
+      <Button type="submit" variant={variant} disabled={pending}>{pending ? t("saving") : label}</Button>
       <FormFeedback error={state.error} />
     </form>
   );

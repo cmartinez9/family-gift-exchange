@@ -37,7 +37,7 @@ export default async function GettingPage() {
               <li key={item.itemId}>
                 <article aria-label={item.title}>
                 <ItemCard tone={yours ? "mine" : "info"} titleAs="h2"
-                  picture={<ItemThumb item={{kind: item.kind, photo: item.hasPhoto ? photoPath(locale, item.itemId) : undefined}} />}
+                  picture={<ItemThumb item={{kind: item.kind, photo: item.hasPhoto ? photoPath(locale, item.itemId, item.updatedAt) : undefined}} />}
                   title={<span className="break-words">{item.title}</span>}
                   store={<AppLink href={`/lists/${item.ownerId}`} transition="push" className="underline decoration-1 underline-offset-4">{forWhom}</AppLink>}
                   price={item.price !== null ? format.number(Number(item.price), {style: "currency", currency: "USD"}) : undefined}

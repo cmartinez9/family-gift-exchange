@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback, useEffect, useRef, useState, useTransition} from "react";
+import {useCallback, useOptimistic, useState, useTransition} from "react";
 import {useFormatter, useTranslations} from "next-intl";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
@@ -42,34 +42,12 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const [editing, setEditing] = useState<string | null>(null);
   const [round, setRound] = useState(0);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const [stars, setStars] = useState<Readonly<Record<string, boolean>>>({});
+  const [optimisticItems, setStar] = useOptimistic(items, (current, change: {id: string; starred: boolean}) =>
+    current.map((item) => item.id === change.id ? {...item, starred: change.starred} : item));
   const [, startTransition] = useTransition();
-  const pending = useRef(new Map<string, number>());
 
-  // a removal waiting out its Undo still happens if you leave the list or put the phone away
-  useEffect(() => {
-    const waiting = pending.current;
-    const flush = () => {
-      for (const [itemId, timer] of waiting) {
-        window.clearTimeout(timer);
-        void removeItem(ownerId, itemId);
-      }
-      waiting.clear();
-    };
-    const hide = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    document.addEventListener("visibilitychange", hide);
-    window.addEventListener("pagehide", flush);
-    return () => {
-      document.removeEventListener("visibilitychange", hide);
-      window.removeEventListener("pagehide", flush);
-      flush();
-    };
-  }, [ownerId]);
-
-  const shown = items.filter((item) => !hidden.has(item.id));
-  const editingItem = items.find((item) => item.id === editing);
+  const shown = optimisticItems.filter((item) => !hidden.has(item.id));
+  const editingItem = optimisticItems.find((item) => item.id === editing);
   const goldId = shown.find(missesPicture)?.id;
   const editHref = (itemId: string) => `/lists/${ownerId}/items/${itemId}/edit`;
   const open = (itemId: string) => {
@@ -82,7 +60,6 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
     setHidden((current) => new Set(current).add(item.id));
     haptic("soft");
     const commit = window.setTimeout(() => {
-      pending.current.delete(item.id);
       void removeItem(ownerId, item.id).then((result) => {
         if (!result.error) return;
         setHidden((current) => {
@@ -93,13 +70,11 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
         toast({message: t(`feedback.${result.error}`), icon: "alert"});
       });
     }, DURATION.toastStayUndo + 300);
-    pending.current.set(item.id, commit);
     toast({
       message: t("tookOff", {title: item.title}),
       icon: "undo",
       undo: () => {
         window.clearTimeout(commit);
-        pending.current.delete(item.id);
         setHidden((current) => {
           const next = new Set(current);
           next.delete(item.id);
@@ -111,11 +86,10 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
 
   const star = (item: ListItemView, on: boolean) => {
     haptic("tick");
-    setStars((current) => ({...current, [item.id]: on}));
     startTransition(async () => {
+      setStar({id: item.id, starred: on});
       const result = await setItemStar(ownerId, item.id, on);
       if (result.error) {
-        setStars((current) => ({...current, [item.id]: !on}));
         toast({message: t(`feedback.${result.error}`), icon: "alert"});
       }
     });
@@ -173,7 +147,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
         <KnitIn as="ul" className="flex flex-col gap-card-gap">
           {shown.map((item) => {
             const gold = item.id === goldId;
-            const starred = stars[item.id] ?? item.starred;
+            const starred = item.starred;
             return (
               <li key={item.id}>
                 <article aria-label={item.title}>
@@ -215,7 +189,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
       <Sheet open={Boolean(editingItem)} onClose={() => setEditing(null)} title={t("editItem")} closeLabel={closeLabel}>
         {editingItem && (
           <ItemForm key={`${editingItem.id}-${round}`} ownerId={ownerId} kind={editingItem.kind as ItemKind} mode="sheet"
-            initial={{...editingItem, starred: stars[editingItem.id] ?? editingItem.starred}}
+            initial={editingItem}
             onSaved={() => {
               setEditing(null);
               toast(t("saved"));

@@ -15,10 +15,11 @@ import {ItemThumb, type ListItemView} from "../item-view";
  * dyes the card pine from your thumb and hangs a knitted tag on it; Undo lifts the tag. If someone else
  * got there a second first, the card turns rose and says so in words.
  */
-export function ClaimItem({actingAs, item, ownerName, budget}: {
+export function ClaimItem({actingAs, item, ownerName, budget, canClaim}: {
   actingAs: string;
   item: ListItemView;
   ownerName: string;
+  canClaim: boolean;
   /** Your person's budget, for the measure under each price. */
   budget?: string | null;
 }) {
@@ -64,7 +65,9 @@ export function ClaimItem({actingAs, item, ownerName, budget}: {
   const wants = item.starred ? <WantsLine>{t("wants", {name: ownerName})}</WantsLine> : null;
 
   let card: ReactNode;
-  if (late || item.claim === "someone") {
+  if (!canClaim) {
+    card = <ItemCard {...common} details={wants} />;
+  } else if (late || item.claim === "someone") {
     card = (
       <ItemCard tone="taken" {...common}
         details={<>{measure}<StatusLine>{late ? t("justGot") : t("someone")}</StatusLine></>}

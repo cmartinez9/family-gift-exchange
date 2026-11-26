@@ -13,18 +13,11 @@ import type {Viewer} from "@/server/auth";
 import {getListExchangeCard, listFamilyWishlists} from "@/server/lists";
 import {getGettingList} from "@/server/lists/claims";
 import {listNotifications} from "@/server/messages/inbox";
+import {daysUntilInExchangeCalendar} from "@/server/messages/calendar";
 import {getListRecipient} from "@/server/lists/my-person";
 import {tabHrefs} from "../lists/tabs";
 import {InstallCard} from "./install-card";
 import {OfflineNotice} from "./offline-notice";
-
-const DAY = 86_400_000;
-
-/** Whole days from today (UTC) to a gift day stored as a date. */
-function daysUntil(giftDay: string, now: Date) {
-  const [year, month, day] = giftDay.split("-").map(Number);
-  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / DAY);
-}
 
 /**
  * Home: the season and you at the top, the stitched countdown, your person's pass first, then at most one
@@ -42,7 +35,7 @@ export async function HomeScreen({viewer}: {viewer: Viewer}) {
   const helped = members.filter(({helperId}) => helperId === viewer.personId);
   const now = new Date();
   const season = (exchange?.name ?? t("season", {year: now.getUTCFullYear()})).split(/\s+/);
-  const days = exchange?.giftDay ? daysUntil(exchange.giftDay, now) : null;
+  const days = exchange?.giftDay ? daysUntilInExchangeCalendar(exchange.giftDay, now) : null;
   const giftDay = exchange?.giftDay ? new Date(`${exchange.giftDay}T00:00:00Z`) : null;
   const line = giftDay && [
     format.dateTime(giftDay, {weekday: "long", month: "short", day: "numeric", timeZone: "UTC"}),

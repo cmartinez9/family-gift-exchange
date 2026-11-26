@@ -32,7 +32,7 @@ export default async function EditItemPage({params}: {params: Promise<{personId:
         <Card>
           <ItemForm ownerId={list.owner.id} kind={item.kind} initial={{
             id: item.id, title: item.title, note: item.note, price: item.price, starred: item.starred, url: item.url,
-            store: item.store, photo: item.hasPhoto ? photoPath(locale, item.id) : undefined,
+            store: item.store, photo: item.hasPhoto ? photoPath(locale, item.id, item.updatedAt) : undefined,
           }} />
         </Card>
         <ListForm action={itemCommand.bind(null, list.owner.id, item.id, "delete")} label={t("deleteItem")} variant="outline" />

@@ -67,7 +67,7 @@ export default async function PersonListPage({params, searchParams}: {
           : (
             <KnitIn as="ul" className="flex flex-col gap-card-gap">
               {items.map((item) => (
-                <li key={item.id}><ClaimItem actingAs={viewer.actingAs} item={item} ownerName={list.owner.name} budget={budget} /></li>
+                <li key={item.id}><ClaimItem actingAs={viewer.actingAs} item={item} ownerName={list.owner.name} budget={budget} canClaim={list.canClaim} /></li>
               ))}
             </KnitIn>
           )}
