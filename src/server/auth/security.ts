@@ -1,4 +1,4 @@
-import {and, asc, desc, eq, gte, inArray, isNull, ne, or, sql} from "drizzle-orm";
+import {and, asc, desc, eq, gt, gte, inArray, isNull, ne, or, sql} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 import {activePerson, lockFamily} from "./access";
@@ -46,6 +46,55 @@ export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Da
   return true;
 }
 
+/**
+ * Your phones (11.3): sign out one other phone. Only that session ends, and that phone is no longer
+ * remembered, so signing in there again is a new phone. This phone, the person's other phones, their
+ * Face ID and their PIN are untouched. Refuses this phone: "Sign out" on You does that.
+ */
+export async function signOutDevice(tx: FamilyTransaction, viewer: Viewer, targetId: string, now: Date) {
+  const {familyId, personId, sessionId} = viewer;
+  await lockFamily(tx, familyId);
+  if (!await revalidateViewer(tx, viewer) || targetId === sessionId) return null;
+  const [target] = await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, targetId),
+    isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
+  )).returning({deviceHash: sessions.deviceHash, deviceKind: sessions.deviceKind});
+  if (!target) return null;
+  // that phone's earlier sessions would otherwise still vouch for it
+  await tx.update(sessions).set({trusted: false}).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, target.deviceHash),
+    ne(sessions.id, sessionId),
+  ));
+  await tx.insert(authEvents).values({familyId, personId, sessionId, kind: "deviceSignedOut", deviceKind: target.deviceKind, at: now});
+  return {deviceKind: target.deviceKind};
+}
+
+/**
+ * The Face ID switch (11.1), off: removes this phone's passkey for this person, the one enrolled here
+ * and the one this session signed in with. Other phones' passkeys, every session and the PIN stay.
+ * Refused while the PIN cannot sign in, so turning it off never leaves the person without a way back.
+ */
+export async function turnOffFaceId(tx: FamilyTransaction, viewer: Viewer, now: Date) {
+  const {familyId, personId, sessionId} = viewer;
+  await lockFamily(tx, familyId);
+  const current = await revalidateViewer(tx, viewer);
+  if (!current) return {error: "unavailable"} as const;
+  const person = await activePerson(tx, familyId, personId);
+  const [pin] = await tx.select({pinHash: pinCredentials.pinHash}).from(pinCredentials)
+    .where(and(eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId)));
+  if (!pin?.pinHash || person?.needsNewKey) return {error: "faceOnlyWay"} as const;
+  const [session] = await tx.select({passkeyId: sessions.passkeyId, deviceKind: sessions.deviceKind}).from(sessions)
+    .where(and(eq(sessions.familyId, familyId), eq(sessions.id, sessionId)));
+  const removed = await tx.update(passkeys).set({revokedAt: now}).where(and(
+    eq(passkeys.familyId, familyId), eq(passkeys.personId, personId), isNull(passkeys.revokedAt),
+    or(eq(passkeys.deviceHash, current.deviceHash), session?.passkeyId ? eq(passkeys.id, session.passkeyId) : undefined),
+  )).returning({id: passkeys.id});
+  if (removed.length) {
+    await tx.insert(authEvents).values({familyId, personId, sessionId, kind: "faceIdOff", deviceKind: session?.deviceKind ?? null, at: now});
+  }
+  return {credentials: removed.map(({id}) => id)} as const;
+}
+
 export async function disputeSession(tx: FamilyTransaction, viewer: Viewer, targetId: string, now: Date) {
   const {familyId, personId} = viewer;
   await lockFamily(tx, familyId);
@@ -72,7 +121,8 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   if (!await revalidateViewer(tx, viewer)) return false;
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId, at: authEvents.at})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
-  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown") return false;
+  if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown"
+    || event.kind === "deviceSignedOut" || event.kind === "faceIdOff") return false;
   const person = await activePerson(tx, familyId, personId);
   const organizer = person?.role === "organizer" || person?.role === "co_organizer";
   let targetId = event.sessionId;

@@ -149,7 +149,9 @@
       "resetUsed": "Se usó una llave nueva para reemplazar tu PIN.",
       "keyDisputed": "Alguien con tu llave usada reportó que no fue quien la usó por primera vez.",
       "familyLockdown": "Se cerraron todas las sesiones por seguridad.",
-      "signIn": "Se inició una sesión en este dispositivo."
+      "signIn": "Se inició una sesión en este dispositivo.",
+      "deviceSignedOut": "Se cerró la sesión en un teléfono.",
+      "faceIdOff": "Se desactivó Face ID en un teléfono."
     },
     "feedback": {
       "pinLength": "Escribe cuatro dígitos.",
@@ -184,7 +186,8 @@
       "needsNewKey": "Esta cuenta necesita una llave privada nueva.",
       "operatorRecovery": "Pídele una llave nueva de organizador a la persona que administra esta aplicación.",
       "previewAgain": "Vuelve a verificar tu código antes de continuar.",
-      "repairRequired": "Se guardó tu reporte. El sorteo sigue bloqueado por seguridad. Inténtalo de nuevo o pídele a un organizador que revise el intercambio y confirme un nuevo sorteo."
+      "repairRequired": "Se guardó tu reporte. El sorteo sigue bloqueado por seguridad. Inténtalo de nuevo o pídele a un organizador que revise el intercambio y confirme un nuevo sorteo.",
+      "faceOnlyWay": "Face ID sigue activado por ahora. Es tu forma de volver a entrar hasta que tengas un PIN otra vez."
     },
     "revealActivity": "Tu persona se abrió en otros dispositivos",
     "noRevealActivity": "Tu persona no se ha abierto desde otro inicio de sesión.",
@@ -802,7 +805,9 @@
       "homeScreen": "Ponlo en tu pantalla de inicio",
       "signOut": "Cerrar sesión",
       "helping": "Estás ayudando a {name}",
-      "stopHelping": "Volver a mí"
+      "stopHelping": "Volver a mí",
+      "faceTurnedOff": "Face ID está desactivado en este {device}. Tu PIN sigue funcionando.",
+      "faceTurnedOn": "Face ID está activado en este {device}"
     },
     "notices": {
       "title": "Avisos",
@@ -823,13 +828,17 @@
         "resetSent": "Se mandó tu llave nueva",
         "resetUsed": "Tu PIN se cambió con una llave nueva",
         "keyDisputed": "Alguien dijo que no abrió tu llave primero",
-        "familyLockdown": "Se cerró la sesión de todos por seguridad"
+        "familyLockdown": "Se cerró la sesión de todos por seguridad",
+        "deviceSignedOut": "{device} ya no tiene tu sesión abierta",
+        "faceIdOff": "Se desactivó Face ID en {device}"
       },
       "sub": {
         "pinLocked": "Tu PIN descansó 15 minutos",
         "newDevicesLocked": "Usa Face ID o un teléfono que ya usaste",
         "resetPrepared": "Porque pediste un PIN nuevo",
-        "familyLockdown": "Tu lista y tu persona están a salvo"
+        "familyLockdown": "Tu lista y tu persona están a salvo",
+        "deviceSignedOut": "Desde Tus teléfonos",
+        "faceIdOff": "Tu PIN sigue funcionando"
       },
       "device": {
         "iphone": "un iPhone",
@@ -873,14 +882,18 @@
       "lead": "Donde tienes la sesión de {name} abierta.",
       "thisOne": "Este",
       "now": "Ahora",
-      "since": "Entró el {date}",
       "faceOn": "Face ID activado",
-      "tip": "¿No reconoces uno? Abre Avisos y toca \"No fui yo\".",
+      "tip": "¿Perdiste uno o lo prestaste? Cierra la sesión solo en ese. ¿No reconoces uno? Abre Avisos y toca \"No fui yo\".",
       "signOutAll": "Cerrar sesión en todos",
       "sheetTitle": "¿Cerrar sesión en todos?",
       "sheetAll": "Se cierra la sesión de {name} en cada teléfono y iPad, también en este.",
       "sheetSafe": "Vuelve a entrar con tu PIN o Face ID. Tu lista y tu persona están a salvo.",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "thisDevice": "{kind, select, iphone {Este iPhone} ipad {Este iPad} android {Este dispositivo Android} computer {Esta computadora} other {Este dispositivo}}",
+      "lastUsed": "Último uso: {date}",
+      "signOut": "Cerrar sesión",
+      "signOutLabel": "{kind, select, iphone {Cerrar sesión en el iPhone} ipad {Cerrar sesión en el iPad} android {Cerrar sesión en el dispositivo Android} computer {Cerrar sesión en la computadora} other {Cerrar sesión en el dispositivo}}, {when}",
+      "signedOut": "{kind, select, iphone {Se cerró la sesión en el iPhone} ipad {Se cerró la sesión en el iPad} android {Se cerró la sesión en el dispositivo Android} computer {Se cerró la sesión en la computadora} other {Se cerró la sesión en ese dispositivo}}"
     },
     "activity": {
       "title": "Actividad de la familia",
@@ -891,7 +904,11 @@
       "secondPhone": "Una llave se abrió en un segundo teléfono",
       "secondPhoneSub": "{date} · se reportó",
       "paused": "El intercambio se pausó por seguridad",
-      "none": "Todavía no ha pasado nada."
+      "none": "Todavía no ha pasado nada.",
+      "signedOut": "Se cerró la sesión en un teléfono",
+      "signedOutSub": "{date} · lo hizo su dueño",
+      "faceOff": "Se desactivó Face ID en un teléfono",
+      "faceOffSub": "{date} · su PIN sigue funcionando"
     },
     "language": {
       "title": "Idioma",

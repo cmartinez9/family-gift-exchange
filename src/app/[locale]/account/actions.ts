@@ -6,7 +6,7 @@ import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {requireViewer} from "@/server/auth";
 import {clearSession} from "@/server/auth/request";
-import {actFor, disputeEvent, disputeSession, endSessions} from "@/server/auth/security";
+import {actFor, disputeEvent, disputeSession, endSessions, signOutDevice, turnOffFaceId} from "@/server/auth/security";
 import {revalidateViewer, uuidPattern} from "@/server/auth/session";
 import {lockFamily} from "@/server/auth/access";
 import {people} from "@/server/db/schema";
@@ -32,6 +32,28 @@ export async function signOut(all: boolean): Promise<AuthResult> {
   await clearSession();
   revalidatePath("/", "layout");
   redirect(`/${await getLocale()}/sign-in`);
+}
+
+/** Your phones (11.3): sign out one other phone. This one stays signed in. */
+export async function signOutPhone(sessionId: string): Promise<AuthResult> {
+  if (!uuidPattern.test(sessionId)) return {error: "unavailable"};
+  const viewer = await requireViewer();
+  const done = await withFamily(viewer.familyId, (tx) => signOutDevice(tx, viewer, sessionId, new Date()));
+  if (!done) return {error: "unavailable"};
+  revalidatePath("/[locale]/account", "layout");
+  return {success: done.deviceKind};
+}
+
+/**
+ * The Face ID switch (11.1), off. Returns the credentials it removed, so the phone can be asked to forget
+ * them too. Turning it on is the usual enrollment (`beginFaceId(true)`).
+ */
+export async function faceIdOff(): Promise<AuthResult & {credentials?: string[]}> {
+  const viewer = await requireViewer();
+  const result = await withFamily(viewer.familyId, (tx) => turnOffFaceId(tx, viewer, new Date()));
+  if ("error" in result) return {error: result.error};
+  revalidatePath("/[locale]/account", "layout");
+  return {success: "faceOff", credentials: result.credentials};
 }
 
 export async function reportEvent(eventId: string): Promise<AuthResult> {

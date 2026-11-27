@@ -12,6 +12,8 @@ export const sessions = pgTable("sessions", {
   passkeyId: text("passkey_id"),
   tokenHash: text("token_hash").notNull(),
   createdAt: instant("created_at").defaultNow().notNull(),
+  /** When this session last opened a page, at most a few minutes stale: "Last used" on Your phones. */
+  lastUsedAt: instant("last_used_at"),
   expiresAt: instant("expires_at").notNull(),
   revokedAt: instant("revoked_at"),
   trusted: boolean("trusted").default(true).notNull(),
@@ -146,7 +148,7 @@ export const authEvents = pgTable("auth_events", {
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
     "signIn", "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
-    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed",
+    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "deviceSignedOut", "faceIdOff",
   ]}).notNull(),
   deviceKind: text("device_kind"),
   sessionId: uuid("session_id"),
