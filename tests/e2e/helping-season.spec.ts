@@ -161,7 +161,8 @@ test("refreshes shared helping context when a tab regains focus or visibility", 
     await other.goto("/en/account");
     await other.bringToFront();
     await other.getByRole("button", {name: "Done", exact: true}).click();
-    await expect(other).toHaveURL(/\/en\/account$/);
+    // Done returns to the same URL; wait for the profile switch before refreshing the other tab.
+    await expect(other.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
 
     await helping.bringToFront();
     await helping.evaluate(() => window.dispatchEvent(new Event("focus")));
