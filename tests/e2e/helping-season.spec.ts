@@ -221,9 +221,11 @@ test("rejects stale claim actions after another tab switches the acting profile"
     await expect(switcher).toHaveURL(/\/en\/account$/);
     await reserved.getByRole("button", {name: "Undo mark", exact: true}).click();
     await expect(reserved.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
-    for (const name of ["Bought", "Wrapped"]) {
+    for (const [index, name] of ["Bought", "Wrapped"].entries()) {
       const tick = rosa.getByRole("checkbox", {name, exact: true});
-      await tick.uncheck();
+      // Rejection restores the check, so uncheck()'s unchecked postcondition would race it.
+      await rosa.getByText(name, {exact: true}).click();
+      await expect(rosa.getByRole("main").getByRole("alert")).toHaveCount(index + 1);
       await expect(tick).toBeChecked();
     }
     await expect(rosa.getByRole("main").getByRole("alert")).toHaveText(["You can’t make this change.", "You can’t make this change."]);
@@ -288,6 +290,10 @@ for (const locale of ["en", "es"] as const) {
         await organizer.locator('input[name="budget"]').fill(value);
         await closing.goto(`/en/exchanges/${f.exchangeId}/manage`);
         await closing.getByRole("button", {name: "Close exchange", exact: true}).click();
+        // Let the sheet finish rising before tapping its cancel control in WebKit.
+        await closing.getByRole("dialog").evaluate(async (dialog) => {
+          await Promise.all(dialog.getAnimations({subtree: true}).map((animation) => animation.finished));
+        });
         await closing.getByRole("button", {name: "Not yet", exact: true}).click();
         await expect(closing.getByRole("dialog")).toBeHidden();
         const [stillOpen] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
