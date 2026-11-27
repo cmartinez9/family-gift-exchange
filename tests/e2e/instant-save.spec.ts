@@ -105,7 +105,8 @@ test("a pasted link saves at once and its picture follows without a reload", asy
     await page.goto(`/en/lists/${rosa}/items/new?kind=link`);
     await page.getByLabel(lists.url).fill("https://gifts.invalid/winter/wool-socks");
     const started = Date.now();
-    await page.getByRole("button", {name: lists.saveItem}).click();
+    // Straight to Save, before the field's own preview has had a chance to load
+    await page.getByRole("button", {name: lists.saveItem}).dispatchEvent("click");
     await expect(page.getByRole("status").filter({hasText: lists.added})).toBeVisible();
     expect(Date.now() - started).toBeLessThan(10_000);
     const socks = page.getByRole("article", {name: "wool socks"});
