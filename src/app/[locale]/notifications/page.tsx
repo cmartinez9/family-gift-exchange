@@ -25,6 +25,7 @@ const ICONS: Readonly<Record<Template, IconName>> = {
   "pin-reset-request": "lock",
   "claimed-item-changed": "gift",
   "budget-changed": "tag",
+  "list-nudge": "list",
 };
 
 export default async function NotificationsPage() {
