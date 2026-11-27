@@ -102,7 +102,10 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
       issueKey(tx, organizer, ids[name], "share", process.env.E2E_AUTH_SECRET!, new Date())));
     return `${familyId}~${issued.token}`;
   }
-  return {exchangeId, ids, gifts, open, keyFor, async loadingList() {
+  return {exchangeId, ids, gifts, open, keyFor, async installHome() {
+    await database.db.update(outbox).set({readAt: new Date()}).where(eq(outbox.personId, ids.Christian));
+    return "/";
+  }, async loadingList() {
     await database.db.insert(items).values({familyId, ownerId: ids.Ana, kind: "link", title: "Wool socks", store: "Target",
       position: 0, url: "https://www.target.com/p/wool-socks/-/A-12345",
       preview: {title: "Wool socks", pending: Date.now()}});
@@ -124,7 +127,7 @@ type Messages = (typeof messages)[keyof typeof messages];
 type Screen = {
   name: string; who: Name | "guest"; family?: "setup" | "drawn";
   path: (f: Family) => string | Promise<string>;
-  scope?: string;
+  options?: BrowserContextOptions;
   /** What to do once the page is open, such as opening a sheet. */
   then?: (page: Page, t: Messages) => Promise<void>;
   afterLayout?: (page: Page, t: Messages) => Promise<void>;
@@ -148,9 +151,33 @@ async function undoRemoval(page: Page, t: Messages, title: string) {
   await expect(page.getByRole("article", {name: title, exact: true})).toBeVisible();
 }
 
+async function openInstall(page: Page, t: Messages, phone: "iphone" | "android") {
+  await page.getByRole("button", {name: t.homeScreen.installButton, exact: true}).click();
+  const title = phone === "iphone" ? t.homeScreen.iphoneTitle : t.homeScreen.androidTitle;
+  if (!await page.getByRole("dialog", {name: title, exact: true}).count()) {
+    await page.getByRole("button", {name: phone === "iphone" ? t.homeScreen.haveIphone : t.homeScreen.haveAndroid, exact: true}).click();
+  }
+  await expect(page.getByRole("dialog", {name: title, exact: true})).toBeVisible();
+}
+
 const screens: Screen[] = [
   {name: "home", who: "Christian", path: () => "/"},
   {name: "home-member", who: "Rosa", path: () => "/"},
+  {name: "home-install", who: "Christian", path: (f) => f.installHome(), then: async (page, t) => {
+    await expect(page.getByRole("heading", {name: t.homeScreen.installTitle, exact: true})).toBeVisible();
+  }},
+  {name: "home-install-iphone", who: "Christian", path: (f) => f.installHome(), then: async (page, t) => {
+    await openInstall(page, t, "iphone");
+  }},
+  {name: "home-install-android", who: "Christian", path: (f) => f.installHome(), then: async (page, t) => {
+    await openInstall(page, t, "android");
+  }},
+  {name: "home-install-in-app", who: "Christian", path: (f) => f.installHome(), options: {
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WhatsApp/2.26.0",
+  }, then: async (page, t) => {
+    await openInstall(page, t, "iphone");
+    await expect(page.getByText(t.homeScreen.inAppWarning, {exact: true})).toBeVisible();
+  }},
   {name: "my-list", who: "Christian", path: (f) => `/lists/${f.ids.Christian}`},
   {name: "empty-wishlist", who: "Beto", path: (f) => `/lists/${f.ids.Beto}`, then: async (page, t) => {
     await expect(page.getByRole("heading", {name: t.lists.emptyTitle, exact: true})).toBeVisible();
@@ -184,6 +211,48 @@ const screens: Screen[] = [
     await expect(page.getByRole("dialog", {name: t.lists.addSomething})).toBeVisible();
   }},
   {name: "my-profile", who: "Christian", path: (f) => `/lists/${f.ids.Christian}/profile`},
+  {name: "profile-size-chips", who: "Christian", path: (f) => `/lists/${f.ids.Christian}/profile`, then: async (page, t) => {
+    await page.evaluate(() => document.fonts.ready);
+    for (const name of [t.lists.size.tops, t.lists.size.bottoms]) {
+      const group = page.getByRole("group", {name, exact: true});
+      await group.getByText("2XL", {exact: true}).click();
+      await expect(group.getByRole("radio", {name: "2XL", exact: true})).toBeChecked();
+      const labels = await group.locator("label").evaluateAll((elements) => elements.map((element) => {
+        const text = [...element.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())!;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const glyphs = range.getBoundingClientRect(), box = element.getBoundingClientRect();
+        return {left: glyphs.left - box.left, right: box.right - glyphs.right};
+      }));
+      expect(labels).toHaveLength(6);
+      for (const label of labels) {
+        expect(label.left).toBeGreaterThanOrEqual(-0.5);
+        expect(label.right).toBeGreaterThanOrEqual(-0.5);
+      }
+    }
+  }},
+  {name: "profile-waist-and-length", who: "Beto", path: (f) => `/lists/${f.ids.Beto}/profile`, then: async (page, t) => {
+    await page.getByRole("button", {name: t.lists.waistAndLength, exact: true}).click();
+    await page.getByLabel(t.lists.size.waist, {exact: true}).fill("32");
+    await page.getByLabel(t.lists.size.length, {exact: true}).fill("30");
+    const saved = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/profile"));
+    await page.getByLabel(t.lists.size.length, {exact: true}).blur();
+    await saved;
+    await expect(page.getByRole("status").filter({hasText: t.lists.saved})).toBeVisible();
+  }},
+  {name: "profile-other-sizes", who: "Beto", path: (f) => `/lists/${f.ids.Beto}/profile`, then: async (page, t) => {
+    await page.getByRole("button", {name: t.lists.otherSize, exact: true}).first().click();
+    await page.getByLabel(t.lists.size.tops, {exact: true}).fill("Kids 12");
+    await page.getByRole("button", {name: t.lists.otherSize, exact: true}).click();
+    await page.getByLabel(t.lists.size.bottoms, {exact: true}).fill("Kids 10");
+    await page.getByText(t.lists.moreSizes, {exact: true}).click();
+    await expect(page.getByLabel(t.lists.size.hat, {exact: true})).toBeVisible();
+  }},
+  {name: "profile-no-clothes", who: "Beto", path: (f) => `/lists/${f.ids.Beto}/profile`, then: async (page, t) => {
+    await page.getByRole("switch", {name: t.lists.noClothes, exact: true}).click();
+    await expect(page.getByRole("switch", {name: t.lists.noClothes, exact: true})).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("status").filter({hasText: t.lists.saved})).toBeVisible();
+  }},
   {name: "profile-shoe-stepper", who: "Christian", path: (f) => `/lists/${f.ids.Christian}/profile`, then: async (page, t) => {
     await page.getByRole("combobox", {name: t.lists.size.shoeSystem, exact: true}).selectOption("us-women");
     await page.getByRole("button", {name: t.lists.shoeBigger, exact: true}).click();
@@ -227,8 +296,41 @@ const screens: Screen[] = [
   {name: "preview", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/preview/${f.ids.Rosa}`},
   {name: "practice", who: "Christian", path: () => "/exchanges/practice"},
   {name: "welcome-sizes", who: "Christian", path: () => "/welcome/sizes"},
+  {name: "welcome-no-clothes", who: "Beto", path: () => "/welcome/sizes", then: async (page, t) => {
+    const toggle = page.getByRole("switch", {name: t.getIn.sizes.noClothes, exact: true});
+    if (await toggle.getAttribute("aria-checked") === "false") await toggle.click();
+    await expect(page.getByRole("status").filter({hasText: t.getIn.sizes.noClothesDone})).toBeVisible();
+  }},
+  {name: "welcome-shoe-systems", who: "Ana", path: () => "/welcome/sizes", then: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.sizes.systemNone, exact: true}).click();
+    await expect(page.getByRole("dialog", {name: t.getIn.sizes.systemTitle, exact: true})).toBeVisible();
+  }},
+  {name: "welcome-other-shoes", who: "Ana", path: () => "/welcome/sizes", then: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.sizes.systemNone, exact: true}).click();
+    await page.getByRole("dialog").getByText(t.getIn.sizes.system.other, {exact: true}).click();
+    await settle(page);
+    const field = page.getByRole("textbox", {name: t.getIn.sizes.shoes, exact: true});
+    await field.fill("EU 43");
+    await expect(field).toHaveValue("EU 43");
+  }},
   {name: "welcome-list", who: "Christian", path: () => "/welcome/list"},
-  {name: "welcome-link-loading", who: "Christian", path: () => "/welcome/list", scope: ".fge-card", then: async (page, t) => {
+  {name: "welcome-photo", who: "Christian", path: () => "/welcome/list", then: async (page, t) => {
+    await page.locator('input[type="file"]').setInputFiles("public/gift-192.png");
+    await expect(page.getByRole("img", {name: t.getIn.add.photoAlt, exact: true})).toBeVisible();
+    await expect(page.getByRole("button", {name: t.getIn.add.photoChange, exact: true})).toBeEnabled();
+    await page.getByLabel(t.getIn.add.photoTitle, {exact: true}).fill("Wool scarf");
+  }},
+  {name: "welcome-link-empty", who: "Christian", path: () => "/welcome/list", then: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
+    await expect(page.getByLabel(t.getIn.paste.field, {exact: true})).toHaveValue("");
+  }},
+  {name: "welcome-link-failed", who: "Christian", path: () => "/welcome/list", options: {serviceWorkers: "block"}, then: async (page, t) => {
+    await page.route("**/lists/*/link-preview", (route) => route.fulfill({json: {}}));
+    await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
+    await page.getByLabel(t.getIn.paste.field, {exact: true}).fill("https://www.target.com/p/wool-socks/-/A-12345");
+    await expect(page.getByRole("alert").filter({hasText: t.getIn.paste.failed})).toBeVisible();
+  }},
+  {name: "welcome-link-loading", who: "Christian", path: () => "/welcome/list", then: async (page, t) => {
     await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
     await page.clock.install();
     await page.clock.pauseAt(new Date());
@@ -239,15 +341,16 @@ const screens: Screen[] = [
     await page.getByRole("button", {name: t.getIn.paste.clear, exact: true}).click();
     await page.clock.resume();
   }},
-  {name: "welcome-link-preview", who: "Christian", path: () => "/welcome/list", scope: ".fge-card", then: async (page, t) => {
+  {name: "welcome-link-preview", who: "Christian", path: () => "/welcome/list", options: {serviceWorkers: "block"}, then: async (page, t) => {
     await page.route("**/lists/*/link-preview", (route) => route.fulfill({json: {card: {
       url: "https://www.target.com/p/wool-socks/-/A-12345", title: "Wool socks", price: "18.00", store: "Target", icon: "target",
     }}}));
     await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
     await page.getByLabel(t.getIn.paste.field, {exact: true}).fill("https://www.target.com/p/wool-socks/-/A-12345");
+    await expect(page.getByRole("heading", {name: "Wool socks", exact: true})).toBeVisible();
     const want = page.getByRole("button", {name: t.getIn.paste.want, exact: true});
     await expect(want).toHaveAttribute("aria-pressed", "false");
-    expect(await layoutProblems(page, ".fge-card")).toEqual([]);
+    expect(await layoutProblems(page)).toEqual([]);
     await want.click();
     await expect(want).toHaveAttribute("aria-pressed", "true");
     await expect(want).toHaveText(t.getIn.paste.want);
@@ -280,7 +383,7 @@ for (const locale of ["en", "es"] as const) {
     for (const screen of screens) {
       test(`${screen.name} fits the phone`, async () => {
         const f = screen.family === "setup" ? setup : drawn;
-        const page = await f.open(screen.who, {...largest, reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});
+        const page = await f.open(screen.who, {...largest, reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US", ...screen.options});
         try {
           const response = await page.goto(`/${locale}${await screen.path(f)}`);
           expect(response?.ok(), "the screen opens").toBe(true);
@@ -289,7 +392,7 @@ for (const locale of ["en", "es"] as const) {
           const folder = join(process.env.E2E_EVIDENCE_DIR ?? join(process.cwd(), "test-results", "largest-text"), test.info().project.name);
           mkdirSync(folder, {recursive: true});
           await page.screenshot({path: join(folder, `${locale}-${screen.name}.png`), fullPage: true});
-          expect(await layoutProblems(page, screen.scope), "nothing runs off the phone, is cut off, or breaks inside a word").toEqual([]);
+          expect(await layoutProblems(page), "nothing runs off the phone, is cut off, or breaks inside a word").toEqual([]);
           await screen.afterLayout?.(page, messages[locale]);
           expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
         } finally {

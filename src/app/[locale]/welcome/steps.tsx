@@ -148,9 +148,9 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
         </Card>
         {noClothes ? (
           <Card className="fge-drop rounded-item px-5 py-[18px]" role="status">
-            <div className="flex items-center gap-3">
+            <div className={cn("flex items-center gap-3", stackRow)}>
               <Tick done />
-              <p className="text-body">{t("noClothesDone")}</p>
+              <p className={cn("text-body", stackWords)}>{t("noClothesDone")}</p>
             </div>
           </Card>
         ) : (
@@ -193,6 +193,7 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
       </div>
       <Sheet open={systemOpen} onClose={() => setSystemOpen(false)} title={t("systemTitle")} closeLabel={ui("close")}>
         <ChoiceChips legend={t("systemTitle")} legendClassName="sr-only" name="shoeSystem" value={system ?? null}
+          className="max-[299px]:[&>div]:flex-col max-[299px]:[&_label]:h-auto max-[299px]:[&_label]:min-h-12 max-[299px]:[&_label]:py-2.5 max-[299px]:[&_label]:text-center max-[299px]:[&_label]:whitespace-normal"
           options={SHOE_SYSTEMS.map((value) => ({value, label: t(`system.${value}`)}))}
           onChange={changeSystem} />
       </Sheet>
@@ -297,7 +298,7 @@ export function AddStep({ownerId, personOpened = false, replace = false, borrowe
           <div className="flex flex-col gap-3 px-edge pt-5">
             <input type="hidden" name="kind" value="photo" />
             <Card className="flex flex-col gap-3 rounded-item p-4">
-              <div className="flex items-center gap-3.5">
+              <div className="flex items-center gap-3.5 max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-2">
                 {photo && <ItemPicture src={photo.url} alt={t("photoAlt")} size={80} />}
                 <TextButton className="px-0 text-ink" disabled={preparing || pending} onClick={() => camera.current?.click()}>{t("photoChange")}</TextButton>
               </div>
@@ -432,12 +433,12 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
         {card?.ticket && <input type="hidden" name="draft" value={card.ticket} />}
         {want && <input type="hidden" name="starred" value="on" />}
         <div className="flex flex-col gap-3 px-edge pt-4">
-          <div className="flex h-14 items-center gap-2.5 rounded-pill bg-snow-white pr-1 pl-[18px] text-ink">
+          <div className={cn("flex h-14 items-center gap-2.5 rounded-pill bg-snow-white pr-1 pl-[18px] text-ink max-[299px]:h-auto max-[299px]:rounded-[24px] max-[299px]:px-3 max-[299px]:py-3", stackRow)}>
             <Icon name="link" size={22} className="text-muted-ink" />
             <label htmlFor="paste-link" className="sr-only">{t("field")}</label>
             <textarea ref={field} id="paste-link" name="link" rows={1} inputMode="url" autoCapitalize="none" autoComplete="off"
               spellCheck={false} maxLength={3000} value={link} placeholder={t("placeholder")}
-              className="min-w-0 flex-1 resize-none bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink"
+              className={cn("min-w-0 flex-1 resize-none bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink", stackWords)}
               onChange={(event) => change(event.target.value)} />
             {link && <IconButton icon="close" label={t("clear")} className="bg-[#F3EEEC]" iconSize={20} onClick={() => {
               change("");
