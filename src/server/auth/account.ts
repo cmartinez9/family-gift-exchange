@@ -53,7 +53,9 @@ export async function keySender(tx: FamilyTransaction, familyId: string, keyId: 
 export async function peopleOnDevice(tx: FamilyTransaction, familyId: string, deviceHash: string) {
   const rows = await tx.select({personId: sessions.personId, at: sessions.createdAt}).from(sessions)
     .innerJoin(people, and(eq(people.familyId, sessions.familyId), eq(people.id, sessions.personId)))
-    .where(and(eq(sessions.familyId, familyId), eq(sessions.deviceHash, deviceHash), isNull(people.removedAt)))
+    // someone who only borrowed this phone is not remembered by it
+    .where(and(eq(sessions.familyId, familyId), eq(sessions.deviceHash, deviceHash), isNull(people.removedAt),
+      isNull(sessions.lentBySessionId)))
     .orderBy(desc(sessions.createdAt));
   return [...new Set(rows.map(({personId}) => personId))];
 }

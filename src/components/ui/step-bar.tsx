@@ -89,7 +89,7 @@ export function StepBar({id, step, total, progress, name, waitingStep, done = fa
         })}
       </div>
       <p className="flex flex-wrap items-baseline gap-x-1.5 text-body text-snow-white" aria-live="polite">
-        <span className="font-extrabold whitespace-nowrap">{progress}</span>
+        <span className="font-extrabold whitespace-nowrap max-[299px]:whitespace-normal">{progress}</span>
         {name && !done && <><span aria-hidden="true">·</span><span>{name}</span></>}
       </p>
     </div>

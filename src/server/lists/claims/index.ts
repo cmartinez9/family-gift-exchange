@@ -44,10 +44,10 @@ async function withClaimableItem<T>(
   action: (tx: FamilyTransaction, item: Awaited<ReturnType<typeof requireListItem>>) => Promise<T>,
 ) {
   return withFamily(viewer.familyId, async (tx) => {
-    await requireListActor(tx, viewer);
+    const current = await requireListActor(tx, viewer);
     const item = await requireListItem(tx, viewer.familyId, itemId, true);
     await requireListPerson(tx, viewer.familyId, item.ownerId);
-    if (hidesClaims(viewer, item.ownerId)) throw new ListError("forbidden");
+    if (hidesClaims(current, item.ownerId)) throw new ListError("forbidden");
     return action(tx, item);
   });
 }
@@ -127,7 +127,7 @@ function withChanges<T extends ChangeColumns>({seen, itemNote, itemUrl, itemStor
 
 export async function getGettingList(viewer: ListViewer) {
   return withFamily(viewer.familyId, async (tx) => {
-    await requireListActor(tx, viewer);
+    const current = await requireListActor(tx, viewer);
     const rows = await tx.select({
       itemId: items.id, title: items.title, ownerId: items.ownerId, ownerName: people.displayName,
       kind: items.kind, price: items.price, store: items.store, hasPhoto: sql<boolean>`${items.imageKey} is not null`,
@@ -139,7 +139,9 @@ export async function getGettingList(viewer: ListViewer) {
       eq(items.familyId, claims.familyId), eq(items.id, claims.itemId), isNull(items.archivedAt),
     )).innerJoin(people, activeItemOwner()).where(and(
       eq(claims.familyId, viewer.familyId), eq(claims.claimerId, viewer.actingAs),
-      notInArray(items.ownerId, Array.from(new Set([viewer.personId, viewer.actingAs]))),
+      notInArray(items.ownerId, Array.from(new Set([
+        current.personId, current.actingAs, ...(current.borrowed ? [current.borrowed.lenderPersonId] : []),
+      ]))),
     )).orderBy(people.displayName, items.title, items.id);
     return rows.map(withChanges);
   });

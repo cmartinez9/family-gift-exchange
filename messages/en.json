@@ -1287,5 +1287,26 @@
     "wrapLead": "{name} is closed. Thank you for taking part!",
     "wrapList": "Your list stays. Add to it any time, for birthdays too.",
     "wrapSealed": "The draw stays sealed for good. Nobody can open it."
+  },
+  "borrowed": {
+    "title": "On a borrowed phone",
+    "handPin": "Only {name} makes the PIN and opens {name}'s person. Look away for those.",
+    "handHide": "{name} hides the person again before handing the phone back.",
+    "handFace": "No Face ID here: it's your phone, not {name}'s.",
+    "hide": "Hide {person}",
+    "handBackLine": "Then hand the phone back to {owner}.",
+    "backTitle": "Hand this phone back to",
+    "hidden": "{name}'s person is hidden again. Nobody holding this phone can see who it is.",
+    "nothingShown": "{name}'s PIN is made. There's no person to open yet, so nothing was shown.",
+    "nextHelp": "Next, {owner} can help with {name}'s sizes and list.",
+    "ownerHas": "{owner} has the phone",
+    "allDone": "All {total} steps done, with {owner}'s help",
+    "doneTitle": "{name}'s all set",
+    "doneLead": "This is your phone, so it forgets {name} now. {name}'s list and person stay safe.",
+    "nextTime": "Next time, on {name}'s own phone: open the same key, or ask {organizer} for a new one.",
+    "signOut": "Sign {name} out of this phone",
+    "hideFailed": "Couldn't hide it. Check the connection and try again.",
+    "signOutFailed": "Couldn't sign {name} out. Check the connection and try again.",
+    "revealFailed": "Couldn't open the person. Check the connection and try again."
   }
 }

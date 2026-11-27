@@ -47,8 +47,11 @@ function GroupHead({title, id, right}: {title: string; id: string; right?: React
  * Your sizes (2.5, 2.6): tops and bottoms as chips, shoes on a stepper, or "No clothes, please".
  * Each choice saves as it is made; skipping is always fine.
  */
-export function SizesStep({ownerId, initial, profileHref}: {
+export function SizesStep({ownerId, initial, profileHref, replace = false, borrowedSessionId}: {
   ownerId: string; initial: {noClothes: boolean; sizes: Record<string, string>}; profileHref: string;
+  /** On a borrowed phone each step replaces the last, so the history keeps nothing of the relative's. */
+  replace?: boolean;
+  borrowedSessionId?: string;
 }) {
   const t = useTranslations("getIn.sizes");
   const ui = useTranslations("ui");
@@ -63,6 +66,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
   const request = useRef(0);
   const queue = useRef(Promise.resolve());
   const failed = t("failed");
+  const nextHref = borrowedSessionId ? `/welcome/list?borrowed=${borrowedSessionId}` : "/welcome/list";
 
   function show(field: string, value: string, group: "size" | "noClothes") {
     if (group === "noClothes") setNoClothes(value === "true");
@@ -122,8 +126,8 @@ export function SizesStep({ownerId, initial, profileHref}: {
 
   return (
     <Screen actions={<>
-      <Button icon="arrow" onClick={() => router.push("/welcome/list")}>{t("next")}</Button>
-      <TextLink href="/welcome/list" className="self-center">{t("skip")}</TextLink>
+      <Button icon="arrow" onClick={() => (replace ? router.replace(nextHref) : router.push(nextHref))}>{t("next")}</Button>
+      <TextLink href={nextHref} replace={replace} className="self-center">{t("skip")}</TextLink>
     </>}>
       <WelcomeSteps step={3} waitingStep={2} />
       <PageTitle title={t("title")} lead={t("lead")} />
@@ -156,7 +160,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
             </div>
             <div className="flex flex-col gap-2">
               <GroupHead id="bottoms" title={t("bottoms")}
-                right={<TextLink href={profileHref} transition="push" className="min-h-12 px-0 text-ink">{t("waistLength")}</TextLink>} />
+                right={<TextLink href={profileHref} replace={replace} transition={replace ? undefined : "push"} className="min-h-12 px-0 text-ink">{t("waistLength")}</TextLink>} />
               <ChoiceChips round legend={t("bottoms")} legendClassName="sr-only" name="bottoms" value={sizes.bottoms ?? null}
                 options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => save("bottoms", value)} />
             </div>
@@ -182,7 +186,7 @@ export function SizesStep({ownerId, initial, profileHref}: {
             </div>
           </Card>
         )}
-        {!noClothes && <TextLink href={profileHref} transition="push" className="self-center text-center">{t("more")}</TextLink>}
+        {!noClothes && <TextLink href={profileHref} replace={replace} transition={replace ? undefined : "push"} className="self-center text-center">{t("more")}</TextLink>}
       </div>
       <Sheet open={systemOpen} onClose={() => setSystemOpen(false)} title={t("systemTitle")} closeLabel={ui("close")}>
         <ChoiceChips legend={t("systemTitle")} legendClassName="sr-only" name="shoeSystem" value={system ?? null}
@@ -204,10 +208,11 @@ function pastedLink(value: string) {
 type Mode = "words" | "paste" | "photo";
 
 /** Add one thing you'd like (2.7 to 2.9): a few words, a pasted link, or a photo. */
-export function AddStep({ownerId}: {ownerId: string}) {
+export function AddStep({ownerId, replace = false, borrowedSessionId}: {ownerId: string; replace?: boolean; borrowedSessionId?: string}) {
   const t = useTranslations("getIn.add");
   const lists = useTranslations("lists");
   const back = useTranslations("getIn.hello");
+  const doneHref = borrowedSessionId ? `/welcome/done?borrowed=${borrowedSessionId}` : "/welcome/done";
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("words");
   const [title, setTitle] = useState("");
@@ -232,8 +237,9 @@ export function AddStep({ownerId}: {ownerId: string}) {
     if (!state.added) return;
     haptic("success");
     toast(state.pictureComing ? lists("pictureComingSub") : t("added"));
-    router.push("/welcome/done");
-  }, [state, router, t, lists]);
+    if (replace) router.replace(doneHref);
+    else router.push(doneHref);
+  }, [state, router, t, lists, replace, doneHref]);
 
   function save(form: FormData) {
     if (form.get("kind") === "photo") {
@@ -277,7 +283,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
           <Button type="submit" icon="plus" disabled={pending || preparing || !photo}>{t("add")}</Button>
           <TextButton className="self-center" disabled={preparing || pending} onClick={() => setMode("words")}>{back("helperBack")}</TextButton>
         </>
-        : <TextLink href="/welcome/done" className="self-center">{t("later")}</TextLink>}>
+        : <TextLink href={doneHref} replace={replace} className="self-center">{t("later")}</TextLink>}>
         <WelcomeSteps step={4} waitingStep={2} />
         <PageTitle title={t("title")} lead={t("lead")} />
         {cameraInput}

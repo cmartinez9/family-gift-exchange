@@ -133,7 +133,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const disputedSessionId = targetId;
   const familySessions = disputedSessionId ? await tx.select({
     id: sessions.id, personId: sessions.personId, hash: sessions.deviceHash, passkeyId: sessions.passkeyId, createdAt: sessions.createdAt,
-    hadOrganizerAccess: sessions.hadOrganizerAccess,
+    hadOrganizerAccess: sessions.hadOrganizerAccess, lentBySessionId: sessions.lentBySessionId,
   }).from(sessions).where(eq(sessions.familyId, familyId)) : [];
   const target = familySessions.find((session) => session.id === disputedSessionId);
   const familyCredentials = target ? await tx.select({id: passkeys.id, personId: passkeys.personId, hash: passkeys.deviceHash})
@@ -157,7 +157,9 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
       const onAffectedDevice = deviceHashes.has(device);
       if (onAffectedDevice) sessionIds.add(session.id);
       if (target && session.createdAt >= target.createdAt
-        && (causalSessionIds.has(session.id) || onAffectedDevice || (session.passkeyId && credentialIds.has(session.passkeyId)))) {
+        && (causalSessionIds.has(session.id) || onAffectedDevice
+          || (session.lentBySessionId && causalSessionIds.has(session.lentBySessionId))
+          || (session.passkeyId && credentialIds.has(session.passkeyId)))) {
         sessionIds.add(session.id);
         deviceHashes.add(device);
         causalSessionIds.add(session.id);
