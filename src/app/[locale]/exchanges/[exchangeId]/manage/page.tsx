@@ -1,184 +1,180 @@
-import {getLocale, getTranslations} from "next-intl/server";
-import {Link} from "@/i18n/navigation";
+import {getFormatter, getLocale, getTranslations} from "next-intl/server";
+import {ErrorBlock} from "@/components/ui/blocks";
+import {ButtonLink, TextLink} from "@/components/ui/button";
+import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {Tick} from "@/components/ui/inputs";
+import {Snowflake} from "@/components/ui/knit/knit-motif";
+import {KnitIn} from "@/components/ui/motion/knit-in";
+import {AppLink} from "@/components/ui/navigation";
+import {BackRow, PageTitle, SectionHeading} from "@/components/ui/page-header";
+import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
-import {checkSealedDraw, DrawError, drawFeasibility, organizerExchange, redrawConfirmation} from "@/server/draw";
-import {manage, openPreview} from "../../actions";
+import {readiness} from "@/server/auth/families";
+import {withFamily} from "@/server/db/client";
+import {checkSealedDraw, DrawError, organizerExchange, redrawConfirmation} from "@/server/draw";
+import {listFamilyWishlists} from "@/server/lists";
+import {manage, openPreview, saveDetailsAndContinue} from "../../actions";
 import {CloseSeason} from "../../close-season";
-import {DetailsFields, DrawRecovery, drawPage} from "../../components";
-import {DrawForm} from "../../form";
-import {button, control, heading, link, panel, screen, subheading} from "../../styles";
+import {DetailsFields, DrawRecovery, drawPage, PersonStatusScreen} from "../../components";
+import {Disclosure} from "../../disclosure";
+import {DrawForm, FormScreen} from "../../form";
+import {ParticipationRows} from "../../participation";
+import {ConfirmField, SetupSteps} from "../../setup";
+import {PersonSelect, RosterFields} from "../../roster";
 
 type OrganizerState = Awaited<ReturnType<typeof organizerExchange>>;
-type Roster = OrganizerState["people"];
-
-function RosterFields({people, legend}: {people: Roster; legend: string}) {
-  return (
-    <fieldset className="space-y-1">
-      <legend className="font-semibold">{legend}</legend>
-      {people.map(({id, displayName, participating, available}) => (
-        <label key={id} className="flex min-h-12 cursor-pointer items-center gap-3">
-          <input name="people" value={id} type="checkbox" defaultChecked={participating && available}
-            disabled={!available} className="size-6 accent-foreground" />
-          <span>{displayName}</span>
-        </label>
-      ))}
-    </fieldset>
-  );
-}
-
-async function FeasibilityControl({state, viewer}: {
-  state: OrganizerState;
-  viewer: Awaited<ReturnType<typeof requireViewer>>;
-}) {
-  const t = await getTranslations("draw");
-  const {id, status, version, seal} = state.exchange;
-  if (status === "closed") return <p>{t("closed")}</p>;
-
-  if (version) {
-    const locale = await getLocale();
-    const locked = status === "locked";
-    return (
-      <section className={panel} aria-label={t("checkDraw")}>
-        {seal && <p className={subheading}>{t("seal", {code: seal})}</p>}
-        <p>{t("seen", {seen: state.seenCount, total: state.participantCount})}</p>
-        <Link className={button} href={`/exchanges/${id}/manage?check=1`} prefetch={false}>{t("checkDraw")}</Link>
-        {locked && <p>{t("locked")}</p>}
-        <details>
-          <summary className={link}>{t(locked ? "forceRedraw" : "redraw")}</summary>
-          <DrawForm action={manage.bind(null, id, {kind: "draw", expectedVersion: version, allowSelection: true})}
-            label={t(locked ? "forceRedraw" : "confirmDraw")}>
-            {locked && (
-              <>
-                <p>{t("forceHelp", {phrase: redrawConfirmation[locale]})}</p>
-                <label className="block">{t("forceLabel")}
-                  <input name="confirmation" className={control} required autoComplete="off" />
-                </label>
-              </>
-            )}
-            <RosterFields key={id + version} people={state.people} legend={t("roster")} />
-          </DrawForm>
-        </details>
-      </section>
-    );
-  }
-
-  let feasibility;
-  try {
-    feasibility = await drawFeasibility(viewer, id);
-  } catch (error) {
-    if (error instanceof DrawError) {
-      return <section className={panel}><p>{t(`errors.${error.code}`)}</p><button className={button} disabled>{t("drawNames")}</button></section>;
-    }
-    throw error;
-  }
-  return (
-    <section className={panel}>
-      <p>{feasibility.blocker ? t(`blockers.${feasibility.blocker}`) : t("ready")}</p>
-      {feasibility.possible && <p>{t("choiceCount", {count: feasibility.fewestChoices})}</p>}
-      {feasibility.possible && feasibility.limitedChoices > 0 && <p>{t("choiceWarning", {count: feasibility.limitedChoices})}</p>}
-      {feasibility.possible ? (
-        <details>
-          <summary className={`${button} w-fit list-none`}>{t("drawNames")}</summary>
-          <div className="mt-3">
-            <DrawForm action={manage.bind(null, id, {kind: "draw", expectedVersion: version})} label={t("confirmDraw")}>
-              <p>{t("drawConfirmHelp")}</p>
-            </DrawForm>
-          </div>
-        </details>
-      ) : <button className={button} disabled>{t("drawNames")}</button>}
-    </section>
-  );
-}
+type Viewer = Awaited<ReturnType<typeof requireViewer>>;
 
 const validationRules = [
   "enoughPeople", "everyoneGives", "everyoneReceives", "noSelf", "noSwaps", "noHouseholdPairs",
   "noHelperPairs", "noKeepApartPairs", "rosterMatches", "sealMatches",
 ] as const;
 
-async function Proof({viewer, id}: {viewer: Awaited<ReturnType<typeof requireViewer>>; id: string}) {
+async function Proof({viewer, id}: {viewer: Viewer; id: string}) {
   const t = await getTranslations("draw");
   const result = await drawPage(checkSealedDraw(viewer, id));
-  if (result instanceof DrawError) return <DrawRecovery error={result} manageId={id} />;
+  if (result instanceof DrawError) {
+    return (
+      <div className="flex flex-col gap-2 px-edge pt-3">
+        <ErrorBlock title={t(`errors.${result.code}`)} />
+        <nav className="flex flex-col items-start" aria-label={t("checkDraw")}>
+          <TextLink href="/account" className="text-snow-white">{t("account")}</TextLink>
+          <TextLink href={`/exchanges/${id}/manage`} prefetch={false} className="text-snow-white">{t("backToManage")}</TextLink>
+        </nav>
+      </div>
+    );
+  }
   if (result.status === "pending" || result.status === "closed") return null;
+  const valid = result.status === "checked" && result.valid;
   return (
-    <section className={panel}>
-      <h2 className={subheading}>{t(result.status === "checked" && result.valid ? "verified" : "unverified")}</h2>
-      {result.status === "checked" && (
-        <>
-          <ul className="list-disc space-y-1 pl-6">
-            {validationRules.map((key) => <li key={key}>{t(result[key] ? "rulePassed" : "ruleFailed", {rule: t(key)})}</li>)}
-          </ul>
-          {result.valid && <p>{t(result.oneLoop ? "oneLoop" : "multipleLoops")}</p>}
-        </>
-      )}
+    <section className="px-edge pt-3" aria-labelledby="draw-proof">
+      <Card className="flex flex-col gap-2">
+        <h2 id="draw-proof" className="text-card-title">{t(valid ? "verified" : "unverified")}</h2>
+        {result.status === "checked" && (
+          <>
+            <Rows as="ul">
+              {validationRules.map((key) => (
+                <li key={key} className="flex min-h-12 items-center gap-3 py-1.5">
+                  <Tick done={result[key]} size={28} />
+                  <span className="text-body font-semibold">{t(result[key] ? "rulePassed" : "ruleFailed", {rule: t(key)})}</span>
+                </li>
+              ))}
+            </Rows>
+            {result.valid && <p className="text-body font-semibold">{t(result.oneLoop ? "oneLoop" : "multipleLoops")}</p>}
+          </>
+        )}
+      </Card>
     </section>
   );
 }
 
-async function RosterControls({state}: {state: OrganizerState}) {
-  const t = await getTranslations("draw");
-  const {id, version} = state.exchange;
-  const people = state.people;
-  if (version) {
-    return (
-      <details className={panel}>
-        <summary className={link}>{t("participation")}</summary>
-        <ul className="space-y-3">
-          {people.filter(({participating, available}) => participating || available).map((person) => (
-            <li key={person.id}>
-              <DrawForm action={manage.bind(null, id, {
-                kind: "participation", personId: person.id, status: person.participating ? "out" : "in", expectedVersion: version,
-              })} label={t(person.participating ? "dropout" : "join", {name: person.displayName})} />
-            </li>
-          ))}
-        </ul>
-      </details>
-    );
-  }
+/** Running the exchange: who has a ready list, then the organizer's rooms, then the draw's own tools. */
+async function Hub({state, viewer, check}: {state: OrganizerState; viewer: Viewer; check: boolean}) {
+  const [t, ui, format, locale] = await Promise.all([getTranslations("draw"), getTranslations("ui"), getFormatter(), getLocale()]);
+  const {id, status, version, seal, name} = state.exchange;
+  const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
+  const lists = await listFamilyWishlists(viewer).catch(() => []);
+  const ready = new Map(lists.map((list) => [list.id, list.ready]));
+  const taking = state.people.filter(({participating}) => participating);
+  const readyCount = taking.filter(({id: personId}) => ready.get(personId)).length;
+  const houses = new Set((board?.members ?? []).map(({householdId}) => householdId).filter(Boolean)).size;
+  const request = board?.requests[0];
+  const requester = request && board?.members.find(({id: personId}) => personId === request.personId)?.name;
+  const locked = status === "locked";
+  const facts = [
+    state.exchange.giftDay && format.dateTime(new Date(`${state.exchange.giftDay}T00:00:00Z`), {month: "short", day: "numeric", timeZone: "UTC"}),
+    state.exchange.place,
+    state.exchange.budgetAmount !== null && format.number(Number(state.exchange.budgetAmount), {style: "currency", currency: "USD", maximumFractionDigits: 0}),
+  ].filter(Boolean).join(" · ");
+  const rooms = [
+    {href: `/exchanges/${id}/manage/people`, icon: "family" as const, title: t("season.whosIn"), sub: t("season.whosInHint")},
+    {href: "/family/keys#requests", icon: "lock" as const, title: t("season.requests"),
+      sub: requester ? t("season.requestFrom", {name: requester}) : t("season.noRequests"), badge: board?.requests.length || 0},
+    {href: `/exchanges/${id}/manage/details`, icon: "calendar" as const, title: t("setup.exchangeRow"), sub: facts || t("setup.exchangeEditLead")},
+    {href: "/family", icon: "home" as const, title: t("season.peopleAndHouses"),
+      sub: t("season.peopleCount", {people: board?.members.length ?? 0, houses})},
+  ];
 
-  const byId = new Map(people.map(({id, displayName}) => [id, displayName]));
-  const visibleRules = state.rules.flatMap(({personA, personB}) => {
-    const first = byId.get(personA);
-    const second = byId.get(personB);
-    return first && second ? [{personA, personB, first, second}] : [];
-  });
   return (
-    <>
-      <details className={panel}>
-        <summary className={link}>{t("roster")}</summary>
-        <DrawForm action={manage.bind(null, id, {kind: "roster"})} label={t("saveRoster")}>
-          <RosterFields people={people} legend={t("roster")} />
-        </DrawForm>
-        <Link className={link} href="/family">{t("households")}</Link>
-      </details>
-      {people.length > 1 && (
-        <details className={panel}>
-          <summary className={link}>{t("keepApart")}</summary>
-          <DrawForm action={manage.bind(null, id, {kind: "ruleAdd"})} label={t("addRule")}>
-            {(["first", "second"] as const).map((name) => (
-              <label key={name} className="block">{t(name === "first" ? "firstPerson" : "secondPerson")}
-                <select className={control} name={name} required defaultValue="">
-                  <option value="" disabled>{t("personLabel")}</option>
-                  {people.filter(({available}) => available).map(({id, displayName}) => (
-                    <option key={id} value={id}>{displayName}</option>
-                  ))}
-                </select>
-              </label>
+    <Screen back="/">
+      <BackRow href="/" parent={t("person.backHome")} backLabel={ui("back")}
+        right={<AppLink href={`/exchanges/${id}`} prefetch={false} className="fge-press ml-auto inline-flex min-h-12 max-w-full items-center px-3 text-right text-body font-semibold text-snow-white underline underline-offset-4">{t("yourPerson")}</AppLink>} />
+      <PageTitle title={name} lead={t("season.lead")} />
+      {state.exchange.disputedRevealRepairedAt && <div className="px-edge pt-3"><Card><p role="status" className="text-body">{t("disputedRevealRepaired")}</p></Card></div>}
+
+      <section aria-label={t("season.readyLists")} className="px-edge pt-6">
+        <ul className="grid grid-cols-3 gap-x-2 gap-y-4">
+          {taking.map(({id: personId, displayName}) => {
+            const lit = ready.get(personId);
+            return (
+              <li key={personId} className="flex flex-col items-center gap-1.5 text-center" data-ready={lit ? "true" : "false"}>
+                <Snowflake cell={4.6} className={lit ? undefined : "opacity-40"} />
+                <span className="max-w-full text-body font-bold break-words">{displayName}</span>
+                <span className="sr-only">{lit ? t("season.listReady") : t("season.listNotReady")}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="pt-4 text-center text-body font-bold">{t("season.litCaption", {ready: readyCount, total: taking.length})}</p>
+      </section>
+
+      <KnitIn className="flex flex-col gap-3 px-edge pt-5">
+        <Card flush className="px-5 py-1">
+          <Rows as="ul">
+            {rooms.map((room) => (
+              <li key={room.title}>
+                <AppLink href={room.href} transition="push" prefetch={false} className="fge-press block">
+                  <ListRow as="span" lead={<IconDisc icon={room.icon} />} title={room.title} sub={room.sub}
+                    trail={room.badge ? <span className="flex size-8 items-center justify-center rounded-full bg-gold text-body-strong text-ink">
+                      <span aria-hidden="true">{room.badge}</span><span className="sr-only">{t("season.requestCount", {count: room.badge})}</span>
+                    </span> : <Chevron />} />
+                </AppLink>
+              </li>
             ))}
-          </DrawForm>
-          {visibleRules.length > 0 && (
-            <ul className="mt-4 space-y-3">
-              {visibleRules.map(({personA, personB, first, second}) => (
-                <li key={personA + personB}>
-                  <DrawForm action={manage.bind(null, id, {kind: "ruleRemove", first: personA, second: personB})}
-                    label={t("removeRule", {first, second})} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </details>
+          </Rows>
+        </Card>
+      </KnitIn>
+
+      {status === "closed" ? (
+        <div className="px-edge pt-3"><Card><p className="text-body">{t("closed")}</p></Card></div>
+      ) : (
+        <section aria-labelledby="draw-tools" className="pb-10">
+          <SectionHeading title={<span id="draw-tools">{t("season.drawTools")}</span>} />
+          <div className="flex flex-col gap-3 px-edge">
+            <Card className="flex flex-col gap-1">
+              {seal && <p className="text-card-title">{t("seal", {code: seal})}</p>}
+              <p className="text-body text-muted-ink">{t("seen", {seen: state.seenCount, total: state.participantCount})}</p>
+              {locked && <p className="text-body text-muted-ink">{t("locked")}</p>}
+              <ButtonLink href={`/exchanges/${id}/manage?check=1`} prefetch={false} variant="card" icon="check" className="mt-3">{t("checkDraw")}</ButtonLink>
+            </Card>
+            {check && <Proof id={id} viewer={viewer} />}
+            <Disclosure summary={t("participation")} icon="family">
+              <p className="text-body text-muted-ink">{t("season.participationHint")}</p>
+              <ParticipationRows exchangeId={id} version={version}
+                people={state.people.filter(({participating, available}) => participating || available)} />
+            </Disclosure>
+            {state.people.some(({available}) => available) && (
+              <Disclosure summary={t("previewLabel")} icon="eye">
+                <form action={openPreview.bind(null, id)} className="flex flex-col gap-3">
+                  <PersonSelect label={t("personLabel")} people={state.people.filter(({available}) => available)} />
+                  <button type="submit" className="fge-press inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-pill bg-ink px-6 text-body-strong text-snow-white">
+                    {t("previewButton")}
+                  </button>
+                </form>
+              </Disclosure>
+            )}
+            <Disclosure summary={t(locked ? "forceRedraw" : "redraw")} icon="shuffle">
+              <DrawForm action={manage.bind(null, id, {kind: "draw", expectedVersion: version, allowSelection: true})}
+                label={t(locked ? "forceRedraw" : "confirmDraw")}>
+                {locked && <ConfirmField help={t("forceHelp", {phrase: redrawConfirmation[locale]})} label={t("forceLabel")} />}
+                <RosterFields key={id + version} people={state.people} legend={t("roster")} />
+              </DrawForm>
+            </Disclosure>
+            <CloseSeason exchangeId={id} name={name} />
+          </div>
+        </section>
       )}
-    </>
+    </Screen>
   );
 }
 
@@ -189,52 +185,25 @@ export default async function ManagePage({params, searchParams}: {
   const viewer = await requireViewer();
   const {exchangeId} = await params;
   const {check} = await searchParams;
-  const t = await getTranslations("draw");
+  const [t, ui] = await Promise.all([getTranslations("draw"), getTranslations("ui")]);
   const state = await drawPage(organizerExchange(viewer, exchangeId));
-  if (state instanceof DrawError) return <main className={screen}><DrawRecovery error={state} manageId={exchangeId} /></main>;
-  const {id, status, name} = state.exchange;
-  return (
-    <main className={screen}>
-      <Link className={link} href="/exchanges">{t("back")}</Link>
-      <h1 className={heading}>{name}</h1>
-      <Link className={link} href={`/exchanges/${id}`} prefetch={false}>{t("yourPerson")}</Link>
-      {state.exchange.disputedRevealRepairedAt && <p role="status">{t("disputedRevealRepaired")}</p>}
-      <FeasibilityControl state={state} viewer={viewer} />
-      {check === "1" && <Proof id={id} viewer={viewer} />}
-      {status !== "closed" && (
-        <>
-          <details className={panel} open={status === "setup"}>
-            <summary className={link}>{t("detailsTitle")}</summary>
-            <DrawForm action={manage.bind(null, id, {kind: "edit"})} label={t("saveDetails")}>
-              <DetailsFields details={state.exchange} />
-            </DrawForm>
-          </details>
-          <RosterControls state={state} />
-          <details className={panel}>
-            <summary className={link}>{t("dryRun")}</summary>
-            <DrawForm action={manage.bind(null, id, {kind: "dryRun"})} label={t("dryRun")}>
-              <p>{t("dryHelp")}</p>
-            </DrawForm>
-          </details>
-          {state.people.some(({available}) => available) && (
-            <details className={panel}>
-              <summary className={link}>{t("previewLabel")}</summary>
-              <form action={openPreview.bind(null, id)} className="space-y-3">
-                <label className="block">{t("personLabel")}
-                  <select className={control} name="person" required defaultValue="">
-                    <option disabled value="">{t("personLabel")}</option>
-                    {state.people.filter(({available}) => available).map(({id, displayName}) => (
-                      <option key={id} value={id}>{displayName}</option>
-                    ))}
-                  </select>
-                </label>
-                <button type="submit" className={button}>{t("previewButton")}</button>
-              </form>
-            </details>
-          )}
-          <CloseSeason exchangeId={id} name={name} />
-        </>
-      )}
-    </main>
-  );
+  if (state instanceof DrawError) return <DrawRecovery error={state} manageId={exchangeId} />;
+  const {id, status, version} = state.exchange;
+
+  // setup, step 1: the exchange
+  if (!version && status !== "closed") {
+    return (
+      <FormScreen action={saveDetailsAndContinue.bind(null, id)} label={t("setup.nextPeople")} back="/exchanges" below={
+        <CloseSeason exchangeId={id} name={state.exchange.name} />
+      } top={<>
+        <BackRow href="/exchanges" parent={t("title")} backLabel={ui("back")} />
+        <SetupSteps step={1} />
+        <PageTitle title={t("setup.exchangeTitle")} lead={t("setup.exchangeLead")} />
+      </>}>
+        <DetailsFields details={state.exchange} />
+      </FormScreen>
+    );
+  }
+  if (!version) return <PersonStatusScreen status="closed" details={state.exchange} />;
+  return <Hub state={state} viewer={viewer} check={check === "1"} />;
 }

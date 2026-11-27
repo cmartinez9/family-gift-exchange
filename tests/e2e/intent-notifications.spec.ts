@@ -10,6 +10,7 @@ import {hashPin} from "../../src/server/auth/pin";
 import {authEvents, pinCredentials, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {assignments, drawOpenings, drawRuleSnapshots} from "../../src/server/draw/schema";
 import {drawSeal, openText, sealText} from "../../src/server/draw/sealing";
+import {openPerson} from "../helpers/open-person";
 
 test.setTimeout(90_000);
 
@@ -44,7 +45,8 @@ async function family(browser: Browser, options: {count?: number; active?: numbe
   async function device(index: number) {
     const token = secret();
     const session = await runForFamily(database.db, familyId, tx => createSession(tx, familyId, ids[index], digest(token), "iphone", new Date()));
-    const context = await browser.newContext({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true});
+    const context = await browser.newContext({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
+      reducedMotion: "reduce"});
     contexts.push(context);
     const origin = `https://localhost:${process.env.E2E_PORT || "3100"}`;
     await context.addCookies([
@@ -72,8 +74,7 @@ async function capture(page: Page, info: TestInfo, label: string) {
 }
 async function reveal(page: Page, path: string) {
   await page.goto(path);
-  await page.getByRole("button", {name: "Open your person", exact: true}).click();
-  await expect(page.getByRole("status").filter({hasText: /^You’re giving to /})).toBeVisible();
+  return openPerson(page);
 }
 async function reportOtherOpening(page: Page) {
   await page.goto("/en/account");
@@ -85,6 +86,22 @@ async function noticeEvidence(f: Awaited<ReturnType<typeof family>>, info: TestI
   const rows = await f.notices();
   expect(rows.every(row => row.requesterName === null)).toBe(true);
   await info.attach(label, {body: JSON.stringify(rows.map(row => ({recipient: f.names[f.ids.indexOf(row.personId!)], template: row.template, language: row.language, status: row.status})), null, 2), contentType: "application/json"});
+}
+
+for (const locale of ["en", "es"] as const) {
+  test(`onboarding opens the Sweater Weather person before sizes in ${locale}`, async ({browser}, info) => {
+    const f = await family(browser);
+    try {
+      const member = await f.device(1);
+      const messages = locale === "en" ? en : es;
+      await member.page.goto(`/${locale}/welcome`);
+      expect(await openPerson(member.page)).toBe("Person C");
+      await capture(member.page, info, `${locale}-onboarding-person`);
+      await member.page.getByRole("link", {name: messages.getIn.sizes.title, exact: true}).click();
+      await expect(member.page).toHaveURL(new RegExp(`/${locale}/welcome/sizes$`));
+      await expect(member.page.getByRole("heading", {name: messages.getIn.sizes.title, exact: true})).toBeVisible();
+    } finally { await f.close(); }
+  });
 }
 
 for (const surface of ["home", "family lists"] as const) {
@@ -119,8 +136,12 @@ for (const surface of ["home", "family lists"] as const) {
       await other.page.goto(path);
       expect((await f.database.db.select().from(drawOpenings).where(and(eq(drawOpenings.familyId, f.familyId), eq(drawOpenings.sessionId, other.sessionId))))[0].openedAt).toEqual(opening.openedAt);
       await reportOtherOpening(owner.page);
+      await owner.page.goto("/es/notifications");
+      await expect(owner.page.getByRole("heading", {name: es.notify.templates["plans-changed"].title, exact: true})).toBeVisible();
+      await expect(owner.page.getByText(es.notify.templates["plans-changed"].body, {exact: true})).toBeVisible();
+      for (const name of f.names) await expect(owner.page.getByRole("main")).not.toContainText(name);
       await reveal(owner.page, f.member);
-      await expect(owner.page.getByRole("status").filter({hasText: /^You’re giving to /})).not.toHaveText("You’re giving to Person C.");
+      await expect(owner.page.getByRole("heading", {level: 1})).not.toHaveText("You’re giving to Person C");
       await capture(owner.page, info, `${surface}-reported-match-repaired`);
       await other.page.goto(f.member);
       await expect(other.page).toHaveURL(/\/en\/sign-in$/);
@@ -168,23 +189,18 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
           .toBe(amount ? `${amount}.00` : null);
       }
       await reset();
-      await page.goto(f.manage);
+      await page.goto(`${f.manage}/details`);
       const budget = page.getByLabel("Budget in US dollars", {exact: true});
-      if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
       await budget.fill("40");
       await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
-      // Saving setup promotes it to open and collapses Exchange details.
-      await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
-      if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
       await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeVisible();
       await check("budget-changed");
       for (const amount of ["", "45"]) {
         await reset();
-        await page.goto(f.manage);
-        if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
+        await page.goto(`${f.manage}/details`);
         await budget.fill(amount);
         await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
-        await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
+        await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeVisible();
         await check("budget-changed");
         expect((await f.database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId)))[0].budgetAmount)
           .toBe(amount ? `${amount}.00` : null);
@@ -195,13 +211,10 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
       await noticeEvidence(f, info, `${state}-budget-notice-routing`);
       for (const [label, value] of [["Gift day", "2026-12-26"], ["Gift time at the location", "19:00"], ["Place", "Lantern Hall"], ["List deadline", "2026-12-19"]]) {
         await reset();
-        await page.goto(f.manage);
+        await page.goto(`${f.manage}/details`);
         const field = page.getByLabel(label, {exact: true});
-        if (!(await field.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
         await field.fill(value);
         await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
-        await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
-        if (!(await field.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
         await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeVisible();
         await check("exchange-details-changed");
       }
@@ -275,21 +288,42 @@ test("question answers, dropout repair and roster redraw notify exactly affected
     const devices = [];
     for (let index = 0; index < 6; index++) { const device = await f.device(index); devices.push(device); await reveal(device.page, f.member); }
     const page = devices[0].page;
-    await page.getByLabel("Your anonymous question").fill("Secret question about blue ribbons");
-    await page.getByRole("button", {name: "Send question", exact: true}).click();
-    await devices[1].page.reload();
-    await devices[1].page.getByLabel("Your answer").fill("Secret answer about green ribbons");
-    await devices[1].page.getByRole("button", {name: "Send answer", exact: true}).click();
-    await expect(devices[1].page.getByText(en.draw.answered, {exact: true})).toBeVisible();
-    expect((await f.notices()).map(row => [row.personId, row.template])).toEqual([[f.ids[0], "question-answered"]]);
-    await page.goto("/en/notifications");
-    await expect(page.getByRole("heading", {name: en.notify.templates["question-answered"].title, exact: true})).toBeVisible();
-    await expect(page.getByRole("main")).not.toContainText("ribbons");
-    await capture(page, info, "private-answer-notice");
-    await f.database.db.delete(outbox).where(eq(outbox.familyId, f.familyId));
+    // Both restyled promises must lead to a real private notice in the asker's language.
+    for (const [index, locale] of ["en", "es"].entries()) {
+      const messages = locale === "en" ? en : es;
+      const asker = devices[index].page, recipient = devices[index + 1].page;
+      await reveal(asker, f.member.replace("/en/", `/${locale}/`));
+      const ask = messages.draw.person.askForIdeas.replace("{name}", f.names[index + 1]);
+      await asker.getByRole("button", {name: ask, exact: true}).click();
+      await asker.getByLabel(messages.draw.askLabel).fill("Secret question about blue ribbons");
+      await asker.getByRole("button", {name: messages.draw.askButton, exact: true}).click();
+      await expect(asker.getByText(messages.draw.person.sentHint, {exact: true})).toBeVisible();
+      await recipient.goto(`${f.member.replace("/en/", `/${locale}/`)}?answer=1`);
+      await recipient.getByLabel(messages.draw.answerLabel).fill("Secret answer about green ribbons");
+      await recipient.getByRole("button", {name: messages.draw.answerButton, exact: true}).click();
+      await expect(recipient.getByText(messages.draw.answered, {exact: true})).toBeVisible();
+      expect((await f.notices()).map(row => [row.personId, row.template, row.language]))
+        .toEqual([[f.ids[index], "question-answered", locale]]);
+      await asker.goto(`/${locale}/notifications`);
+      await expect(asker.getByRole("heading", {name: messages.notify.templates["question-answered"].title, exact: true})).toBeVisible();
+      await expect(asker.getByText(messages.notify.templates["question-answered"].body, {exact: true})).toBeVisible();
+      await expect(asker.getByRole("main")).not.toContainText("ribbons");
+      for (const name of f.names) await expect(asker.getByRole("main")).not.toContainText(name);
+      await capture(asker, info, `${locale}-private-answer-notice`);
+      await f.database.db.delete(outbox).where(eq(outbox.familyId, f.familyId));
+    }
+    // The confirmation's named notice is exactly what changed givers receive.
+    for (const [locale, messages] of [["en", en], ["es", es]] as const) {
+      await page.goto(f.manage.replace("/en/", `/${locale}/`));
+      await page.locator("summary").filter({hasText: messages.draw.participation}).click();
+      await page.getByRole("button", {name: messages.draw.dropout.replace("{name}", "Person F"), exact: true}).click();
+      await expect(page.getByRole("dialog")).toContainText(messages.notify.templates["plans-changed"].title);
+      await page.getByRole("button", {name: messages.draw.season.keepIn.replace("{name}", "Person F"), exact: true}).click();
+    }
     await page.goto(f.manage);
     await page.locator("summary").filter({hasText: /^Dropouts and late joiners$/}).click();
     await page.getByRole("button", {name: "Person F can’t take part", exact: true}).click();
+    await page.getByRole("button", {name: "Yes, take Person F out", exact: true}).click();
     await expect(page.getByText("4 of 5 have opened their person.", {exact: true})).toBeVisible();
     const repaired = await f.pairs();
     const changed = [...repaired].filter(([giver, recipient]) => f.previous.get(giver) !== recipient).map(([giver]) => giver).sort();
@@ -297,6 +331,14 @@ test("question answers, dropout repair and roster redraw notify exactly affected
     expect(repairRows.filter(row => row.template === "plans-changed").map(row => row.personId).sort()).toEqual(changed);
     expect(repairRows.filter(row => row.template === "participation-cancelled").map(row => row.personId)).toEqual([f.ids[5]]);
     expect(repairRows).toHaveLength(changed.length + 1);
+    for (const id of changed) {
+      const index = f.ids.indexOf(id);
+      const messages = index % 2 ? es : en;
+      await devices[index].page.goto(`/${index % 2 ? "es" : "en"}/notifications`);
+      await expect(devices[index].page.getByRole("heading", {name: messages.notify.templates["plans-changed"].title, exact: true})).toBeVisible();
+      await expect(devices[index].page.getByText(messages.notify.templates["plans-changed"].body, {exact: true})).toBeVisible();
+      for (const name of f.names) await expect(devices[index].page.getByRole("main")).not.toContainText(name);
+    }
     await devices[5].page.goto("/es/notifications");
     await expect(devices[5].page.getByRole("heading", {name: es.notify.templates["participation-cancelled"].title, exact: true})).toBeVisible();
     await capture(devices[5].page, info, "departing-participant-cancellation");
@@ -402,7 +444,7 @@ test("pending recovery continues beyond the capped ten-change layer to an eleven
     const exposed = [1, ...second.slice(0, 8)];
     await pendingReports(f, exposed, organizer.sessionId);
     await member.page.goto(f.member);
-    await expect(member.page.getByRole("button", {name: "Open your person", exact: true})).toBeVisible();
+    await expect(member.page.getByRole("button", {name: en.draw.person.revealTap, exact: true})).toBeVisible();
     const next = await f.pairs();
     expect(f.ids.filter(id => next.get(id) !== f.previous.get(id))).toHaveLength(11);
     expect(exposed.every(i => next.get(f.ids[i]) !== f.previous.get(f.ids[i]))).toBe(true);
@@ -421,11 +463,12 @@ test("a low-choice roster remains drawable and warns that pairings may be worked
     const [personA, personB] = [f.ids[0], f.ids[2]].sort();
     await f.database.db.insert(keepApart).values({familyId: f.familyId, exchangeId: f.exchangeId, personA, personB, reason: "custom"});
     const organizer = await f.device(0);
-    await organizer.page.goto(f.manage);
+    await organizer.page.goto(`${f.manage}/draw`);
     await expect(organizer.page.getByText("2 people have fewer than three eligible people. People may be able to work out who has whom.", {exact: true})).toBeVisible();
     await capture(organizer.page, info, "low-choice-authorized-warning");
-    await organizer.page.locator("summary").filter({hasText: /^Draw names$/}).click();
-    await organizer.page.getByRole("button", {name: "Yes, draw names", exact: true}).click();
+    await organizer.page.getByRole("button", {name: "Draw names", exact: true}).click();
+    await expect(organizer.page.getByRole("heading", {name: en.draw.setup.sealedTitle, exact: true})).toBeVisible({timeout: 15_000});
+    await organizer.page.goto(f.manage);
     await expect(organizer.page.getByText("0 of 4 have opened their person.", {exact: true})).toBeVisible();
     const rows = await f.notices();
     expect(rows.map(row => row.personId).sort()).toEqual([...f.ids].sort());

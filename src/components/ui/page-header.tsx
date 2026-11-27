@@ -40,7 +40,7 @@ export function BackRow({href, parent, backLabel, right, dark = false}: {
   dark?: boolean;
 }) {
   return (
-    <div className={cn("flex items-center justify-between px-4 pt-2", dark ? "text-ink" : "text-snow-white")} data-back-row="">
+    <div className={cn("flex flex-wrap items-center justify-between gap-x-2 px-4 pt-2", dark ? "text-ink" : "text-snow-white")} data-back-row="">
       <AppLink href={href} transition="back" className="fge-press inline-flex min-h-12 items-center gap-2.5 rounded-pill pr-2">
         <span aria-hidden="true" className={cn("inline-flex size-12 items-center justify-center rounded-full", dark ? "bg-card-track" : "bg-on-ground")}>
           <Icon name="back" size={24} strokeWidth={2.5} />
@@ -59,7 +59,7 @@ export function PageTitle({title, lead, count, as: Tag = "h1", className}: {
   return (
     <div className={cn("flex flex-col gap-2 px-edge pt-4 text-snow-white", className)} data-page-title="">
       <div className="flex items-end justify-between gap-3">
-        <Tag className="text-title">{title}</Tag>
+        <Tag className="min-w-0 text-title break-words">{title}</Tag>
         {count && <p className="pb-1.5 text-label uppercase whitespace-nowrap">{count}</p>}
       </div>
       {lead && <p className="text-lead">{lead}</p>}

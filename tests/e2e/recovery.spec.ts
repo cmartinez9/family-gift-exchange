@@ -6,6 +6,7 @@ import {eq} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {openKey, signInWithPin, signOut, skipFaceId, typePin} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 const replacementPin = "6285";
@@ -21,7 +22,8 @@ async function createFamily(page: Page) {
   await expect(page.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
   const familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
   await page.getByRole("link", {name: "Not now"}).click();
-  await expect(page.getByRole("heading", {name: "Who's ready"})).toBeVisible();
+  await openFamilyAfterDetails(page);
+  await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
   return familyId;
 }
 
@@ -47,8 +49,8 @@ async function addPerson(page: Page, name: string, helper?: string) {
 
 async function prepareKey(page: Page, name: string, reset = false) {
   const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name, exact: true})});
-  if (reset) await row.locator("summary").filter({hasText: /^Reset PIN$/}).click();
-  await row.getByRole("button", {name: reset ? "Prepare a new key" : "Prepare message", exact: true}).click();
+  if (reset) await row.getByRole("button", {name: "Reset PIN", exact: true}).click();
+  await row.getByRole("button", {name: reset ? "Reset and send a new key" : "Send", exact: true}).click();
   const message = row.getByText(reset ? new RegExp(`^Hi ${name}! Here's your private key`) : new RegExp(`^Hi ${name}! This is your private key`));
   await expect(message).toBeVisible();
   return (await message.innerText()).split(" ").at(-1)!;
@@ -230,7 +232,7 @@ test("assigned helper manages a person without a phone and cannot use organizer 
     await expect(page.getByRole("link", {name: "Manage my family"})).toHaveCount(0);
     await capture(page, info, "helper-profile");
     await page.goto("/en/family/keys");
-    await expect(page.getByRole("button", {name: "Prepare message"})).toHaveCount(0);
+    await expect(page.getByRole("button", {name: "Send", exact: true})).toHaveCount(0);
     await page.goto("/en/account");
     await page.getByRole("button", {name: "Done", exact: true}).click();
     await expect(page.getByRole("link", {name: "Manage my family"})).toBeVisible();
@@ -249,7 +251,8 @@ test("editing a pending printed-code preview cannot redeem another name, includi
     for (const name of ["First", "Second"]) await addPerson(page, name);
     await page.getByRole("link", {name: "Send keys"}).click();
     const first = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "First", exact: true})});
-    await first.getByRole("button", {name: "Prepare a key card"}).click();
+    await first.getByRole("button", {name: "Send", exact: true}).click();
+    await first.getByRole("button", {name: "Print a card"}).click();
     await expect(first.getByRole("img", {name: "Scan to open your private key"})).toBeVisible();
     const firstCode = (await first.getByText(/^Your key code is/).innerText()).match(/\b[A-Z2-9]{6}\b/)![0];
     const firstUrl = (await first.getByText(/^Hi First!/).innerText()).split(" ").at(-1)!;
@@ -461,7 +464,7 @@ test("family creation rejects an invalid organizer invitation before creating a 
   await page.getByLabel("4-digit PIN").fill(pin);
   await page.getByLabel("Type the PIN again").fill(pin);
   await page.getByRole("button", {name: "Create my family"}).click();
-  await expect(page.locator("p[role=alert]")).toHaveText("That organizer invitation code didn't match.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("That organizer invitation code didn't match.");
   expect((await page.context().cookies()).some(({name}) => name === "__Host-fge-session")).toBe(false);
   await capture(page, info, "invalid-organizer-invitation");
   const familyId = await createFamily(page);

@@ -247,6 +247,11 @@
     scroll-padding-bottom: calc(var(--space-tab-bar-clearance) + var(--safe-bottom));
   }
 
+  /* and clear of a screen's own bottom actions */
+  html:has([data-actions]) {
+    scroll-padding-bottom: calc(160px + var(--safe-bottom));
+  }
+
   /* paper is white: print ink on it, whatever the ground */
   @media print {
     html,

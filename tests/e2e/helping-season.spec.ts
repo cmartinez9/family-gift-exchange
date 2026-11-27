@@ -469,19 +469,22 @@ for (const status of ["setup", "open"] as const) {
       const organizer = await f.signedIn("Christian");
       await organizer.goto(`/en/exchanges/${f.exchangeId}/manage`);
       if (status === "setup") {
-        await organizer.getByRole("button", {name: en.draw.saveDetails, exact: true}).click();
+        await organizer.getByRole("button", {name: en.draw.setup.nextPeople, exact: true}).click();
         await expect(organizer.getByLabel(en.draw.name, {exact: true})).toBeHidden();
       }
-      await organizer.locator("summary").filter({hasText: /^Draw names$/}).click();
-      await organizer.getByRole("button", {name: en.draw.confirmDraw, exact: true}).click();
-      await expect(organizer.getByText(/^Draw seal /)).toBeVisible();
+      await organizer.goto(`/en/exchanges/${f.exchangeId}/manage/draw`);
+      await organizer.getByRole("button", {name: en.draw.drawNames, exact: true}).click();
+      await expect(organizer.getByRole("heading", {name: en.draw.setup.sealedTitle, exact: true})).toBeVisible({timeout: 15_000});
+      await expect(organizer.getByText(/^Seal code /)).toBeVisible();
       const [drawn] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
       await buyer.goto(`/en/exchanges/${f.exchangeId}`);
-      await buyer.getByRole("button", {name: en.draw.reveal, exact: true}).tap();
-      await expect(buyer.getByText(/^You’re giving to /)).toBeVisible();
+      await buyer.getByRole("button", {name: en.draw.person.revealTap, exact: true}).tap();
+      await buyer.getByRole("button", {name: /^See .+’s page$/}).click();
+      await expect(buyer.getByRole("heading", {level: 1, name: /^You’re giving to /})).toBeVisible();
+      await buyer.getByRole("button", {name: /^Ask .+ (a question|for ideas)$/}).first().click();
       await buyer.getByLabel("Your anonymous question").fill("Any favorite winter colors?");
-      await buyer.getByRole("button", {name: "Send question", exact: true}).click();
-      await expect(buyer.getByText("Waiting for an answer", {exact: true})).toBeVisible();
+      await buyer.getByRole("button", {name: en.draw.askButton, exact: true}).click();
+      await expect(buyer.getByText(en.draw.person.sentHint, {exact: true})).toBeVisible();
       const beforeCounts = (await database.db.execute(sql`SELECT
         (SELECT count(*)::int FROM assignments WHERE family_id = ${f.familyId}::uuid) AS assignments,
         (SELECT count(*)::int FROM questions WHERE family_id = ${f.familyId}::uuid) AS questions`)).rows;
@@ -540,8 +543,8 @@ for (const nextSeason of [false, true]) {
       if (nextSeason) {
         await organizer.goto("/en/exchanges/new");
         await organizer.getByLabel(en.draw.name, {exact: true}).fill("Christmas 2027");
-        await organizer.getByRole("button", {name: en.draw.create, exact: true}).click();
-        await expect(organizer.getByRole("heading", {name: "Christmas 2027", exact: true})).toBeVisible();
+        await organizer.getByRole("button", {name: en.draw.setup.nextPeople, exact: true}).click();
+        await expect(organizer.getByRole("heading", {name: en.draw.setup.peopleTitle, exact: true})).toBeVisible();
       }
       await markClosingGift(buyer, f.ids.Ana);
       const saved = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
@@ -694,8 +697,9 @@ for (const locale of ["en", "es"] as const) {
         ? "Hand Tito your phone. Tap “Show Tito”, then Tito taps “Open your person”. You can look away."
         : "Pásale tu teléfono a Tito. Toca “Mostrar a Tito”; después, Tito toca “Descubrir a tu persona”. Tú puedes mirar hacia otro lado.")).toBeVisible();
       await helper.getByRole("link", {name: locale === "en" ? "Show Tito" : "Mostrar a Tito", exact: true}).click();
-      await helper.getByRole("button", {name: locale === "en" ? "Open your person" : "Descubrir a tu persona", exact: true}).click();
-      await expect(helper.getByRole("status").filter({hasText: "Beto"})).toBeVisible();
+      const words = locale === "en" ? en : es;
+      await helper.getByRole("button", {name: words.draw.person.revealTap, exact: true}).click();
+      await expect(helper.getByRole("button", {name: words.draw.person.seePage.replace("{name}", "Beto"), exact: true})).toBeVisible();
     } finally {
       await f.close();
     }

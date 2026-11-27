@@ -4,8 +4,10 @@ import {and, eq} from "drizzle-orm";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {families, outbox, people} from "../../src/server/db/schema";
+import {exchanges, families, outbox, people} from "../../src/server/db/schema";
 import {openKey} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
+import {openPerson} from "../helpers/open-person";
 
 const organizer = "Holly";
 const guests = ["Cedar", "Juniper", "Maple", "Spruce"];
@@ -20,7 +22,7 @@ type TrialNotice = "names-drawn" | "plans-changed" | "budget-changed" | "claimed
 test.use({actionTimeout: 15_000});
 
 function summary(page: Page, label: string) {
-  return page.locator("summary").and(page.getByText(label, {exact: true}));
+  return page.locator("summary").filter({hasText: label});
 }
 
 for (const language of ["en", "es"] as const) {
@@ -73,15 +75,6 @@ for (const language of ["en", "es"] as const) {
       return member;
     }
 
-    async function visibleRecipient(member: Page) {
-      const reveal = member.getByRole("status").filter({hasText: /.+/});
-      await expect(reveal).toBeVisible();
-      const revealed = await reveal.innerText();
-      const recipient = roster.find((candidate) => revealed === draw.givingTo.replace("{name}", candidate));
-      expect(recipient).toBeDefined();
-      return recipient!;
-    }
-
     try {
       await page.goto(path("/start"));
       await page.getByLabel(auth.organizerInvite).fill(process.env.E2E_ORGANIZER_INVITE_CODE!);
@@ -91,7 +84,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByLabel(auth.confirmPin).fill(pin);
       await page.getByRole("button", {name: auth.createFamily}).click();
       await page.getByRole("link", {name: auth.notNow}).click();
-      await expect(page.getByRole("heading", {name: trialFamily})).toBeVisible();
+      await openFamilyAfterDetails(page, language);
       familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
 
       for (const name of guests) {
@@ -101,6 +94,7 @@ for (const language of ["en", "es"] as const) {
           has: page.getByRole("button", {name: auth.addMember, exact: true}),
         });
         await add.getByRole("textbox", {name: auth.name}).fill(name);
+        await add.getByLabel(auth.language).selectOption(language);
         await add.getByRole("button", {name: auth.addMember, exact: true}).click();
         await expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
       }
@@ -172,29 +166,31 @@ for (const language of ["en", "es"] as const) {
           managementResponses.push(response.text());
         }
       });
-      await page.goto(path("/exchanges"));
-      await page.getByRole("link", {name: trialFamily, exact: true}).click();
-      await expect(page).toHaveURL(/\/manage$/);
-      const manageUrl = page.url();
+      const [exchange] = await runForFamily(db, familyId, (tx) => tx.select({id: exchanges.id}).from(exchanges));
+      const manageUrl = new URL(path(`/exchanges/${exchange.id}/manage`), page.url()).href;
       const memberUrl = manageUrl.replace(/\/manage$/, "");
-      await summary(page, draw.roster).click();
-      for (const name of roster) await page.getByRole("checkbox", {name, exact: true}).check();
-      await page.getByRole("button", {name: draw.saveRoster}).click();
-      await expect(page.getByText(draw.ready, {exact: true})).toBeVisible();
-      await summary(page, draw.drawNames).click();
-      await page.getByRole("button", {name: draw.confirmDraw}).click();
+      await page.goto(`${manageUrl}/people`);
+      for (const name of roster) {
+        await page.getByRole("checkbox", {name: name === organizer ? `${name} · ${draw.setup.you}` : name, exact: true}).check();
+      }
+      await page.getByRole("button", {name: draw.setup.nextHouses}).click();
+      await page.getByRole("link", {name: draw.setup.nextDraw}).click();
+      await expect(page.getByRole("heading", {name: draw.ready, exact: true})).toBeVisible();
+      await page.getByRole("button", {name: draw.drawNames, exact: true}).click();
+      await page.getByRole("button", {name: draw.setup.skip, exact: true}).click();
+      await expect(page.getByRole("heading", {name: draw.setup.sealedTitle, exact: true})).toBeVisible();
+      await page.goto(manageUrl);
       const openedCount = (seen: number, total: number) => draw.seen.replace("{seen}", String(seen)).replace("{total}", String(total));
       await expect(page.getByText(openedCount(0, 5))).toBeVisible();
       await notices("draw", "names-drawn", roster);
 
       const after = new Map<string, string>();
       const newcomer = await join(lastGuest, lastKey);
-      await expect(newcomer.getByRole("heading", {name: draw.yourPerson})).toBeVisible();
+      await expect(newcomer.getByRole("button", {name: draw.person.revealTap, exact: true})).toBeVisible();
       for (const candidate of roster) {
         await expect(newcomer.getByText(draw.givingTo.replace("{name}", candidate), {exact: true})).toHaveCount(0);
       }
-      await newcomer.getByRole("button", {name: draw.reveal}).click();
-      const newcomerRecipient = await visibleRecipient(newcomer);
+      const newcomerRecipient = await openPerson(newcomer);
       after.set(lastGuest, newcomerRecipient);
       await newcomer.getByRole("link", {name: getIn.sizes.title}).click();
       await expect(newcomer.getByRole("heading", {name: getIn.sizes.title})).toBeVisible();
@@ -207,8 +203,7 @@ for (const language of ["en", "es"] as const) {
         await member.goto(path());
         await member.getByRole("link", {name: draw.reveal}).click();
         await expect(member).toHaveURL(memberUrl);
-        await member.getByRole("button", {name: draw.reveal}).click();
-        after.set(name, await visibleRecipient(member));
+        after.set(name, await openPerson(member));
       }
       const [giver, recipient] = [...after].find(([, name]) => name !== organizer && name !== guests[0])!;
       const giverPage = memberPages.get(giver)!;
@@ -233,11 +228,13 @@ for (const language of ["en", "es"] as const) {
       await expect(recipientPage.getByText(lists.passLead, {exact: true})).toHaveCount(0);
 
       await giverPage.goto(memberUrl);
+      await openPerson(giverPage);
+      await giverPage.getByRole("button", {name: draw.person.ask.replace("{name}", recipient), exact: true}).click();
       await giverPage.getByLabel(draw.askLabel).fill(question);
       await giverPage.getByRole("button", {name: draw.askButton}).click();
-      await expect(giverPage.getByText(draw.answerPending)).toBeVisible();
+      await expect(giverPage.getByText(draw.person.sentHint, {exact: true})).toBeVisible();
       await notices("reveal and anonymous question");
-      await recipientPage.goto(memberUrl);
+      await recipientPage.goto(`${memberUrl}?answer=1`);
       await expect(recipientPage.getByText(question, {exact: true})).toBeVisible();
       await recipientPage.getByLabel(draw.answerLabel).fill(answer);
       await recipientPage.getByRole("button", {name: draw.answerButton}).click();
@@ -257,8 +254,7 @@ for (const language of ["en", "es"] as const) {
       }
       await privateNotice("question-answered");
 
-      await page.goto(manageUrl);
-      await summary(page, draw.detailsTitle).click();
+      await page.goto(`${manageUrl}/details`);
       await page.getByLabel(draw.budget, {exact: true}).fill("25");
       await page.getByRole("button", {name: draw.saveDetails}).click();
       await expect(page.getByText(draw.detailsSaved)).toBeVisible();
@@ -266,8 +262,10 @@ for (const language of ["en", "es"] as const) {
       await giverPage.goto(listPath(recipient));
       await expect(giverPage.locator('[data-budget="over"]:visible')).toBeVisible();
 
+      await page.goto(manageUrl);
       await summary(page, draw.participation).click();
       await page.getByRole("button", {name: draw.dropout.replace("{name}", recipient)}).click();
+      await page.getByRole("button", {name: draw.season.dropoutConfirm.replace("{name}", recipient), exact: true}).click();
       await expect(page.getByRole("button", {name: draw.join.replace("{name}", recipient)})).toBeVisible();
       await notices("dropout repair", "plans-changed", [giver], [recipient]);
       await privateNotice("plans-changed");
