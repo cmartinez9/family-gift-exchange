@@ -106,6 +106,18 @@ async function checkedAddress(url: URL, signal: AbortSignal, network: PreviewNet
   return address;
 }
 
+/**
+ * Rejects a link whose host resolves to a private address, without loading the page. A lookup that fails
+ * or runs out of time lets the link through: the page fetch checks every address again before connecting.
+ */
+export async function checkLinkHost(url: URL, signal: AbortSignal, network = defaultNetwork) {
+  try {
+    await checkedAddress(url, signal, network);
+  } catch (error) {
+    if (error instanceof LinkError) throw error;
+  }
+}
+
 export async function fetchPreview(
   initial: URL, signal: AbortSignal, accept: string, network = defaultNetwork,
 ): Promise<{url: URL; response?: PreviewResponse}> {

@@ -1,6 +1,9 @@
 export const NOTE_LIMIT = 500;
 export const TITLE_LIMIT = 200;
 
+/** How long a new link's picture counts as on its way; past it, the item shows as saved without one. */
+export const PICTURE_WAIT_MS = 30_000;
+
 export const itemKinds = ["link", "photo", "note"] as const;
 export type ItemKind = typeof itemKinds[number];
 

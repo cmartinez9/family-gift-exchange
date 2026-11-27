@@ -1,6 +1,7 @@
 "use server";
 
 import {revalidatePath} from "next/cache";
+import {after} from "next/server";
 import {getLocale} from "next-intl/server";
 import {requireViewer} from "@/server/auth";
 import {addListItem, ListError} from "@/server/lists";
@@ -31,7 +32,7 @@ export async function addFirstThing(ownerId: string, _: FirstThingState, form: F
       const draft = readLinkDraft(viewer, link, text(form, "draft"));
       await addListItem(viewer, ownerId, {
         kind: "link", link, note: text(form, "note"), starred: form.get("starred") === "on",
-      }, draft ? {resolve: async () => draft} : undefined);
+      }, draft ? {resolve: async () => draft} : {later: after});
     } else if (kind === "photo") {
       const file = form.get("photo");
       if (!file || typeof file === "string" || file.size === 0 || file.size > MAX_PHOTO_INPUT) throw new ListError("invalid-photo");

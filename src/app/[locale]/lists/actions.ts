@@ -2,6 +2,7 @@
 
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
+import {after} from "next/server";
 import {getLocale} from "next-intl/server";
 import {requireViewer} from "@/server/auth";
 import {withFamily} from "@/server/db/client";
@@ -66,7 +67,8 @@ export async function saveItem(
     if (!itemKinds.includes(kind)) throw new ListError("invalid-item");
     const link = kind === "link" ? stringField(form, "link") : undefined;
     const draft = link ? readLinkDraft(viewer, link, stringField(form, "draft")) : undefined;
-    const services = draft ? {resolve: async () => draft} : undefined;
+    // Without a preview read ahead of time, a new link saves at once and its picture follows (4.4).
+    const services = draft ? {resolve: async () => draft} : {later: after};
     const price = stringField(form, "price");
     const input = {
       title: stringField(form, "title"), note: stringField(form, "note"),

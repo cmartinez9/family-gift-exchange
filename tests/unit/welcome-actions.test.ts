@@ -14,6 +14,8 @@ vi.mock("@/server/lists/link-preview", () => ({LinkError: class extends Error {c
 vi.mock("@/server/lists/link-preview/draft", () => ({readLinkDraft: () => undefined}));
 vi.mock("@/server/lists/photo-storage", () => ({MAX_PHOTO_INPUT: 4_000_000}));
 vi.mock("next/cache", () => ({revalidatePath: vi.fn()}));
+const later = vi.hoisted(() => vi.fn());
+vi.mock("next/server", () => ({after: later}));
 vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
 
 const ana: Viewer = {familyId: "family", personId: "ana", actingAs: "ana", sessionId: "session", isOrganizer: false};
@@ -43,7 +45,7 @@ it.each(["note", "link", "photo"])("keeps a %s draft addressed to its rendered o
   server.requireViewer.mockResolvedValue({...ana, actingAs: "leo"});
   await expect(action({}, draft(kind))).resolves.toEqual({error: "forbidden"});
   expect(savedOwners).toEqual([]);
-  expect(server.addListItem).toHaveBeenCalledWith({...ana, actingAs: "leo"}, "ana", expect.objectContaining({kind}), ...(kind === "link" ? [undefined] : []));
+  expect(server.addListItem).toHaveBeenCalledWith({...ana, actingAs: "leo"}, "ana", expect.objectContaining({kind}), ...(kind === "link" ? [{later}] : []));
 });
 
 it.each(["note", "link", "photo"])("saves a %s draft when its rendered owner is still active", async (kind) => {

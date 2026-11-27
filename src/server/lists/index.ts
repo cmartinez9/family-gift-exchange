@@ -10,7 +10,7 @@ import {isListReady, isSizeKind} from "./validation";
 
 export {ListError} from "./access";
 export {getListExchangeCard, setExchangeBudget} from "./budget";
-export {addListItem, editListItem, getListPhoto, moveListItem, refreshListItem, removeListItem} from "./items";
+export {addListItem, editListItem, fillLinkPreview, getListPhoto, moveListItem, refreshListItem, removeListItem} from "./items";
 export type {ListEvents} from "./list-events";
 export {saveAboutField, saveListSize, saveNoClothes} from "./profile";
 
