@@ -146,7 +146,7 @@ it("signs a relative in beside the phone's owner, only on that phone and only wi
   expect(await tx(f.familyId, (t) => phoneOwnerName(t, f.ana))).toBeNull();
 
   // the key is spent, a borrowed session cannot lend the phone on, and a replacement key is never lent
-  await expect(f.lend(rosaKey, f.ana)).resolves.toEqual({error: "usedKey"});
+  await expect(f.lend(rosaKey, f.ana)).resolves.toMatchObject({error: "usedKey", noticeQueued: true});
   await expect(f.lend(await f.key("Beto"), rosa)).resolves.toEqual({error: "otherPerson"});
   await expect(f.lend(await f.key("Rosa", "reset"), f.ana)).resolves.toEqual({error: "otherPerson"});
 });
