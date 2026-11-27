@@ -3,6 +3,7 @@ import {act, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
+import {Link} from "@/i18n/navigation";
 import en from "../../messages/en.json";
 import type {Prepared} from "../../src/app/[locale]/family/actions";
 
@@ -35,10 +36,10 @@ function printButton() {
 
 async function render(currentPeople = people) {
   await act(async () => root.render(<NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
-    <a href="/family">Family</a>
+    <Link href="/family">Family</Link>
     <KeysList people={currentPeople} helped={[]} />
     <input aria-label="Family sign-in address" readOnly value="https://example.com/sign-in?family=family" />
-    <a href="/family/group-chat">Tell the family</a>
+    <Link href="/family/group-chat">Tell the family</Link>
   </NextIntlClientProvider>));
 }
 
