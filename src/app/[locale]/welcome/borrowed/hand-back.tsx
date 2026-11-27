@@ -17,8 +17,8 @@ import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
 import {hideOnBorrowedPhone, returnPhone} from "./actions";
 
 /**
- * A page the browser kept in its back-forward cache is never shown again as it was: Back after handing the
- * phone back loads it afresh, as the owner.
+ * Reload pages restored from the back-forward cache so cached screens cannot bypass the current identity
+ * and hand-back seal.
  */
 export function useForgetOnRestore() {
   useEffect(() => {

@@ -20,7 +20,10 @@ export const sessions = pgTable("sessions", {
   hadOrganizerAccess: boolean("had_organizer_access").default(false).notNull(),
   /** Set when this session was opened on someone else's phone, inside their session: it only lives as long as theirs. */
   lentBySessionId: uuid("lent_by_session_id"),
-  /** When a session on a borrowed phone hid its person: from then on it has no sealed draw access. */
+  /**
+   * Seals borrowed-session draw access before hand-back, after Hide or confirmed absence of a person to open.
+   * A later draw must not restore access; see tests/integration/borrowed-phone.test.ts.
+   */
   personHiddenAt: instant("person_hidden_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),

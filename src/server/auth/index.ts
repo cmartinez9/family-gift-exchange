@@ -12,8 +12,8 @@ export type Viewer = {
   isOrganizer: boolean;
   actingAs: string;
   /**
-   * Set when this person signed in on someone else's phone, inside that owner's session: `hidden` once they
-   * hid their person, after which the session has no sealed draw access.
+   * Identity for a session inside the phone owner's session. `hidden` reflects the hand-back seal defined
+   * on `sessions.personHiddenAt` in ./schema.
    */
   borrowed?: {lenderSessionId: string; lenderPersonId: string; hidden: boolean};
 };

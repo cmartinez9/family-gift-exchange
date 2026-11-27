@@ -6,11 +6,6 @@ import type {Viewer} from "./index";
 import {sessions} from "./schema";
 import {revalidateViewer} from "./session";
 
-/**
- * A relative on someone else's phone (9.1 to 9.5): Rosa opens her own key on Ana's signed-in phone, sees her
- * person, hides it, and hands the phone back. Her session lives inside Ana's (see `getViewer`); these end it.
- */
-
 const borrowedSession = (viewer: Viewer) => and(
   eq(sessions.familyId, viewer.familyId), eq(sessions.id, viewer.sessionId), eq(sessions.personId, viewer.personId),
   isNotNull(sessions.lentBySessionId), isNull(sessions.revokedAt),
