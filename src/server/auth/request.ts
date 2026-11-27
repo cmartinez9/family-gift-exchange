@@ -29,7 +29,7 @@ export async function clearSession() {
 
 /**
  * A relative's session on this phone, beside the owner's. No max age: it also ends when the browser does,
- * and the server ends it within the hour anyway.
+ * and the server ends it within half an hour anyway.
  */
 export async function setBorrowedSession(value: string) {
   (await cookies()).set(borrowedCookie, value, privateCookie);

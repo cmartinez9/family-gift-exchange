@@ -12,6 +12,7 @@ import {keySender, organizerContacts} from "@/server/auth/account";
 import {PREVIEW_SIZE, previewPieces} from "@/server/auth/key-preview-svg";
 import {appOrigin, currentDeviceKind} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
+import {KeyOnBorrowedPhone} from "../../sign-in/borrowed-key";
 import {KeyWelcome} from "../../sign-in/get-in";
 import {SignInHelp} from "../../sign-in/screen";
 import {OrganizerHelpProvider} from "../../sign-in/ask-for-help";
@@ -72,6 +73,10 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   const organizer = organizers[0]?.name ?? "";
   const help = <SignInHelp familyId={key.familyId} personId={entry.personId} />;
   const other = viewer && (viewer.familyId !== key.familyId || viewer.personId !== entry.personId);
+  if (other && viewer.familyId === key.familyId && !viewer.borrowed && entry.available && entry.first) {
+    // helping on a borrowed phone (9.1, 9.2): the relative signs in beside the owner, who stays signed in
+    return <KeyOnBorrowedPhone familyId={key.familyId} value={key.token} name={entry.name} />;
+  }
   if (other) {
     // A forwarded key keeps the current sign-in. A used key still generates a notice for its owner.
     const current = await withFamily(viewer.familyId, (tx) => activePerson(tx, viewer.familyId, viewer.personId));

@@ -5,9 +5,12 @@ import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
-import {faceIdOnDevice, listCount, mySizes} from "@/server/auth/account";
+import {faceIdOnDevice, listCount, mySizes, organizerName} from "@/server/auth/account";
+import {activePerson} from "@/server/auth/access";
+import {phoneOwnerName} from "@/server/auth/borrowed";
 import {withFamily} from "@/server/db/client";
 import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
+import {BorrowedAllSet} from "../borrowed/hand-back";
 import {screenTitle} from "../../sign-in/title";
 
 function Row({done, title, sub}: {done: boolean; title: string; sub?: string}) {
@@ -29,6 +32,15 @@ export async function generateMetadata() {
 /** All set (2.10): the step bar knits up, ALL SET! knits in, and what you did is ticked. */
 export default async function WelcomeDonePage() {
   const viewer = await requireViewer();
+  if (viewer.borrowed) {
+    // on someone else's phone (9.5): the owner signs the relative out of it
+    const names = await withFamily(viewer.familyId, async (tx) => ({
+      name: (await activePerson(tx, viewer.familyId, viewer.personId))?.displayName ?? "",
+      owner: await phoneOwnerName(tx, viewer) ?? "",
+      organizer: await organizerName(tx, viewer.familyId) ?? "",
+    }));
+    return <BorrowedAllSet {...names} />;
+  }
   const t = await getTranslations("getIn.done");
   const {sizes, things, face} = await withFamily(viewer.familyId, async (tx) => {
     const mine = await mySizes(tx, viewer.familyId, viewer.actingAs);

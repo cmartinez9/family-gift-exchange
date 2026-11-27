@@ -34,16 +34,19 @@ function Line({icon, children}: {icon: IconName; children: ReactNode}) {
  * "No, I'm helping {name}" on someone's key. The key stays theirs: send it on to their phone, or hand them
  * this phone for their own PIN, or, without a phone of their own, ask the organizer to make you their helper.
  */
-export function HelpingKey({name, typed, onHandOver, onBack}: {
+export function HelpingKey({name, typed, lend = false, onHandOver, onBack}: {
   name: string;
   /** A typed code has no link to send on. */
   typed: boolean;
+  /** This phone stays signed in as its owner: the person signs in beside them and hides their person after (9.2). */
+  lend?: boolean;
   /** They have the phone: on to their own PIN. */
   onHandOver: () => void;
   onBack: () => void;
 }) {
   const t = useTranslations("helping");
   const auth = useTranslations("auth");
+  const borrowed = useTranslations("borrowed");
   const [view, setView] = useState<"choose" | "hand" | "noPhone">("choose");
 
   async function send() {
@@ -72,11 +75,19 @@ export function HelpingKey({name, typed, onHandOver, onBack}: {
           <StitchedText text={name} cell={10} knit className="max-w-full [&>svg]:h-auto [&>svg]:max-w-full" />
         </div>
         <Card>
-          <ul className="flex flex-col gap-3.5">
-            <Line icon="lock">{t("handPin", {name})}</Line>
-            <Line icon="phone">{t("handFace", {name, notNow: auth("notNow")})}</Line>
-            <Line icon="user">{t("handSignOut", {name, signOut: auth("switchPerson")})}</Line>
-          </ul>
+          {lend ? (
+            <ul className="flex flex-col gap-3.5">
+              <Line icon="lock">{borrowed("handPin", {name})}</Line>
+              <Line icon="eye">{borrowed("handHide", {name})}</Line>
+              <Line icon="phone">{borrowed("handFace", {name})}</Line>
+            </ul>
+          ) : (
+            <ul className="flex flex-col gap-3.5">
+              <Line icon="lock">{t("handPin", {name})}</Line>
+              <Line icon="phone">{t("handFace", {name, notNow: auth("notNow")})}</Line>
+              <Line icon="user">{t("handSignOut", {name, signOut: auth("switchPerson")})}</Line>
+            </ul>
+          )}
         </Card>
         <div className="flex flex-col items-center gap-2">
           <Button onClick={() => {

@@ -47,8 +47,10 @@ function GroupHead({title, id, right}: {title: string; id: string; right?: React
  * Your sizes (2.5, 2.6): tops and bottoms as chips, shoes on a stepper, or "No clothes, please".
  * Each choice saves as it is made; skipping is always fine.
  */
-export function SizesStep({ownerId, initial, profileHref}: {
+export function SizesStep({ownerId, initial, profileHref, replace = false}: {
   ownerId: string; initial: {noClothes: boolean; sizes: Record<string, string>}; profileHref: string;
+  /** On a borrowed phone each step replaces the last, so the history keeps nothing of the relative's. */
+  replace?: boolean;
 }) {
   const t = useTranslations("getIn.sizes");
   const ui = useTranslations("ui");
@@ -122,8 +124,8 @@ export function SizesStep({ownerId, initial, profileHref}: {
 
   return (
     <Screen actions={<>
-      <Button icon="arrow" onClick={() => router.push("/welcome/list")}>{t("next")}</Button>
-      <TextLink href="/welcome/list" className="self-center">{t("skip")}</TextLink>
+      <Button icon="arrow" onClick={() => (replace ? router.replace("/welcome/list") : router.push("/welcome/list"))}>{t("next")}</Button>
+      <TextLink href="/welcome/list" replace={replace} className="self-center">{t("skip")}</TextLink>
     </>}>
       <WelcomeSteps step={3} waitingStep={2} />
       <PageTitle title={t("title")} lead={t("lead")} />
@@ -204,7 +206,7 @@ function pastedLink(value: string) {
 type Mode = "words" | "paste" | "photo";
 
 /** Add one thing you'd like (2.7 to 2.9): a few words, a pasted link, or a photo. */
-export function AddStep({ownerId}: {ownerId: string}) {
+export function AddStep({ownerId, replace = false}: {ownerId: string; replace?: boolean}) {
   const t = useTranslations("getIn.add");
   const lists = useTranslations("lists");
   const back = useTranslations("getIn.hello");
@@ -232,8 +234,9 @@ export function AddStep({ownerId}: {ownerId: string}) {
     if (!state.added) return;
     haptic("success");
     toast(state.pictureComing ? lists("pictureComingSub") : t("added"));
-    router.push("/welcome/done");
-  }, [state, router, t, lists]);
+    if (replace) router.replace("/welcome/done");
+    else router.push("/welcome/done");
+  }, [state, router, t, lists, replace]);
 
   function save(form: FormData) {
     if (form.get("kind") === "photo") {
@@ -277,7 +280,7 @@ export function AddStep({ownerId}: {ownerId: string}) {
           <Button type="submit" icon="plus" disabled={pending || preparing || !photo}>{t("add")}</Button>
           <TextButton className="self-center" disabled={preparing || pending} onClick={() => setMode("words")}>{back("helperBack")}</TextButton>
         </>
-        : <TextLink href="/welcome/done" className="self-center">{t("later")}</TextLink>}>
+        : <TextLink href="/welcome/done" replace={replace} className="self-center">{t("later")}</TextLink>}>
         <WelcomeSteps step={4} waitingStep={2} />
         <PageTitle title={t("title")} lead={t("lead")} />
         {cameraInput}

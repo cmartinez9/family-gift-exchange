@@ -1287,5 +1287,42 @@
     "wrapLead": "{name} terminó. ¡Gracias por participar!",
     "wrapList": "Tu lista se queda. Agrégale cosas cuando quieras, también para cumpleaños.",
     "wrapSealed": "El sorteo queda sellado para siempre. Nadie puede abrirlo."
+  },
+  "borrowed": {
+    "title": "En un teléfono prestado",
+    "handPin": "Solo {name} crea el PIN y abre su persona. No mires en esos momentos.",
+    "handHide": "{name} vuelve a ocultar a su persona antes de devolverte el teléfono.",
+    "handFace": "Aquí no hay Face ID: es tu teléfono, no el de {name}.",
+    "hide": "Ocultar a {person}",
+    "handBackLine": "Después, devuélvele el teléfono a {owner}.",
+    "backTitle": "Devuélvele este teléfono a",
+    "hidden": "La persona de {name} está oculta otra vez. Quien tenga este teléfono no puede ver quién es.",
+    "nothingShown": "{name} ya tiene su PIN. Todavía no hay persona que abrir, así que no se mostró nada.",
+    "nextHelp": "Ahora {owner} puede ayudar con las tallas y la lista de {name}.",
+    "ownerHas": "{owner} ya tiene el teléfono",
+    "allDone": "Los {total} pasos, listos, con ayuda de {owner}",
+    "doneTitle": "Todo listo para {name}",
+    "doneLead": "Este es tu teléfono, así que ahora se olvida de {name}. La lista y la persona de {name} siguen a salvo.",
+    "nextTime": "La próxima vez, en el teléfono de {name}: abrir la misma llave o pedirle una nueva a {organizer}.",
+    "signOut": "Cerrar la sesión de {name} en este teléfono",
+    "hideFailed": "No se pudo ocultar. Revisa la conexión y vuelve a intentarlo.",
+    "signOutFailed": "No se pudo cerrar la sesión de {name}. Revisa la conexión y vuelve a intentarlo.",
+    "revealFailed": "No se pudo abrir a la persona. Revisa la conexión y vuelve a intentarlo.",
+    "tryAgain": "Intentar de nuevo",
+    "reveal": {
+      "ready": "Tu persona está lista",
+      "readyHint": "Mantén presionado el regalo para jalar el estambre.",
+      "holding": "Sigue presionando",
+      "holdingHint": "El regalo se desteje, fila por fila.",
+      "holdLonger": "Mantén presionado un poco más.",
+      "letGo": "Puedes soltar cuando quieras. Presiona para seguir jalando.",
+      "watching": "Sigue mirando",
+      "watchingHint": "El estambre está tejiendo un nombre.",
+      "tap": "O toca aquí para abrirlo",
+      "gift": "El regalo tejido. Mantén presionado para jalar el estambre, o usa el enlace de abajo.",
+      "progress": "Destejiendo",
+      "lead": "Le regalas a",
+      "onlyYou": "Solo tú puedes ver esto"
+    }
   }
 }
