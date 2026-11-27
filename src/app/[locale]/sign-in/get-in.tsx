@@ -28,6 +28,8 @@ import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
 import {AskForHelp, OrganizerRecovery, useHelpContact} from "./ask-for-help";
+import {useUsedKeyOpening} from "./used-key-opening";
+import type {KeyOpening} from "@/server/auth/access";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -79,7 +81,7 @@ export function Bullet({icon, children, tone = "pine"}: {icon: IconName; childre
 // ---------------------------------------------------------------------------------------------
 
 /** Face ID setup (`enroll`) or sign-in, with its pending and failed states. The Face ID switch on You uses setup too. */
-export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => void) {
+export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => void, opening?: KeyOpening) {
   const [failed, setFailed] = useState(false);
   const [pending, start] = useTransition();
   function begin() {
@@ -93,7 +95,7 @@ export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => vo
         } else {
           const options = await beginFaceId(false);
           if (!options || "user" in options) throw new Error();
-          if (!await finishFaceIdSignIn(await startAuthentication({optionsJSON: options}))) throw new Error();
+          if (!await finishFaceIdSignIn(await startAuthentication({optionsJSON: options}), opening)) throw new Error();
         }
         haptic("success");
         onDone();
@@ -134,10 +136,10 @@ export function FaceIdTile({next = "/account?face=1"}: {next?: string}) {
 }
 
 /** "Use Face ID instead": the same sign-in, as a text link. */
-export function FaceIdLink({label, next = "/account?face=1"}: {label: string; next?: string}) {
+export function FaceIdLink({label, next = "/account?face=1", opening}: {label: string; next?: string; opening?: KeyOpening}) {
   const auth = useTranslations("auth");
   const router = useRouter();
-  const {failed, pending, begin} = useFaceId(false, () => router.replace(next));
+  const {failed, pending, begin} = useFaceId(false, () => router.replace(next), undefined, opening);
   return (
     <div className="flex flex-col items-center">
       <TextButton onClick={begin} disabled={pending}>{label}</TextButton>
@@ -197,13 +199,24 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
 }) {
   const t = useTranslations("getIn.hello");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
+  const [used, setUsed] = useState<AuthResult | null>(null);
+  const [openingId] = useState(() => entry.openingId ?? crypto.randomUUID());
   const help = <AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />;
 
+  // A cookie refresh can mark this key used before the action returns. Keep this opening's identity.
+  const usedAt = used?.usedAt ?? entry.usedAt;
+  if (usedAt) return <KeyAlreadyOpened familyId={familyId} value={value} typed={typed}
+    entry={{...entry, usedAt, available: false, openingId}} organizer={organizer} noticeQueued={used?.noticeQueued} />;
+
   if (phase === "pin") {
-    const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);
+    const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null, openingId);
     return (
       <Screen>
-        <MakePin top={<WelcomeSteps step={1} />} save={(pin) => save({}, pinForm(pin))} footer={help} />
+        <MakePin top={<WelcomeSteps step={1} />} save={async (pin) => {
+          const result = await save({}, pinForm(pin));
+          if (result.error === "usedKey") setUsed(result);
+          return result;
+        }} footer={help} />
       </Screen>
     );
   }
@@ -244,12 +257,9 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
   );
 }
 
-/**
- * A key that was already opened (10.5): this phone only asks for the PIN, and the owner's phone is told.
- * "Forgot?" holds the ways out: a new key from the organizer, or saying you never opened it.
- */
-export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
-  familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string;
+/** Preserve the opening identity across PIN retries and Face ID recovery to avoid duplicate notices. */
+export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noticeQueued}: {
+  familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string; noticeQueued?: boolean;
 }) {
   const t = useTranslations("getIn.used");
   const enter = useTranslations("getIn.enter");
@@ -262,20 +272,22 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
   const [resetRequested, setResetRequested] = useState(false);
   const [keyReported, setKeyReported] = useState(false);
   const [pending, start] = useTransition();
+  const [openingId] = useState(() => entry.openingId ?? crypto.randomUUID());
+  const confirmed = useUsedKeyOpening({link: typed ? undefined : `${familyId}~${value}`, openingId, queued: noticeQueued});
   const recipient = useHelpContact(organizer)(entry.personId);
   const helper = recipient || organizer;
   const recovery = recipient === null || result.error === "organizerRecovery";
 
   if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
-    onRetry={() => setLocked(null)} />;
+    onRetry={() => setLocked(null)} opening={{value, typed, openingId}} />;
 
   return (
     <Screen>
       <EnterPin title={t("title")} lead={t("lead", {name: entry.name})} organizer={organizer} onLocked={setLocked} suspended={open}
-        submit={(data) => enterPin(familyId, entry.personId, {}, data)}
+        submit={(data) => enterPin(familyId, entry.personId, {}, data, {value, typed, openingId})}
         note={result.success
           ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>
-          : <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote>}
+          : confirmed ? <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote> : null}
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>}
         footer={<AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
@@ -397,8 +409,9 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
 }
 
 /** Let's take a break (10.4): the minutes stitched, what is safe, and the ways forward. */
-function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
+function Locked({minutes, name, familyId, personId, organizer, onRetry, opening}: {
   minutes: number; name: string; familyId: string; personId: string; organizer: string; onRetry: () => void;
+  opening?: KeyOpening;
 }) {
   const t = useTranslations("getIn.locked");
   const forgot = useTranslations("getIn.forgot");
@@ -429,7 +442,7 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
           setResult({...response, at: new Date()});
         })}>{t("ask", {organizer: helper})}</Button>
       )}
-      <FaceIdLink label={t("face")} />
+      <FaceIdLink label={t("face")} opening={opening} />
     </>}>
       {remaining > 0 ? <div className="flex flex-col items-center gap-3 pt-[26px] text-snow-white" role="img"
         aria-label={`${t("tryAgainIn")} ${remaining} ${t("minutes", {count: remaining})}`}>
@@ -476,7 +489,7 @@ export function CodeEntry({familyId, backHref, sender, organizer, names}: {
 
   if (result.key && result.code) {
     return result.key.usedAt
-      ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} />
+      ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} noticeQueued={result.noticeQueued} />
       : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} organizer={organizer} />;
   }
   return (

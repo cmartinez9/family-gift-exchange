@@ -4,7 +4,9 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
-import {families, people} from "../../src/server/db/schema";
+import {families, outbox, people} from "../../src/server/db/schema";
+import {familyActivity} from "../../src/server/auth/account";
+import {schedulePushDelivery} from "../../src/server/messages/delivery";
 import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
 import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
@@ -13,9 +15,12 @@ import {getViewer, type Viewer} from "../../src/server/auth";
 import {requestDevice, setSession} from "../../src/server/auth/request";
 import {issueKey, issueOrganizerKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
 import {authenticationFinish, authenticationStart, registrationFinish, registrationStart} from "../../src/server/auth/webauthn";
-import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
+import {finishFaceIdSignIn, forgotPin, noticeUsedKeyLink} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
+vi.mock("../../src/server/messages/delivery", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../src/server/messages/delivery")>(), schedulePushDelivery: vi.fn(),
+}));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => cookieValues.has(name) ? {value: cookieValues.get(name)!} : undefined,
@@ -49,7 +54,7 @@ async function fixture(organizer = false) {
   const [{id: personId}] = await withFamily(familyId, (tx) => tx.select().from(people).where(and(eq(people.familyId, familyId), eq(people.displayName, "Member"))));
   const key = requireIssuedKey(await withFamily(familyId, (tx) => issueKey(tx, manager, personId, "share", pepper, new Date())));
   const joined = (await withFamily(familyId, (tx) => redeemKey(tx, {familyId, value: key.token!, typed: false, pin, confirmation: pin, pepper, device: device(), currentViewer: null, now: new Date()}))).session!;
-  return {familyId, viewer: (await resolve(joined.cookie))!, session: joined};
+  return {familyId, viewer: (await resolve(joined.cookie))!, session: joined, key};
 }
 
 async function enroll(familyId: string, personId: string, enrollmentDevice: Device, viewer?: Viewer) {
@@ -84,31 +89,33 @@ async function enroll(familyId: string, personId: string, enrollmentDevice: Devi
     }));
   }
   let counter = 0;
+  async function assertion(signInDevice: Device) {
+    cookieValues.clear();
+    const options = await authenticationStart(signInDevice);
+    const clientData = Buffer.from(JSON.stringify({type: "webauthn.get", challenge: options.challenge, origin}));
+    const authenticatorData = Buffer.alloc(37);
+    createHash("sha256").update(new URL(origin).hostname).digest().copy(authenticatorData);
+    authenticatorData[32] = 0x05;
+    authenticatorData.writeUInt32BE(++counter, 33);
+    const payload = Buffer.concat([authenticatorData, createHash("sha256").update(clientData).digest()]);
+    const response: AuthenticationResponseJSON = {
+      id, rawId: id, type: "public-key", clientExtensionResults: {},
+      response: {
+        clientDataJSON: clientData.toString("base64url"), authenticatorData: authenticatorData.toString("base64url"),
+        signature: sign("sha256", payload, privateKey).toString("base64url"),
+        userHandle: Buffer.from((familyId + personId).replaceAll("-", ""), "hex").toString("base64url"),
+      },
+    };
+    return response;
+  }
   return {
-    id,
-    authenticate: async (signInDevice: Device) => {
-      cookieValues.clear();
-      const options = await authenticationStart(signInDevice);
-      const clientData = Buffer.from(JSON.stringify({type: "webauthn.get", challenge: options.challenge, origin}));
-      const authenticatorData = Buffer.alloc(37);
-      createHash("sha256").update(new URL(origin).hostname).digest().copy(authenticatorData);
-      authenticatorData[32] = 0x05;
-      authenticatorData.writeUInt32BE(++counter, 33);
-      const payload = Buffer.concat([authenticatorData, createHash("sha256").update(clientData).digest()]);
-      const response: AuthenticationResponseJSON = {
-        id, rawId: id, type: "public-key", clientExtensionResults: {},
-        response: {
-          clientDataJSON: clientData.toString("base64url"), authenticatorData: authenticatorData.toString("base64url"),
-          signature: sign("sha256", payload, privateKey).toString("base64url"),
-          userHandle: Buffer.from((familyId + personId).replaceAll("-", ""), "hex").toString("base64url"),
-        },
-      };
-      return authenticationFinish(signInDevice, response, null);
-    },
+    id, assertion,
+    authenticate: async (signInDevice: Device) => authenticationFinish(signInDevice, await assertion(signInDevice), null),
   };
 }
 
 beforeEach(() => {
+  vi.mocked(schedulePushDelivery).mockReset();
   cookieValues.clear();
   vi.stubEnv("AUTH_SECRET", pepper);
   vi.stubEnv("AUTH_ORIGIN", origin);
@@ -120,6 +127,41 @@ afterEach(async () => {
     await withFamily(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)));
   }
   cleanup.clear();
+});
+
+it.each([false, true])("records the same opening through locked Face ID recovery when the browser POST was recorded: %s", async (recorded) => {
+  const {familyId, viewer, key} = await fixture();
+  const phone = await requestDevice();
+  const phoneCookie = cookieValues.get("__Host-fge-device")!;
+  const credential = await enroll(familyId, viewer.personId, phone);
+  const opening = {value: key!.token, typed: false, openingId: randomUUID()};
+  if (recorded) await expect(noticeUsedKeyLink(`${familyId}~${key!.token}`, opening.openingId)).resolves.toBe(true);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await withFamily(familyId, (tx) => signInWithPin(tx, familyId, viewer.personId, "1111", pepper, phone, new Date(), opening));
+  }
+  const [locked] = await withFamily(familyId, (tx) => tx.select().from(pinCredentials).where(eq(pinCredentials.personId, viewer.personId)));
+  expect(locked.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+  const notices = () => withFamily(familyId, (tx) => tx.select().from(outbox));
+  expect(await notices()).toHaveLength(recorded ? 1 : 0);
+  vi.mocked(schedulePushDelivery).mockClear();
+  let committed: ReturnType<typeof notices> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation(() => { committed = notices(); });
+  const response = await credential.assertion(phone);
+  cookieValues.set("__Host-fge-device", phoneCookie);
+  await expect(finishFaceIdSignIn(response, opening)).resolves.toBe(true);
+  const messages = await (committed ?? notices());
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toMatchObject({personId: viewer.personId, template: "key-opened-elsewhere"});
+  expect(schedulePushDelivery).toHaveBeenCalledTimes(recorded ? 0 : 1);
+  expect(await getViewer()).toMatchObject({familyId, personId: viewer.personId});
+  const activity = await withFamily(familyId, (tx) => familyActivity(tx, familyId));
+  expect(activity.filter(({kind}) => kind === "secondPhone")).toHaveLength(1);
+  const retry = await credential.assertion(phone);
+  cookieValues.set("__Host-fge-device", phoneCookie);
+  await expect(finishFaceIdSignIn(retry, opening)).resolves.toBe(true);
+  expect(await notices()).toEqual(messages);
+  expect((await withFamily(familyId, (tx) => familyActivity(tx, familyId))).filter(({kind}) => kind === "secondPhone"))
+    .toHaveLength(1);
 });
 
 it("turns Face ID off on both phones sharing a passkey without ending their sessions", async () => {

@@ -108,7 +108,7 @@ it("requires a personal key, stores hashes, and redeems a link or its code only 
   expect(stored.codeHash).not.toBe(issued.code);
   const results = await Promise.all([f.redeem(issued.token!, device), f.redeem(issued.code!, makeDevice(), true)]);
   expect(results.filter(({session}) => session)).toHaveLength(1);
-  expect(results.find(({error}) => error)).toEqual({error: "usedKey"});
+  expect(results.find(({error}) => error)).toMatchObject({error: "usedKey", noticeQueued: true});
   const usedKey = await tx(f.familyId, (t) => inspectKey(t, f.familyId, issued.token!, now));
   expect(usedKey).toMatchObject({available: false, usedAt: now, usedDevice: "iphone"});
   const signedIn = (await resolve(results.find(({session}) => session)!.session!.cookie))!;
@@ -206,6 +206,28 @@ it("gets reset requests onto the board and replaces the old PIN only on activati
   expect(activity.map(({kind}) => kind)).toEqual(expect.arrayContaining(["keyUsed", "resetPrepared", "resetSent", "resetUsed"]));
 });
 
+it("clears historical device trust on reset without changing previous revocation times", async () => {
+  const f = await fixture();
+  const phone = makeDevice();
+  const key = requireIssuedKey(await f.issue());
+  const first = (await f.redeem(key.token, phone)).session!;
+  const renewedAt = new Date(now.getTime() + 1000);
+  const second = (await f.login(pin, phone, renewedAt)).session!;
+  const signedOutAt = new Date(now.getTime() + 2000);
+  const member = (await resolve(second.cookie))!;
+  await tx(f.familyId, (t) => endSessions(t, member, signedOutAt, false));
+  const resetAt = new Date(now.getTime() + 3000);
+  const reset = requireIssuedKey(await f.issue("reset", resetAt));
+  await expect(f.redeem(reset.token, makeDevice(), false, resetAt, newPin)).resolves.toHaveProperty("session");
+  const history = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.deviceHash, phone.hash)));
+  expect(history).toEqual(expect.arrayContaining([
+    expect.objectContaining({id: first.id, revokedAt: renewedAt, trusted: false, resetNoticeEligible: false}),
+    expect.objectContaining({id: second.id, revokedAt: signedOutAt, trusted: false, resetNoticeEligible: false}),
+  ]));
+  await tx(f.familyId, (t) => t.update(pinCredentials).set({newDevicesLocked: true}).where(eq(pinCredentials.personId, f.personId)));
+  await expect(f.login(newPin, phone, new Date(resetAt.getTime() + 1000))).resolves.toEqual({error: "newDevicesLocked"});
+});
+
 it("records a forwarded used-key dispute without giving its holder access or replacing the owner", async () => {
   const f = await fixture();
   const key = requireIssuedKey(await f.issue());
@@ -221,7 +243,7 @@ it("records a forwarded used-key dispute without giving its holder access or rep
   const active = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.personId, f.personId)));
   expect(active).toHaveLength(2);
   expect(active.every(({revokedAt}) => revokedAt === null)).toBe(true);
-  await expect(f.redeem(key.token!, reportDevice, false, reportAt, newPin)).resolves.toEqual({error: "usedKey"});
+  await expect(f.redeem(key.token!, reportDevice, false, reportAt, newPin)).resolves.toMatchObject({error: "usedKey", noticeQueued: true});
   await expect(f.login(newPin, reportDevice)).resolves.toEqual({error: "invalidPin"});
   const records = await tx(f.familyId, (t) => listKeyDisputes(t, f.familyId, f.personId));
   expect(records).toEqual([{keyId: key.id, sessionId: owner.id, deviceKind: "computer", at: reportAt}]);

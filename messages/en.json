@@ -434,6 +434,10 @@
         "title": "PIN reset requested",
         "body": "{name} asked for a PIN reset."
       },
+      "key-opened-elsewhere": {
+        "title": "Your key was opened on another device",
+        "body": "Was that you?"
+      },
       "claimed-item-changed": {
         "title": "A gift idea changed",
         "body": "An item you’re getting changed. Check your list of gifts you’re getting."
@@ -1017,6 +1021,7 @@
     "other": {
       "title": "This key is {name}'s",
       "lead": "This phone is signed in as {current}, so it can't open {name}'s key. Nothing was changed.",
+      "usedLead": "This phone is signed in as {current} and can't sign in as {name}.",
       "signedInAs": "Signed in as {current}",
       "onDevice": "On this {device}",
       "note": "Helping {name}? Send the key back, or let {name} open it on their own phone.",
@@ -1230,7 +1235,8 @@
       "reset": "Someone's PIN was reset",
       "resetSub": "{date} · with a new key from {organizer}",
       "secondPhone": "A key was opened on a second phone",
-      "secondPhoneSub": "{date} · it was reported",
+      "secondPhoneSub": "{date} · its owner was told",
+      "keyDisputedSub": "{date} · it was reported",
       "paused": "The exchange was paused for safety",
       "none": "Nothing has happened yet.",
       "signedOut": "A phone was signed out",

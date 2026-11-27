@@ -6,7 +6,7 @@ import {
   type AuthenticationResponseJSON, type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import {withFamily} from "../db/client";
-import {activePerson, clearAttempts, lockFamily, signInDevice, type Device} from "./access";
+import {activePerson, clearAttempts, lockFamily, signInDevice, type Device, type KeyOpening} from "./access";
 import type {Viewer} from "./index";
 import {authLimits, passkeys, pinCredentials} from "./schema";
 import {appOrigin, privateCookie} from "./request";
@@ -105,7 +105,7 @@ export async function authenticationStart(device: Device) {
   return options;
 }
 
-export async function authenticationFinish(device: Device, response: AuthenticationResponseJSON, current: Viewer | null) {
+export async function authenticationFinish(device: Device, response: AuthenticationResponseJSON, current: Viewer | null, opening?: KeyOpening) {
   const challenge = await takeChallenge(device, "sign-in");
   const ids = userIds(response?.response?.userHandle);
   if (!challenge || !ids || (current && (current.personId !== ids.personId || current.familyId !== ids.familyId))) return null;
@@ -137,13 +137,15 @@ export async function authenticationFinish(device: Device, response: Authenticat
     await tx.update(passkeys).set({counter: String(result.authenticationInfo.newCounter)})
       .where(and(eq(passkeys.familyId, familyId), eq(passkeys.id, stored.id)));
     await clearAttempts(tx, familyId, personId);
-    return signInDevice(tx, familyId, personId, device, now, stored.id);
+    return signInDevice(tx, familyId, personId, device, now, stored.id, false,
+      opening ? {...opening, pepper: authenticatorSecret()} : undefined,
+    );
   });
   if (!session) return null;
   (await cookies()).set(changePinCookie, pack(session.id, "verified", device, "change-pin"), {
     ...privateCookie, maxAge: challengeMs / 1000,
   });
-  return {familyId, session};
+  return {familyId, session, queued: session.queued};
 }
 
 export async function changePinAfterFaceId(viewer: Viewer, device: Device, pin: string, confirmation: string) {

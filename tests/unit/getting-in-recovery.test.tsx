@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import {act, Component, type ReactNode} from "react";
+import {act, Component, StrictMode, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
-import {CodeEntry, KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
+import es from "../../messages/es.json";
+import {CodeEntry, KeyAlreadyOpened, KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
 import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
@@ -14,11 +15,14 @@ import {dismissToast, ToastHost} from "../../src/components/ui/toast";
 const actions = vi.hoisted(() => ({
   previewCode: vi.fn(), useKey: vi.fn(), beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(),
   finishFaceIdSignIn: vi.fn(), forgotPin: vi.fn(), reportUsedKey: vi.fn(), enterPin: vi.fn(), openFamily: vi.fn(),
+  noticeUsedKeyLink: vi.fn(),
 }));
 const lists = vi.hoisted(() => ({previewItemLink: vi.fn(), saveProfileField: vi.fn(), saveItem: vi.fn()}));
 const previews = vi.hoisted(() => vi.fn());
 const welcome = vi.hoisted(() => ({addFirstThing: vi.fn()}));
 const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn()}));
+const passkeyBrowser = vi.hoisted(() => ({startAuthentication: vi.fn(), startRegistration: vi.fn()}));
+vi.mock("@simplewebauthn/browser", () => passkeyBrowser);
 vi.mock("../../src/app/[locale]/sign-in/actions", () => actions);
 vi.mock("../../src/app/[locale]/lists/actions", () => lists);
 vi.mock("../../src/app/[locale]/welcome/actions", () => welcome);
@@ -32,6 +36,7 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  actions.noticeUsedKeyLink.mockReset().mockResolvedValue(false);
   previews.mockReset();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("fetch", vi.fn(async () => ({json: () => previews()})));
@@ -55,11 +60,97 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function render(node: ReactNode) {
+async function render(node: ReactNode, locale: "en" | "es" = "en") {
   await act(async () => root.render(
-    <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
+    <NextIntlClientProvider locale={locale} messages={locale === "es" ? es : en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
   ));
 }
+
+it("shows the Spanish used-key promise only after the server confirms the notice", async () => {
+  const result = Promise.withResolvers<boolean>();
+  actions.noticeUsedKeyLink.mockReturnValue(result.promise);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />, "es");
+  const told = es.getIn.used.told.replace("{name}", "Rosa");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith("family~token", expect.any(String));
+  expect(container.textContent).not.toContain(told);
+  await act(async () => result.resolve(true));
+  expect(container.textContent).toContain(told);
+});
+
+it("keeps PIN entry available if the used-key notice fails", async () => {
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  expect(container.textContent).not.toContain("Rosa's phone will be told.");
+  expect(button("4").disabled).toBe(false);
+});
+
+it("reuses an opening identity when React repeats the notice effect", async () => {
+  actions.noticeUsedKeyLink.mockResolvedValue(true);
+  await render(<StrictMode><KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" /></StrictMode>);
+  const calls = actions.noticeUsedKeyLink.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  expect(new Set(calls.map(([, openingId]) => openingId)).size).toBe(1);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+});
+
+it("keeps the opening identity and notice lifecycle through a wrong PIN and recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("1357");
+  await advance(260);
+  await type("4");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed: false, openingId});
+  expect(button("2").disabled).toBe(false);
+});
+
+it("carries a failed opening POST's identity through the lock screen to Face ID recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+  actions.beginFaceId.mockResolvedValue({challenge: "challenge"});
+  const response = {id: "credential", response: {userHandle: "owner"}};
+  passkeyBrowser.startAuthentication.mockResolvedValue(response);
+  actions.finishFaceIdSignIn.mockResolvedValue(true);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("4268");
+  await advance(260);
+  await click(en.getIn.locked.face);
+  expect(actions.finishFaceIdSignIn).toHaveBeenCalledExactlyOnceWith(response, {value: "token", typed: false, openingId});
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(router.replace).toHaveBeenCalledExactlyOnceWith("/account?face=1");
+});
+
+it.each([true, false])("switches a stale welcome to PIN entry without recording the opening twice (typed: %s)", async (typed) => {
+  vi.useFakeTimers();
+  const openingId = crypto.randomUUID();
+  actions.useKey.mockResolvedValue({error: "usedKey", usedAt: "2030-12-24", noticeQueued: true, openingId});
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<KeyWelcome familyId="family" value="token" typed={typed}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: null, available: true, preview: "preview", openingId}}
+    sender={null} organizer="Ana" />);
+  await click(en.getIn.hello.yes);
+  await type("4268");
+  await advance(260);
+  await type("4268");
+  await advance(260);
+  expect(actions.useKey).toHaveBeenCalledOnce();
+  expect(container.textContent).toContain(en.getIn.used.title);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+  await type("4268");
+  await advance(260);
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed, openingId});
+  expect(actions.noticeUsedKeyLink).not.toHaveBeenCalled();
+});
 
 function button(label: string) {
   const found = [...container.querySelectorAll("button")].find((node) => node.textContent === label || node.getAttribute("aria-label") === label);
@@ -271,6 +362,12 @@ it.each(["returning", "used-key"])("counts down a %s lock and restores PIN entry
   await type("4268");
   await advance(260);
   expect(actions.enterPin).toHaveBeenCalledTimes(2);
+  if (entry === "used-key") {
+    expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+    const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+    expect(actions.enterPin.mock.calls.map((call) => call[4]))
+      .toEqual(Array.from({length: 2}, () => ({value: "key", typed: false, openingId})));
+  }
 });
 
 it.each([

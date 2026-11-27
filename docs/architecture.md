@@ -50,7 +50,7 @@ The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. In production, n
 
 Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily schedule is defined in [`vercel.json`](../vercel.json). The job queues reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
 
-The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. See the [draw integration contract](#postgresql-and-migrations) for draw events.
+The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset requests call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. Key-opening actions and the shared [`signInDevice` boundary](../src/server/auth/access.ts) use [`recordUsedKeyOpening`](../src/server/auth/used-key-notice.ts) in their transaction. See [Notifications](../README.md#notifications) for key-use notice behavior and the [draw integration contract](#postgresql-and-migrations) for draw events.
 
 ## Disputed-reveal recovery
 
