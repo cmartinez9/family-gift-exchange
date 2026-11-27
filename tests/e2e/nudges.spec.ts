@@ -1,4 +1,4 @@
-import {mkdirSync} from "node:fs";
+import {mkdirSync, writeFileSync} from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type Browser, type BrowserContext, type Page} from "@playwright/test";
 import {and, eq} from "drizzle-orm";
@@ -6,7 +6,8 @@ import {hashPin} from "../../src/server/auth/pin";
 import {pinCredentials} from "../../src/server/auth/schema";
 import {createSession, digest, secret} from "../../src/server/auth/session";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {aboutMe, families, items, outbox, people, sizes} from "../../src/server/db/schema";
+import {aboutMe, exchanges, families, items, outbox, participants, people, sizes} from "../../src/server/db/schema";
+import {todayInExchangeCalendar} from "../../src/server/messages/calendar";
 import {practiceFamilies} from "../../src/server/draw/schema";
 import {listNudges} from "../../src/server/messages/schema";
 import {openPerson} from "../helpers/open-person";
@@ -21,7 +22,7 @@ test.describe.configure({mode: "serial"});
 test.skip(({browserName}) => browserName !== "chromium", "One engine is enough for the screen walk");
 test.setTimeout(240_000);
 
-const state: {familyId?: string; exchangeId?: string; ids: Record<string, string>; organizer?: Page; contexts: BrowserContext[]} = {ids: {}, contexts: []};
+const state: {familyId?: string; exchangeId?: string; ids: Record<string, string>; organizer?: Page; contexts: BrowserContext[]; listAction?: string} = {ids: {}, contexts: []};
 const database = () => connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
 
 async function shot(page: Page, name: string) {
@@ -148,7 +149,9 @@ test("an organizer nudges Beto from Who's in, once a day, without naming anyone"
   await shot(page, "f8-8_3-whos-in-nudge");
 
   const nudge = page.getByRole("button", {name: "Nudge Beto", exact: true});
+  const sentResponse = page.waitForResponse((response) => response.request().method() === "POST" && Boolean(response.request().headers()["next-action"]));
   await nudge.click();
+  state.listAction = (await sentResponse).request().headers()["next-action"];
   await expect(page.getByText("Beto will get a nudge")).toBeVisible();
   await expect(row("Beto").getByText("Nudged", {exact: true})).toBeVisible();
   await shot(page, "f8-8_3-whos-in-nudged");
@@ -254,4 +257,147 @@ test("reduced motion and the largest text on Who's in", async ({browser, baseURL
   // the name keeps its line: it is not squeezed into a column of single letters
   expect((await organizer.getByText("Christian", {exact: true}).boundingBox())!.height).toBeLessThan(80);
   await shot(organizer, "largest-text-f8-8_3-whos-in");
+});
+
+test("bulk reminders keep the organizer response private with two, one, or no unopened people", async ({browser, baseURL}) => {
+  const page = state.organizer!;
+  const whosIn = `/en/exchanges/${state.exchangeId}/manage/people`;
+  const scope = eq(participants.exchangeId, state.exchangeId!);
+  const reset = async (unopened: string[]) => rows(async (db) => {
+    await db.delete(outbox).where(eq(outbox.familyId, state.familyId!));
+    await db.delete(listNudges).where(eq(listNudges.familyId, state.familyId!));
+    await db.update(exchanges).set({personNudgedOn: todayInExchangeCalendar(new Date(Date.now() - 86_400_000))}).where(eq(exchanges.id, state.exchangeId!));
+    await db.update(participants).set({seenVersion: 1}).where(scope);
+    for (const name of unopened) await db.update(participants).set({seenVersion: null}).where(and(scope, eq(participants.personId, state.ids[name])));
+  });
+  const transcript: unknown[] = [];
+  let action: {id: string; body: string} | undefined;
+  let initialBoard: string[] | undefined;
+  let initialResponse: string | undefined;
+  for (const unopened of [["Rosa", "Beto"], ["Rosa"], []]) {
+    await reset(unopened);
+    await page.goto(whosIn);
+    const board = await page.getByRole("listitem").allTextContents();
+    initialBoard ??= board;
+    expect(board).toEqual(initialBoard);
+    const controls = await page.getByRole("button", {name: /^Nudge /}).allTextContents();
+    expect(controls).toEqual(["Nudge", "Nudge"]);
+    const send = async () => {
+      const responsePromise = page.waitForResponse((response) => response.request().method() === "POST" && Boolean(response.request().headers()["next-action"]));
+      await page.getByRole("button", {name: "Remind people to open their person", exact: true}).click();
+      const response = await responsePromise;
+      expect(response.status()).toBe(200);
+      const body = await response.text();
+      expect(body).toMatch(/\n\d+:"sent"\n/);
+      action = {id: response.request().headers()["next-action"], body: response.request().postData()!};
+      await expect(page.getByText("Reminders sent", {exact: true})).toBeVisible();
+      return body;
+    };
+    const first = await send();
+    initialResponse ??= first;
+    expect(first).toBe(initialResponse);
+    const startedListResponse = await page.request.post(whosIn, {
+      headers: {"next-action": state.listAction!, origin: baseURL!, "content-type": "text/plain;charset=UTF-8"},
+      data: JSON.stringify([state.exchangeId, state.ids.Rosa]),
+    });
+    expect(await startedListResponse.text()).toMatch(/\n\d+:"unavailable"\n/);
+    const notices = () => rows((db) => db.select().from(outbox).where(eq(outbox.familyId, state.familyId!)));
+    expect((await notices()).map(({personId}) => personId).sort()).toEqual(unopened.map((name) => state.ids[name]).sort());
+    expect((await notices()).every(({template, requesterName}) => template === "person-nudge" && requesterName === null)).toBe(true);
+    // A participant becomes unopened after the batch: a repeat must neither reveal it nor send again.
+    await rows((db) => db.update(participants).set({seenVersion: null}).where(and(scope, eq(participants.personId, state.ids.Ana))));
+    const repeated = await send();
+    expect(repeated).toBe(first);
+    expect(await notices()).toHaveLength(unopened.length);
+    await page.reload();
+    expect(await page.getByRole("listitem").allTextContents()).toEqual(board);
+    expect(await page.getByRole("button", {name: /^Nudge /}).allTextContents()).toEqual(controls);
+    transcript.push({unopenedCount: unopened.length, firstResponse: first, repeatedResponse: repeated, startedListResponse: "unavailable", persistedNoticeCount: (await notices()).length, boardUnchanged: true});
+    if (unopened.length === 2) {
+      await page.getByRole("button", {name: "Remind people to open their person", exact: true}).scrollIntoViewIfNeeded();
+      await shot(page, "bulk-reminder-organizer-en");
+      for (const [name, language, title] of [["Rosa", "en", "Your person is waiting"], ["Beto", "es", "Tu persona te espera"]]) {
+        const member = await memberPage(browser, baseURL!, name, {locale: language});
+        await member.goto(`/${language}/notifications`);
+        const notice = member.getByRole("listitem").filter({has: member.getByRole("heading", {name: title, exact: true})});
+        await expect(notice).toBeVisible();
+        for (const identity of [...NAMES, "Christian", ...Object.values(state.ids)]) await expect(notice).not.toContainText(identity);
+        await shot(member, `bulk-reminder-notice-${language}`);
+      }
+    }
+  }
+  // Replay the actual browser action as an ordinary participant. No domain function is stubbed.
+  const member = await memberPage(browser, baseURL!, "Rosa");
+  const forbidden = await member.request.post(whosIn, {headers: {"next-action": action!.id, origin: baseURL!, "content-type": "text/plain;charset=UTF-8"}, data: action!.body});
+  expect(await forbidden.text()).toMatch(/\n\d+:"forbidden"\n/);
+  await member.goto(whosIn);
+  await expect(member.getByRole("button", {name: "Remind people to open their person", exact: true})).toHaveCount(0);
+  transcript.push({ordinaryMemberAction: "forbidden", ordinaryMemberHasOrganizerControl: false});
+  for (const [status, drawVersion] of [["closed", 1], ["open", 0]] as const) {
+    await rows((db) => db.update(exchanges).set({status, drawVersion}).where(eq(exchanges.id, state.exchangeId!)));
+    const response = await page.request.post(whosIn, {
+      headers: {"next-action": action!.id, origin: baseURL!, "content-type": "text/plain;charset=UTF-8"}, data: action!.body,
+    });
+    expect(await response.text()).toMatch(/\n\d+:"unavailable"\n/);
+    transcript.push({exchangeStatus: status, drawVersion, staleOrganizerAction: "unavailable"});
+  }
+  await rows((db) => db.update(exchanges).set({status: "locked", drawVersion: 1}).where(eq(exchanges.id, state.exchangeId!)));
+  await page.goto(whosIn.replace("/en/", "/es/"));
+  await page.getByRole("button", {name: "Recordar que descubran a su persona", exact: true}).click();
+  await expect(page.getByText("Avisos enviados", {exact: true})).toBeVisible();
+  await shot(page, "bulk-reminder-organizer-es");
+  mkdirSync(DIR, {recursive: true});
+  writeFileSync(`${DIR}/bulk-reminder-http.json`, JSON.stringify(transcript, null, 2));
+});
+
+test("Not started nudges persist until joining and refresh on an open organizer page", async ({browser, baseURL}) => {
+  const today = todayInExchangeCalendar(new Date());
+  const yesterday = todayInExchangeCalendar(new Date(Date.now() - 86_400_000));
+  await rows(async (db) => {
+    await db.delete(outbox).where(eq(outbox.familyId, state.familyId!));
+    await db.delete(listNudges).where(eq(listNudges.familyId, state.familyId!));
+    await db.insert(listNudges).values({familyId: state.familyId!, exchangeId: state.exchangeId!, personId: state.ids.Leo, kind: "organizer", day: yesterday});
+  });
+  const page = state.organizer!;
+  const whosIn = `/en/exchanges/${state.exchangeId}/manage/people`;
+  const row = page.getByRole("listitem").filter({has: page.getByText("Leo", {exact: true})});
+  await page.goto(whosIn);
+  await expect(row.getByText("Not started", {exact: true})).toBeVisible();
+  await row.getByRole("button", {name: "Nudge Leo", exact: true}).click();
+  await expect(row.getByText("Nudged", {exact: true})).toBeVisible();
+  expect((await rows((db) => db.select().from(listNudges).where(and(eq(listNudges.familyId, state.familyId!), eq(listNudges.personId, state.ids.Leo))))).map(({day}) => day)).toEqual([today]);
+  await rows(async (db) => {
+    const pinHash = await hashPin(process.env.E2E_AUTH_SECRET ?? process.env.AUTH_SECRET!, "4268");
+    await db.insert(pinCredentials).values({familyId: state.familyId!, personId: state.ids.Leo, pinHash, joinedAt: new Date()});
+  });
+  const leo = await memberPage(browser, baseURL!, "Leo");
+  await leo.goto("/en/notifications");
+  await expect(leo.getByRole("heading", {name: "Your wishlist is waiting", exact: true})).toBeVisible();
+  await shot(leo, "not-started-nudge-after-joining");
+
+  // A second organizer page sends today's nudge; focusing the mounted page fetches fresh props.
+  const other = await memberPage(browser, baseURL!, "Christian");
+  await other.goto(whosIn);
+  await other.getByRole("button", {name: "Nudge Beto", exact: true}).click();
+  await expect(other.getByText("Beto will get a nudge")).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  const beto = page.getByRole("listitem").filter({has: page.getByText("Beto", {exact: true})});
+  await expect(beto.getByText("Nudged", {exact: true})).toBeVisible();
+  await rows((db) => db.delete(listNudges).where(and(eq(listNudges.familyId, state.familyId!), eq(listNudges.personId, state.ids.Beto))));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(beto.getByRole("button", {name: "Nudge Beto", exact: true})).toBeVisible();
+
+  // Only the browser clock changes: the running product must release its mounted completion at Chicago midnight.
+  let midnight = Date.parse(`${today}T00:00:00Z`) + 86_400_000;
+  while (todayInExchangeCalendar(new Date(midnight)) === today) midnight += 3_600_000;
+  await page.clock.setFixedTime(new Date(midnight - 30_000));
+  await expect(row.getByText("Nudged", {exact: true})).toBeVisible();
+  await page.clock.setFixedTime(new Date(midnight + 1000));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(row.getByRole("button", {name: "Nudge Leo", exact: true})).toBeVisible();
+  await shot(page, "mounted-nudge-reset-next-calendar-day");
+  writeFileSync(`${DIR}/nudge-calendar-refresh.json`, JSON.stringify({
+    storedPreviousDay: yesterday, acceptedOn: today, previousDayRemoved: true, noticeVisibleAfterJoining: true,
+    mountedPageHonoredServerNudged: true, mountedPageHonoredServerReady: true, clientMidnightReleasedCompletion: true,
+  }, null, 2));
 });

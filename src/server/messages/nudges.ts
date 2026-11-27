@@ -74,6 +74,11 @@ export async function nudgeList(viewer: NudgeViewer, exchangeId: unknown, person
   return result;
 }
 
+/**
+ * Keep opening state private: valid organizer calls return "sent" even for empty batches and
+ * same-day repeats. Never return target identities or counts, or reuse them in per-person controls.
+ * See tests/integration/nudges.test.ts for organizer-response privacy regressions.
+ */
 export async function nudgeUnopened(viewer: NudgeViewer, exchangeId: unknown, now = new Date()): Promise<Exclude<NudgeResult, "already">> {
   if (typeof exchangeId !== "string" || !uuid.test(exchangeId)) return "unavailable";
   const {familyId} = viewer;
@@ -101,7 +106,7 @@ export async function nudgeUnopened(viewer: NudgeViewer, exchangeId: unknown, no
   return result;
 }
 
-/** Who the organizers have nudged today. Only nudges an organizer pressed: never ones from a giver's visit. */
+/** Only explicit per-person list requests may affect row state; private reminder targets and visits would expose opening activity. */
 export async function nudgedToday(viewer: NudgeViewer, exchangeId: string, now = new Date()) {
   if (!uuid.test(exchangeId)) return [];
   return withFamily(viewer.familyId, async (tx) => {
@@ -117,7 +122,7 @@ export async function nudgedToday(viewer: NudgeViewer, exchangeId: string, now =
 /**
  * Someone opened their person and found an empty list. Call only after the draw module revealed
  * `personId` to this viewer. Records nothing about who looked: the daily job sends the nudge.
- * True when the person will be nudged (today's nudge may already be on its way).
+ * True when an eligible request is recorded; delivery rechecks eligibility and shares the daily limit.
  */
 export async function noteEmptyListViewed(viewer: NudgeViewer, exchangeId: string, personId: string, now = new Date()) {
   if (!uuid.test(exchangeId) || !uuid.test(personId)) return false;

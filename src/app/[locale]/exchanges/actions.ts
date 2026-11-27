@@ -19,7 +19,7 @@ export type PersonItem = {
 };
 /** What your person's page shows after the reveal: their list, sizes and likes. */
 export type PersonList = {items: PersonItem[]; sizes: string | null; likes: string | null};
-/** `nudged`: their list is empty and they will get today's nudge, without being told who looked. */
+/** `nudged` carries noteEmptyListViewed's request result; see that function's delivery contract. */
 export type RevealState = {error?: string; personName?: string; personId?: string; list?: PersonList; nudged?: boolean};
 
 async function drawAction<T>(operation: () => Promise<T>): Promise<T | {error: string}> {
