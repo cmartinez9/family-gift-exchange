@@ -358,7 +358,8 @@ const screens: Screen[] = [
   {name: "exchanges", who: "Christian", path: () => "/exchanges"},
   {name: "manage", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/manage`},
   {name: "manage-redraw-roster", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/manage`, then: async (page, t) => {
-    await page.getByText(t.draw.forceRedraw, {exact: true}).or(page.getByText(t.draw.redraw, {exact: true})).click();
+    const summary = page.locator("summary");
+    await summary.getByText(t.draw.forceRedraw, {exact: true}).or(summary.getByText(t.draw.redraw, {exact: true})).click();
     await expect(page.getByRole("checkbox", {name: "Christopher", exact: true})).toBeVisible();
     await page.getByRole("checkbox", {name: "Christopher", exact: true}).scrollIntoViewIfNeeded();
     await settle(page);

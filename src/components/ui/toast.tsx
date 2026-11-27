@@ -9,7 +9,7 @@ export type ToastOptions = {
   message: string;
   /** Undo instead of a confirm, for anything reversible. The toast then stays 5s instead of 2.6s. */
   undo?: () => void;
-  /** Gold, beside the message. A check by default; "alert" for no connection. */
+  /** Gold status icon. A check by default; "alert" for no connection. */
   icon?: IconName;
   /** "top" drops in under the status bar (no connection); otherwise it floats above the screen's buttons. */
   placement?: "bottom" | "top";
@@ -58,8 +58,8 @@ function bottomOffset(): string {
 }
 
 /**
- * The one toast: an ink pill, 60px, with a gold icon, an 18px message and an optional gold Undo (48px).
- * It rises 16px in 280ms and stays 2.6s, or 5s with Undo. Render once, in the shared layout.
+ * Render once in the shared layout. The visual and enlarged-text contracts live in
+ * design/DESIGN.md#toasts and #accessibility.
  */
 export function ToastHost({undoLabel}: {undoLabel: string}) {
   const state = useSyncExternalStore(subscribe, () => current, () => null);
