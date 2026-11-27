@@ -137,7 +137,8 @@ for (const exit of ["navigation", "Done", "home"] as const) {
 
       if (exit === "navigation") await helping.getByRole("link", {name: "Later", exact: true}).click();
       else if (exit === "Done") await helping.getByRole("button", {name: "Done", exact: true}).click();
-      else await helping.getByRole("link", {name: "Back to Rosa's Home", exact: true}).click();
+      // Marta's first key offers to help her on this phone (9.1); going back leaves it alone
+      else await helping.getByRole("button", {name: "Go back", exact: true}).click();
       await expect(helping).toHaveURL(exit === "home" ? /\/en$/ : /\/en\/sign-in$/);
       await expect(helping.getByRole("button", {name: en.auth.signInFaceId, exact: true})).toBeVisible();
       await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
