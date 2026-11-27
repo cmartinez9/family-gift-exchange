@@ -75,6 +75,8 @@ async function addNote(page: Page, path: string, title: string) {
 }
 
 async function screenshot(page: Page, name: string) {
+  // Capture the resulting screen after the tab/page and card entrances have settled.
+  await page.waitForTimeout(700);
   const path = test.info().outputPath(`${name}.png`);
   await page.screenshot({path, fullPage: true});
   await test.info().attach(name, {path, contentType: "image/png"});
@@ -129,7 +131,18 @@ test("rejects code and private links, then saves a real store preview without a 
     await expect(card.locator("img")).toBeVisible();
     const photoUrl = await card.locator("img").getAttribute("src");
     expect((await page.request.get(photoUrl!)).headers()["content-type"]).toBe("image/webp");
+    await page.waitForTimeout(2000);
+    const geometry = await page.getByRole("navigation", {name: en.ui.tabs.label}).evaluate((bar) => {
+      const active = bar.querySelector('[aria-current="page"]')!.getBoundingClientRect();
+      const pill = bar.querySelector(".fge-tab-pill")!.getBoundingClientRect();
+      return {active: {left: active.left, width: active.width}, pill: {left: pill.left, width: pill.width}};
+    });
+    await test.info().attach("saved-product-tab-geometry", {body: JSON.stringify(geometry), contentType: "application/json"});
     await screenshot(page, "live-product-saved");
+    await page.screenshot({path: test.info().outputPath("live-product-viewport.png")});
+    await page.getByRole("navigation", {name: en.ui.tabs.label}).screenshot({path: test.info().outputPath("live-product-tabs.png")});
+    expect(Math.abs(geometry.active.left - geometry.pill.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.active.width - geometry.pill.width)).toBeLessThanOrEqual(1);
   } finally {
     await cleanup(familyId);
   }
