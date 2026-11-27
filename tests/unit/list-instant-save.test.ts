@@ -38,14 +38,14 @@ beforeEach(() => {
 
 it("saves a new link at once and reads its page after the response when no preview came first", async () => {
   server.readLinkDraft.mockReturnValue(undefined);
-  await saveItem("ana", null, "link", {}, linkForm());
+  await saveItem("ana", null, "link", false, {}, linkForm());
   expect(server.addListItem).toHaveBeenCalledWith(ana, "ana", expect.objectContaining({kind: "link"}), {later: server.after});
 });
 
 it("uses a preview read ahead of time instead of reading the page again", async () => {
   const preview = {url: "https://www.target.com/p/fleece-robe/-/A-12345", title: "Robe", price: null, store: "Target", icon: "target"};
   server.readLinkDraft.mockReturnValue(preview);
-  await saveItem("ana", null, "link", {}, linkForm("signed"));
+  await saveItem("ana", null, "link", false, {}, linkForm("signed"));
   const services = server.addListItem.mock.calls[0][3];
   expect(services.later).toBeUndefined();
   await expect(services.resolve()).resolves.toBe(preview);

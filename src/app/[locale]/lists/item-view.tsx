@@ -15,11 +15,14 @@ export type ListItemView = {
   /** The stored photo, through the signed-in photo route. */
   photo?: string;
   claim?: "mine" | "someone";
+  /** A new link whose picture, title and price are still on their way (4.4). */
+  pictureComing?: boolean;
 };
 
 type ProjectedItem = {
   id: string; kind: ItemKind; title: string; note: string | null; price: string | null; store: string | null;
   starred: boolean; url: string | null; hasPhoto: boolean; updatedAt: Date; claim?: "mine" | "someone";
+  pictureComing?: boolean;
 };
 
 export function photoPath(locale: string, itemId: string, updatedAt: Date) {
@@ -31,12 +34,13 @@ export function toItemView(item: ProjectedItem, locale: string): ListItemView {
     id: item.id, kind: item.kind, title: item.title, note: item.note, price: item.price, store: item.store,
     starred: item.starred, url: item.url, photo: item.hasPhoto ? photoPath(locale, item.id, item.updatedAt) : undefined,
     ...(item.claim ? {claim: item.claim} : {}),
+    ...(item.pictureComing ? {pictureComing: true} : {}),
   };
 }
 
 /** A link item that came without a picture: the one place a list asks for a photo. */
-export function missesPicture(item: Pick<ListItemView, "kind" | "photo">) {
-  return item.kind === "link" && !item.photo;
+export function missesPicture(item: Pick<ListItemView, "kind" | "photo" | "pictureComing">) {
+  return item.kind === "link" && !item.photo && !item.pictureComing;
 }
 
 /**

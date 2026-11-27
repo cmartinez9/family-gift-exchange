@@ -1,7 +1,7 @@
 "use client";
 
-import {useRouter} from "next/navigation";
 import {useEffect} from "react";
+import {useRouter} from "@/i18n/navigation";
 import {PICTURE_WAIT_MS} from "@/server/lists/validation";
 
 const EVERY_MS = 1500;

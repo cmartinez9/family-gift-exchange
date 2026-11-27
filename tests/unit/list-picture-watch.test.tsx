@@ -6,7 +6,7 @@ import {PictureWatch} from "../../src/app/[locale]/lists/picture-watch";
 import {PICTURE_WAIT_MS} from "../../src/server/lists/validation";
 
 const router = vi.hoisted(() => ({refresh: vi.fn()}));
-vi.mock("next/navigation", () => ({useRouter: () => router}));
+vi.mock("@/i18n/navigation", () => ({useRouter: () => router}));
 
 let container: HTMLDivElement;
 let root: Root;

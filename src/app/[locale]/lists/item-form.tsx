@@ -1,7 +1,7 @@
 "use client";
 
 import {useActionState, useEffect, useId, useRef, useState, type ReactNode} from "react";
-import {useFormatter, useTranslations} from "next-intl";
+import {useFormatter, useLocale, useTranslations} from "next-intl";
 import {Button, TextButton} from "@/components/ui/button";
 import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
@@ -10,7 +10,7 @@ import {ItemPicture, NoPicture} from "@/components/ui/item-card";
 import {haptic} from "@/components/ui/motion/haptic";
 import {NOTE_LIMIT, TITLE_LIMIT, type ItemKind} from "@/server/lists/validation";
 import type {Feedback, FormState, PreviewState} from "./action-types";
-import {previewItemLink, saveItem} from "./actions";
+import {saveItem} from "./actions";
 import {runListAction} from "./client-action";
 import {FormFeedback} from "./controls";
 
@@ -66,6 +66,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   footer?: ReactNode;
 }) {
   const t = useTranslations("lists");
+  const locale = useLocale();
   const formatter = useFormatter();
   const sheet = mode === "sheet";
   const [state, dispatch, pending] = useActionState<FormState, FormData>(
@@ -83,6 +84,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   const [loading, setLoading] = useState(false);
   const [priceEdited, setPriceEdited] = useState(false);
   const requestId = useRef(0);
+  const previewRequest = useRef<AbortController | null>(null);
   const requested = useRef(initial?.url ?? "");
   const touchedTitle = useRef(Boolean(initial?.title));
   const touchedPrice = useRef(Boolean(initial));
@@ -106,7 +108,17 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
     requested.current = input;
     const id = ++requestId.current;
     setLoading(true);
-    const response: PreviewState = await runListAction(() => previewItemLink(ownerId, input));
+    previewRequest.current?.abort();
+    const request = previewRequest.current = new AbortController();
+    let response: PreviewState;
+    try {
+      const reply = await fetch(`/${locale}/lists/${ownerId}/link-preview`, {
+        method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({link: input}), signal: request.signal,
+      });
+      response = await reply.json() as PreviewState;
+    } catch {
+      response = request.signal.aborted ? {} : {error: "could-not-save"};
+    }
     if (id !== requestId.current) return;
     setPreview(response);
     setLoading(false);
@@ -120,6 +132,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   function changeLink(input: string) {
     setLink(input);
     requestId.current++;
+    previewRequest.current?.abort();
     setPreview({});
     setLoading(false);
     if (!touchedTitle.current) setTitle("");
@@ -132,6 +145,12 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
   const store = previewCard?.store ?? initial?.store ?? null;
   function submit(form: FormData) {
     savedOnce.current = false;
+    // A preview still loading must not hold up the save: the list shows it at once and reads the page later.
+    if (loading) {
+      requestId.current++;
+      previewRequest.current?.abort();
+      setLoading(false);
+    }
     if (upload) form.set("photo", upload.file);
     dispatch(form);
   }

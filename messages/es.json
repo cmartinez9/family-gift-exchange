@@ -367,6 +367,8 @@
     "fromStore": "De {store}",
     "tookOff": "Quitaste {title}",
     "added": "Agregado a tu lista",
+    "pictureComing": "Trayendo la foto de {store}",
+    "pictureComingSub": "Guardado. La foto ya viene en camino.",
     "editNotice": "Si alguien ya va a regalarlo, le contaremos qué cambió. No verás quién, ni si alguien lo va a regalar.",
     "starOn": "Sí",
     "starOff": "No",
