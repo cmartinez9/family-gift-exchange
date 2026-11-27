@@ -173,6 +173,36 @@ async function openInstall(page: Page, t: Messages, phone: "iphone" | "android")
   await expect(page.getByRole("dialog", {name: title, exact: true})).toBeVisible();
 }
 
+async function checkRoster(page: Page) {
+  const checkbox = page.getByRole("checkbox", {name: "Christopher", exact: true});
+  const row = checkbox.locator("..");
+  const name = row.getByText("Christopher", {exact: true});
+  for (const width of [195, 390]) {
+    await page.setViewportSize({width, height: width === 195 ? 422 : 844});
+    await checkbox.scrollIntoViewIfNeeded();
+    await settle(page);
+    expect(await layoutProblems(page, "fieldset")).toEqual([]);
+    const target = (await checkbox.boundingBox())!;
+    const words = (await name.boundingBox())!;
+    expect(target.width).toBeGreaterThanOrEqual(48);
+    expect(target.height).toBeGreaterThanOrEqual(48);
+    if (width === 195) {
+      expect(words.width).toBeCloseTo((await row.boundingBox())!.width, 0);
+      expect(words.y).toBeGreaterThanOrEqual(target.y + target.height);
+    } else {
+      expect(words.y).toBeLessThan(target.y + target.height);
+      expect(words.y + words.height).toBeGreaterThan(target.y);
+    }
+    const checked = await checkbox.isChecked();
+    await checkbox.click({position: {x: 1, y: 1}});
+    await expect(checkbox).toBeChecked({checked: !checked});
+    await checkbox.press("Space");
+    await expect(checkbox).toBeChecked({checked});
+    await row.screenshot({path: test.info().outputPath(`roster-${width}.png`)});
+  }
+  await page.setViewportSize(largest.viewport);
+}
+
 const screens: Screen[] = [
   {name: "home", who: "Christian", path: () => "/"},
   {name: "home-member", who: "Rosa", path: () => "/"},
@@ -327,6 +357,13 @@ const screens: Screen[] = [
   }},
   {name: "exchanges", who: "Christian", path: () => "/exchanges"},
   {name: "manage", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/manage`},
+  {name: "manage-redraw-roster", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/manage`, then: async (page, t) => {
+    await page.getByText(t.draw.forceRedraw, {exact: true}).or(page.getByText(t.draw.redraw, {exact: true})).click();
+    await expect(page.getByRole("checkbox", {name: "Christopher", exact: true})).toBeVisible();
+    await page.getByRole("checkbox", {name: "Christopher", exact: true}).scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.screenshot({path: test.info().outputPath("expanded-roster-viewport.png")});
+  }, afterLayout: checkRoster},
   {name: "preview", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/preview/${f.ids.Rosa}`},
   {name: "practice", who: "Christian", path: () => "/exchanges/practice"},
   {name: "practice-started", who: "Christian", path: () => "/exchanges/practice", then: async (page, t) => {
@@ -398,7 +435,11 @@ const screens: Screen[] = [
   {name: "setup-new", who: "Christian", family: "setup", path: () => "/exchanges/new"},
   {name: "setup-manage", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage`},
   {name: "setup-details", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage/details`},
-  {name: "setup-people", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage/people`},
+  {name: "setup-people", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage/people`, then: async (page) => {
+    await page.getByRole("checkbox", {name: "Christopher", exact: true}).scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.screenshot({path: test.info().outputPath("setup-roster-viewport.png")});
+  }, afterLayout: checkRoster},
   {name: "setup-family", who: "Christian", family: "setup", path: () => "/family"},
   {name: "setup-draw", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage/draw`},
   {name: "sign-in", who: "guest", path: () => "/sign-in"},
@@ -543,5 +584,35 @@ for (const locale of ["en", "es"] as const) {
         await page.context().close();
       }
     });
+
+    for (const width of [195, 390]) {
+      test(`organizer can add a name at ${width}px`, async () => {
+        const page = await setup.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
+          deviceScaleFactor: width === 195 ? 2 : 1, reducedMotion: "reduce"});
+        try {
+          const t = messages[locale];
+          await page.goto(`/${locale}/exchanges/${setup.exchangeId}/manage/people`);
+          const input = page.getByRole("textbox", {name: t.draw.setup.addName, exact: true});
+          const add = page.getByRole("button", {name: t.draw.setup.add, exact: true});
+          const name = width === 195 ? "Marisol" : "Guadalupe";
+          await input.fill(name);
+          await settle(page);
+          expect(await layoutProblems(page, "form:has(#add-names)")).toEqual([]);
+          const field = (await input.boundingBox())!;
+          const button = (await add.boundingBox())!;
+          expect(field.width).toBeGreaterThanOrEqual(96);
+          if (width === 195) expect(button.y).toBeGreaterThanOrEqual(field.y + field.height);
+          else expect(button.y).toBeLessThan(field.y + field.height);
+          await input.locator("..").screenshot({path: test.info().outputPath(`${locale}-organizer-input-${width}.png`)});
+          await add.click();
+          await expect(page.getByRole("checkbox", {name, exact: true})).toBeVisible();
+          await expect(input).toHaveValue("");
+          await page.reload();
+          await expect(page.getByRole("checkbox", {name, exact: true})).toBeVisible();
+        } finally {
+          await page.context().close();
+        }
+      });
+    }
   });
 }

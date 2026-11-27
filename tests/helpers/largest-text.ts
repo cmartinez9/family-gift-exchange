@@ -28,6 +28,11 @@ export async function layoutProblems(page: Page, scope = "body"): Promise<Layout
     const hidden = (element: Element) => {
       // aria-hidden words are still on screen (a title read out through its link's label), so they count
       if (element.closest("[hidden], .sr-only, dialog:not([open]), template, script, style")) return true;
+      // Closed disclosures can retain layout boxes, but only their first summary is painted.
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor instanceof HTMLDetailsElement && !ancestor.open
+          && !ancestor.querySelector(":scope > summary")?.contains(element)) return true;
+      }
       const style = getComputedStyle(element);
       if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) return true;
       const rect = element.getBoundingClientRect();
