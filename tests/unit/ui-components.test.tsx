@@ -26,6 +26,7 @@ import {PinPad, PinSlots} from "@/components/ui/pin";
 import {StepBar} from "@/components/ui/step-bar";
 import {TabBar, TabBarHost, TabRoot} from "@/components/ui/tab-bar";
 import {ToastHost, dismissToast, toast} from "@/components/ui/toast";
+import {CloseSeasonSheet} from "@/app/[locale]/exchanges/close-season-sheet";
 
 const {push} = vi.hoisted(() => ({push: vi.fn()}));
 
@@ -66,6 +67,29 @@ afterEach(async () => {
 async function render(node: ReactNode) {
   await act(async () => root.render(node));
 }
+
+it("discloses gift mark cleanup and submits only after explicit confirmation", async () => {
+  const action = vi.fn().mockResolvedValue({});
+  const marks = 'Marks and "Things I\'m getting" are cleared.';
+  await render(<CloseSeasonSheet action={action} labels={{
+    open: "Close exchange", title: "Close Christmas?", close: "Close", lists: "Lists stay.",
+    sealed: "The draw stays sealed.", marks, confirm: "Close Christmas", notYet: "Not yet",
+  }} />);
+  const dialog = container.querySelector("dialog")!;
+  dialog.showModal = () => { dialog.open = true; };
+  const click = async (label: string) => {
+    const button = [...container.querySelectorAll("button")].find((element) => element.textContent === label);
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+  };
+
+  await click("Close exchange");
+  expect(dialog.open).toBe(true);
+  expect(dialog.textContent).toContain(marks);
+  expect(action).not.toHaveBeenCalled();
+  await click("Close Christmas");
+  expect(action).toHaveBeenCalledOnce();
+});
 
 describe("stitched lettering", () => {
   it("keeps the real word for screen readers and hides the stitches", () => {

@@ -110,6 +110,9 @@ export async function manage(id: string, request: Management, _previous: FormSta
       }
       case "close": {
         await closeExchange(viewer, id);
+        const locale = await getLocale();
+        revalidatePath(`/${locale}/lists`, "layout");
+        revalidatePath(`/${locale}/account`);
         feedback = t("closed");
         break;
       }

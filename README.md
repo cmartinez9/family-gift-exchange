@@ -28,7 +28,7 @@ After opening your person, use **Ask your person** to send an anonymous question
 
 Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
 
-Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings and questions, retaining the exchange details and seal, and opens **That's a wrap**. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings, questions, and all of the family's **I'm getting this** marks and their **Bought** and **Wrapped** state, including marks made before the season opened. Cleanup runs only when the exchange first closes; confirming again preserves marks made afterward. It retains the exchange details and seal and opens **That's a wrap**. Wishlists and their items remain, and everyone can keep adding gifts throughout the year. There is no later reveal of everyone's pairings.
 
 ## Wishlists and gifts
 
@@ -39,6 +39,8 @@ Choose **Edit sizes and About me** to add sizing, preferences, or allergies. The
 **Family lists** lets you browse every active member's wishlist, even before a draw or for gifts outside the exchange. The directory lists people alphabetically. On that page, an organizer or co-organizer using their own profile can expand **Gift budget** to set one amount in US dollars for the exchange, or leave it blank for no budget. Once the exchange is closed, its budget cannot be changed or cleared, including from a form opened before closing.
 
 On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
+
+For what happens to marks at season end, see [Run an exchange](#run-an-exchange).
 
 ## Notifications
 
