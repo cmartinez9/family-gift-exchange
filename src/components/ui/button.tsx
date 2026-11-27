@@ -11,7 +11,9 @@ import {AppLink} from "./navigation";
  * smallSoft: a quieter row action on a card's track tone (Sign out on Your phones) — track pill, 48px.
  * danger: only inside a confirm sheet, for what cannot be undone — 56px.
  * soft: a secondary pill on a card's track tone, 52px.
- * Heights are minimums so labels can wrap on narrow cards.
+ * Heights are minimums so labels can wrap on narrow cards. At the largest text size a button's icon
+ * stacks over its label, as the tab bar's do, and the sides tighten (the corners soften to match, so a
+ * label of two or three lines stays inside the shape): a label wraps between words, never inside one.
  */
 export type ButtonVariant = "ground" | "outline" | "card" | "small" | "smallSoft" | "danger" | "soft";
 
@@ -19,17 +21,17 @@ const BASE = "fge-press inline-flex max-w-full shrink-0 items-center justify-cen
   + "disabled:cursor-default aria-disabled:cursor-default";
 
 const VARIANT: Readonly<Record<ButtonVariant, string>> = {
-  ground: "min-h-16 w-full px-6 bg-snow-white text-ink text-button "
+  ground: "min-h-16 w-full px-6 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[28px] max-[299px]:flex-col max-[299px]:gap-1 bg-snow-white text-ink text-button "
     + "disabled:bg-on-ground disabled:text-white/75 aria-disabled:bg-on-ground aria-disabled:text-white/75",
-  outline: "min-h-[60px] w-full px-6 border-2 border-white/60 bg-transparent text-snow-white text-button",
-  card: "min-h-[52px] w-full px-6 bg-ink text-snow-white text-body-strong "
+  outline: "min-h-[60px] w-full px-6 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[28px] max-[299px]:flex-col max-[299px]:gap-1 border-2 border-white/60 bg-transparent text-snow-white text-button",
+  card: "min-h-[52px] w-full px-6 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[26px] max-[299px]:flex-col max-[299px]:gap-1 bg-ink text-snow-white text-body-strong "
     + "disabled:bg-[var(--track)] disabled:text-[var(--fg-muted)]",
-  small: "min-h-12 self-start px-[18px] gap-2 bg-ink text-snow-white text-body-strong "
+  small: "min-h-12 self-start px-[18px] max-[299px]:px-3 max-[299px]:py-2.5 max-[299px]:rounded-[24px] max-[299px]:flex-col max-[299px]:gap-1 gap-2 bg-ink text-snow-white text-body-strong "
     + "disabled:bg-[var(--track)] disabled:text-[var(--fg-muted)]",
-  smallSoft: "min-h-12 self-start px-[18px] gap-2 bg-[var(--track)] text-ink text-body-strong "
+  smallSoft: "min-h-12 self-start px-[18px] max-[299px]:px-3 max-[299px]:py-2.5 max-[299px]:rounded-[24px] max-[299px]:flex-col max-[299px]:gap-1 gap-2 bg-[var(--track)] text-ink text-body-strong "
     + "disabled:text-[var(--fg-muted)]",
-  danger: "min-h-14 w-full px-6 bg-danger text-snow-white text-body-strong",
-  soft: "min-h-[52px] w-full px-3 bg-[var(--track)] text-ink text-body-strong",
+  danger: "min-h-14 w-full px-6 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[28px] max-[299px]:flex-col max-[299px]:gap-1 bg-danger text-snow-white text-body-strong",
+  soft: "min-h-[52px] w-full px-3 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[26px] max-[299px]:flex-col max-[299px]:gap-1 bg-[var(--track)] text-ink text-body-strong",
 };
 
 const ICON_SIZE: Readonly<Record<ButtonVariant, number>> = {ground: 22, outline: 22, card: 22, small: 20, smallSoft: 20, danger: 22, soft: 22};
@@ -42,7 +44,7 @@ function Content({icon, variant, children}: {icon?: IconName; variant: ButtonVar
   return (
     <>
       {icon && <Icon name={icon} size={ICON_SIZE[variant]} strokeWidth={2.4} />}
-      <span>{children}</span>
+      <span className="max-[299px]:text-center">{children}</span>
     </>
   );
 }

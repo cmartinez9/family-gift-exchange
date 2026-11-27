@@ -6,7 +6,8 @@ import {useFormatter, useTranslations} from "next-intl";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton} from "@/components/ui/button";
-import {Card, IconDisc} from "@/components/ui/card";
+import {Card, IconDisc, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {STITCH_CELL, StitchedText} from "@/components/ui/knit/stitched-text";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -44,9 +45,9 @@ function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, o
       </div>
       {prepared.qr && (
         <div className="flex flex-col items-center gap-2 rounded-[24px] bg-snow-white p-4">
-          <Image unoptimized src={prepared.qr} width={220} height={220} alt={t("keyQr")} />
+          <Image unoptimized src={prepared.qr} width={220} height={220} alt={t("keyQr")} className="max-[299px]:h-auto max-[299px]:max-w-full" />
           <p className="text-body font-semibold">{t("codeOnCard", {code: prepared.code})}</p>
-          <p className="text-center text-body break-all text-muted-ink">{t("familyAddressOnCard", {url: prepared.familyAddress})}</p>
+          <p className="text-center text-body break-all text-muted-ink max-[299px]:break-normal">{t("familyAddressOnCard", {url: prepared.familyAddress})}</p>
         </div>
       )}
       {!prepared.qr && <p className="text-body text-muted-ink">{t("codeOnCard", {code: prepared.code})}</p>}
@@ -183,9 +184,9 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
               const status = person.joined ? t("status.joined") : isSent ? t("status.sent") : k("notSentYet");
               return (
                 <li key={person.id} id={`member-${person.id}`} className="flex flex-col">
-                  <div className="flex min-h-16 items-center gap-3.5 py-2">
+                  <div className={cn("flex min-h-16 items-center gap-3.5 py-2", stackRow)}>
                     <Avatar name={person.name} size={44} />
-                    <div className="flex min-w-0 flex-1 flex-col">
+                    <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                       <h2 className="text-row-title break-words">{person.name}</h2>
                       <p className="text-body text-muted-ink">{status}</p>
                       {person.requestedAt && <p className="text-body font-semibold text-gold-ink">
@@ -209,7 +210,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
                     )}
                   </div>
                   {isSent && !person.joined && !prepared[person.id]?.key && (
-                    <TextButton className="-mt-2 self-start px-0 pl-[58px] text-muted-ink" disabled={pending}
+                    <TextButton className="-mt-2 self-start px-0 pl-[58px] text-muted-ink max-[299px]:mt-0 max-[299px]:pl-0" disabled={pending}
                       onClick={() => prepare(person, "share")}>{k("sendAgain")}</TextButton>
                   )}
                   {!person.joined && (prepared[person.id]?.error ? <Feedback state={prepared[person.id]} /> : panel(person))}
@@ -235,9 +236,9 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
               );
             })}
             {helped.map(({id, name, helper}) => (
-              <li key={id} className="flex min-h-16 items-center gap-3.5 py-2">
+              <li key={id} className={cn("flex min-h-16 items-center gap-3.5 py-2", stackRow)}>
                 <Avatar name={name} size={44} />
-                <div className="flex min-w-0 flex-1 flex-col">
+                <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                   <p className="text-row-title break-words">{name}</p>
                   <p className="flex items-center gap-1.5 text-body text-muted-ink"><Icon name="phone" size={18} />{k("noPhoneHelps", {name: helper})}</p>
                 </div>
@@ -261,11 +262,11 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
           <div className="px-edge pt-6">
             <Card className="flex flex-col items-center gap-4 py-6">
               {shown[qrPerson.id]?.key?.qr ? (
-                <Image unoptimized src={shown[qrPerson.id]!.key!.qr!} width={240} height={240} alt={t("keyQr")} className="rounded-[18px]" />
+                <Image unoptimized src={shown[qrPerson.id]!.key!.qr!} width={240} height={240} alt={t("keyQr")} className="rounded-[18px] max-[299px]:h-auto max-[299px]:max-w-full" />
               ) : shown[qrPerson.id]?.error ? <Feedback state={shown[qrPerson.id]} /> : (
-                <div className="size-[240px] animate-pulse rounded-[18px] bg-card-track" aria-busy="true" />
+                <div className="size-[240px] animate-pulse rounded-[18px] bg-card-track max-[299px]:aspect-square max-[299px]:h-auto max-[299px]:max-w-full" aria-busy="true" />
               )}
-              <p className="flex items-center gap-2.5 text-row-title"><Avatar name={qrPerson.name} size={40} />{k("keyFor", {name: qrPerson.name})}</p>
+              <p className={cn("flex items-center gap-2.5 text-row-title max-[299px]:w-full", stackRow)}><Avatar name={qrPerson.name} size={40} /><span className={stackWords}>{k("keyFor", {name: qrPerson.name})}</span></p>
             </Card>
           </div>
         </Overlay>
@@ -277,7 +278,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
           <div className="print:hidden">
             <PageTitle title={t("print")} as="h2" lead={k("printLead", {names: new Intl.ListFormat(undefined, {type: "conjunction"}).format(printBatch.map(({person}) => person.name))})} />
           </div>
-          <ul className="grid grid-cols-2 gap-3 px-edge pt-6 pb-6 print:grid-cols-3 print:gap-6">
+          <ul className="grid grid-cols-2 gap-3 px-edge pt-6 pb-6 max-[299px]:grid-cols-1 print:grid-cols-3 print:gap-6">
             {printBatch.map(({person, prepared}) => {
               const key = prepared?.key;
               return (
@@ -287,12 +288,12 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
                   </div>
                   <div className="flex flex-col items-center gap-1.5 p-3 text-center">
                     {prepared?.error ? <Feedback state={prepared} /> : key?.qr ? <Image unoptimized src={key.qr} width={140} height={140} alt={t("keyQr")} /> : (
-                      <div className="size-[140px] animate-pulse rounded-[14px] bg-card-track" aria-busy="true" />
+                      <div className="size-[140px] animate-pulse rounded-[14px] bg-card-track max-[299px]:aspect-square max-[299px]:h-auto max-[299px]:max-w-full" aria-busy="true" />
                     )}
                     <p className="text-label normal-case tracking-normal">{k("scanCard")}</p>
                     {key && <>
                       <p className="text-body-strong">{key.code}</p>
-                      <p className="text-label break-all normal-case tracking-normal">{t("familyAddressOnCard", {url: key.familyAddress})}</p>
+                      <p className="text-label break-all normal-case tracking-normal max-[299px]:break-normal">{t("familyAddressOnCard", {url: key.familyAddress})}</p>
                     </>}
                   </div>
                 </li>
@@ -346,4 +347,3 @@ function Overlay({children, action, onClose, backLabel, opener, printable = fals
     </dialog>
   );
 }
-

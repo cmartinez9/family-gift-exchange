@@ -6,7 +6,7 @@ import {unstable_rethrow} from "next/navigation";
 import {useRouter} from "@/i18n/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, IconButton, TextButton, TextLink} from "@/components/ui/button";
-import {Card, Chevron, IconDisc, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, Rows, stackRow, stackWords} from "@/components/ui/card";
 import {Chip, ChoiceChips} from "@/components/ui/chip";
 import {cn} from "@/components/ui/cn";
 import {Heart, Icon} from "@/components/ui/icon";
@@ -36,7 +36,7 @@ type ShoeSystem = typeof SHOE_SYSTEMS[number];
 /** A heading row inside the sizes card: the group's name, and an optional link on the right. */
 function GroupHead({title, id, right}: {title: string; id: string; right?: ReactNode}) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
       <p id={id} className="text-body font-extrabold">{title}</p>
       {right}
     </div>
@@ -134,7 +134,8 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
       <PageTitle title={t("title")} lead={t("lead")} />
       <div className="flex flex-col gap-3 px-edge pt-4">
         <Card className="rounded-item px-[18px] py-3.5">
-          <div className="flex items-center gap-3">
+          {/* at the largest text size the switch moves under its words */}
+          <div className="flex items-center gap-3 max-[299px]:flex-col max-[299px]:items-start">
             <div className="flex min-w-0 flex-1 flex-col">
               <p className="text-card-title">{t("noClothes")}</p>
               <p className="text-body text-muted-ink">{t("noClothesSub")}</p>
@@ -147,9 +148,9 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
         </Card>
         {noClothes ? (
           <Card className="fge-drop rounded-item px-5 py-[18px]" role="status">
-            <div className="flex items-center gap-3">
+            <div className={cn("flex items-center gap-3", stackRow)}>
               <Tick done />
-              <p className="text-body">{t("noClothesDone")}</p>
+              <p className={cn("text-body", stackWords)}>{t("noClothesDone")}</p>
             </div>
           </Card>
         ) : (
@@ -176,9 +177,10 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
                     latest.current.set("shoes", ++request.current);
                     show("shoes", event.target.value, "size");
                   }} onBlur={(event) => save("shoes", event.currentTarget.value)} />
-              ) : <div className="flex items-center gap-2.5">
+              ) : <div className="flex items-center gap-2.5 max-[299px]:flex-wrap max-[299px]:justify-between">
                 <IconButton icon="minus" label={t("smaller")} disabled={changingSystem} onClick={() => step(-1)} />
-                <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title",
+                {/* at the largest text size the size has the whole width, over smaller and bigger */}
+                <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title max-[299px]:order-first max-[299px]:basis-full",
                   shoe ? "bg-ink text-snow-white" : "bg-[var(--track)] text-muted-ink")}>
                   {shoe ? shoeLabel(shoe) : t("pickOne")}
                 </p>
@@ -191,6 +193,7 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
       </div>
       <Sheet open={systemOpen} onClose={() => setSystemOpen(false)} title={t("systemTitle")} closeLabel={ui("close")}>
         <ChoiceChips legend={t("systemTitle")} legendClassName="sr-only" name="shoeSystem" value={system ?? null}
+          className="max-[299px]:[&>div]:flex-col max-[299px]:[&_label]:h-auto max-[299px]:[&_label]:min-h-12 max-[299px]:[&_label]:py-2.5 max-[299px]:[&_label]:text-center max-[299px]:[&_label]:whitespace-normal"
           options={SHOE_SYSTEMS.map((value) => ({value, label: t(`system.${value}`)}))}
           onChange={changeSystem} />
       </Sheet>
@@ -295,7 +298,7 @@ export function AddStep({ownerId, personOpened = false, replace = false, borrowe
           <div className="flex flex-col gap-3 px-edge pt-5">
             <input type="hidden" name="kind" value="photo" />
             <Card className="flex flex-col gap-3 rounded-item p-4">
-              <div className="flex items-center gap-3.5">
+              <div className="flex items-center gap-3.5 max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-2">
                 {photo && <ItemPicture src={photo.url} alt={t("photoAlt")} size={80} />}
                 <TextButton className="px-0 text-ink" disabled={preparing || pending} onClick={() => camera.current?.click()}>{t("photoChange")}</TextButton>
               </div>
@@ -317,16 +320,16 @@ export function AddStep({ownerId, personOpened = false, replace = false, borrowe
             {error}
             <Card flush className="rounded-item px-[18px] py-1">
               <Rows>
-                <button type="button" className="fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left"
+                <button type="button" className={cn("fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left max-[299px]:py-2", stackRow)}
                   onClick={() => setMode("paste")}>
                   <IconDisc icon="link" />
-                  <span className="flex-1 text-row-title">{t("paste")}</span>
+                  <span className={cn("flex-1 text-row-title", stackWords)}>{t("paste")}</span>
                   <Chevron />
                 </button>
-                <button type="button" className="fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left"
+                <button type="button" className={cn("fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left max-[299px]:py-2", stackRow)}
                   onClick={() => camera.current?.click()}>
                   <IconDisc icon="camera" />
-                  <span className="flex-1 text-row-title">{t("photo")}</span>
+                  <span className={cn("flex-1 text-row-title", stackWords)}>{t("photo")}</span>
                   <Chevron />
                 </button>
               </Rows>
@@ -430,12 +433,12 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
         {card?.ticket && <input type="hidden" name="draft" value={card.ticket} />}
         {want && <input type="hidden" name="starred" value="on" />}
         <div className="flex flex-col gap-3 px-edge pt-4">
-          <div className="flex h-14 items-center gap-2.5 rounded-pill bg-snow-white pr-1 pl-[18px] text-ink">
+          <div className={cn("flex h-14 items-center gap-2.5 rounded-pill bg-snow-white pr-1 pl-[18px] text-ink max-[299px]:h-auto max-[299px]:rounded-[24px] max-[299px]:px-3 max-[299px]:py-3", stackRow)}>
             <Icon name="link" size={22} className="text-muted-ink" />
             <label htmlFor="paste-link" className="sr-only">{t("field")}</label>
             <textarea ref={field} id="paste-link" name="link" rows={1} inputMode="url" autoCapitalize="none" autoComplete="off"
               spellCheck={false} maxLength={3000} value={link} placeholder={t("placeholder")}
-              className="min-w-0 flex-1 resize-none bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink"
+              className={cn("min-w-0 flex-1 resize-none bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink", stackWords)}
               onChange={(event) => change(event.target.value)} />
             {link && <IconButton icon="close" label={t("clear")} className="bg-[#F3EEEC]" iconSize={20} onClick={() => {
               change("");
@@ -444,9 +447,9 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
           </div>
           {loading && (
             <Card size="item" aria-busy="true" className="fge-drop">
-              <div className="flex items-center gap-3.5">
+              <div className={cn("flex items-center gap-3.5", stackRow)}>
                 <LoadingPicture size={80} />
-                <div role="status" className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div role="status" className={cn("flex min-w-0 flex-1 flex-col gap-0.5", stackWords)}>
                   <p className="text-item-title">{store ? t("loading", {store}) : t("wait")}</p>
                   <p className="text-body text-muted-ink">{t("wait")}</p>
                 </div>
@@ -458,8 +461,8 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
               picture={card.photo ? <ItemPicture src={card.photo} size={80} /> : <NoPicture size={80} camera={false} />}
               title={card.title || store} store={card.store} price={card.price ? `$${card.price}` : undefined}
               after={<div className="flex flex-col gap-2.5 pt-3.5">
-                <Chip pressed={want} onPressedChange={setWant} className="self-start pr-4 pl-3">
-                  <span className="flex items-center gap-2"><Heart on={want} />{t("want")}</span>
+                <Chip pressed={want} onPressedChange={setWant} className="self-start pr-4 pl-3 max-[299px]:h-auto max-[299px]:min-h-12 max-[299px]:max-w-full max-[299px]:rounded-[24px] max-[299px]:px-2 max-[299px]:py-2.5 max-[299px]:whitespace-normal">
+                  <span className="flex items-center gap-2 max-[299px]:flex-col max-[299px]:gap-1 max-[299px]:text-center"><Heart on={want} />{t("want")}</span>
                 </Chip>
                 <TextField label={t("noteField")} name="note" maxLength={500} className="[&_label]:sr-only" placeholder={t("noteField")}
                   value={note} onChange={(event) => setNote(event.target.value)} />

@@ -4,7 +4,8 @@ import {useFormatter, useTranslations} from "next-intl";
 import {useActionState, useEffect, useId, useRef, useState, useTransition, type ReactNode} from "react";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton, TextLink} from "@/components/ui/button";
-import {Card, IconDisc, OnlyYou, Track, Chevron} from "@/components/ui/card";
+import {Card, IconDisc, OnlyYou, Track, Chevron, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Chip} from "@/components/ui/chip";
 import {Icon} from "@/components/ui/icon";
 import {TextArea} from "@/components/ui/inputs";
@@ -174,9 +175,9 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
         ))}
         {incoming.length > 0 && (
           <AppLink href={answerHref} transition="push" className="fge-press block rounded-card">
-            <Card as="span" className="flex flex-row items-center gap-3.5 py-4">
+            <Card as="span" className={cn("flex flex-row items-center gap-3.5 py-4", stackRow)}>
               <IconDisc icon="message" />
-              <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                 <span className="text-card-title">{t("person.incomingCard")}</span>
                 <span className="text-body text-muted-ink">{t("person.incomingCount", {count: incoming.length})}</span>
                 <span className="text-body break-words text-muted-ink">“{incoming[0]}”</span>
@@ -253,9 +254,9 @@ function QuestionCard({question, name, onAskAnother}: {question: Outgoing; name?
   if (question.answer === null) {
     return (
       <Card className="flex flex-col gap-3" data-question="waiting">
-        <div className="flex items-start gap-3.5">
+        <div className={cn("flex items-start gap-3.5", stackRow)}>
           <IconDisc icon="message" className="bg-pine" />
-          <div className="flex min-w-0 flex-col">
+          <div className={cn("flex min-w-0 flex-col", stackWords)}>
             <p className="text-card-title">{name ? t("person.sentTo", {name}) : t("person.sentToAnonymous")}</p>
             <p className="text-body text-muted-ink">{t("person.sentHint")}</p>
           </div>
@@ -266,8 +267,8 @@ function QuestionCard({question, name, onAskAnother}: {question: Outgoing; name?
   }
   return (
     <Card className="flex flex-col gap-2" data-question="answered">
-      <p className="flex items-center gap-2 text-card-title"><Icon name="message" size={22} className="text-pine" />
-        {name ? t("person.answeredBy", {name}) : t("person.answeredAnonymous")}</p>
+      <p className={cn("flex items-center gap-2 text-card-title", stackRow)}><Icon name="message" size={22} className="text-pine" />
+        <span className={stackWords}>{name ? t("person.answeredBy", {name}) : t("person.answeredAnonymous")}</span></p>
       <p className="text-body break-words whitespace-pre-wrap text-muted-ink">{t("person.youAsked", {text: question.text})}</p>
       <Track className="text-body-strong break-words whitespace-pre-wrap">{question.answer}</Track>
       {onAskAnother && <Button variant="card" icon="message" className="mt-2" onClick={onAskAnother}>{t("person.askAnother")}</Button>}

@@ -1,5 +1,6 @@
 import type {ReactNode} from "react";
-import {Card} from "./card";
+import {Card, stackRow, stackWords} from "./card";
+import {cn} from "./cn";
 import {Icon} from "./icon";
 import {KnitMotif} from "./knit/knit-motif";
 import {LoadingPicture} from "./item-card";
@@ -30,9 +31,9 @@ export function EmptyBlock({title, children, actions, motif = true, titleAs: Tit
 export function LoadingBlock({title, children}: {title: ReactNode; children?: ReactNode}) {
   return (
     <Card size="item" aria-busy="true" data-block="loading">
-      <div className="flex items-center gap-3.5">
+      <div className={cn("flex items-center gap-3.5", stackRow)}>
         <LoadingPicture />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5" role="status">
+        <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", stackWords)} role="status">
           <p className="text-item-title">{title}</p>
           {children && <p className="text-body text-muted-ink">{children}</p>}
         </div>
@@ -50,7 +51,8 @@ export function ErrorBlock({title, children, action, live = true}: {
 }) {
   return (
     <Card tone="next" className="px-[18px] py-4" role={live ? "alert" : undefined} data-block="error">
-      <div className="flex items-start gap-3">
+      {/* at the largest text size the icon sits over the words, which keep the card's width */}
+      <div className="flex items-start gap-3 max-[299px]:flex-col max-[299px]:gap-2">
         <Icon name="alert" size={24} strokeWidth={2.4} />
         <div className="flex min-w-0 flex-col gap-0.5">
           <p className="text-card-title">{title}</p>

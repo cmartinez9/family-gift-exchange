@@ -1,7 +1,8 @@
 import {getLocale, getTranslations} from "next-intl/server";
 import type {ReactNode} from "react";
 import {Avatar} from "@/components/ui/avatar";
-import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, ListRow, Rows, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {AppLink} from "@/components/ui/navigation";
@@ -105,9 +106,9 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
         )}
         {practice && active && taking.length > 0 && (
           <Card flush className="px-5 pt-4 pb-1">
-            <div className="flex items-center gap-3.5 pb-2">
+            <div className={cn("flex items-center gap-3.5 pb-2", stackRow)}>
               <IconDisc icon="eye" />
-              <div className="flex min-w-0 flex-col">
+              <div className={cn("flex min-w-0 flex-col", stackWords)}>
                 <h2 className="text-card-title">{t("practiceViewAs")}</h2>
                 <p className="text-body text-muted-ink">{t("setup.practiceViewAsHint")}</p>
               </div>

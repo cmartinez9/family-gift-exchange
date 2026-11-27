@@ -32,7 +32,8 @@ export function ParticipationRows({exchangeId, version, people}: {exchangeId: st
       <ul className="fge-rows flex flex-col">
         {people.map((row) => (
           <li key={row.id} className="flex min-h-16 items-start gap-3 py-3">
-            <Avatar name={row.displayName} size={44} />
+            {/* at the largest text size the name and its button keep the row's width; the initial steps aside */}
+            <Avatar name={row.displayName} size={44} className="max-[299px]:hidden" />
             <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
               <span className="text-row-title">{row.displayName}</span>
               <Button variant="small" icon={row.participating ? "minus" : "plus"}

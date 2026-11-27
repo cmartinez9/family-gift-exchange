@@ -117,7 +117,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
           <div className="pt-3">
             <EmptyBlock title={t("emptyTitle")} actions={<>
               <ButtonLink variant="card" transition="push" href={`/lists/${ownerId}/items/new?kind=note`} icon="pencil">{t("newNote")}</ButtonLink>
-              <div className="grid grid-cols-[1.25fr_1fr] gap-2">
+              <div className="grid grid-cols-[1.25fr_1fr] gap-2 max-[299px]:grid-cols-1">
                 <ButtonLink variant="soft" transition="push" href={`/lists/${ownerId}/items/new?kind=link`} icon="link">{t("newLink")}</ButtonLink>
                 <ButtonLink variant="soft" transition="push" href={`/lists/${ownerId}/items/new?kind=photo`} icon="camera">{t("photoShort")}</ButtonLink>
               </div>
@@ -151,7 +151,8 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
                         haptic("soft");
                         open(item.id);
                       }}>
-                      <span aria-hidden="true" className="hyphens-auto">{item.title}</span>
+                      {/* at the largest text size the title has the card's width, so whole words wrap without hyphens */}
+                      <span aria-hidden="true" className="hyphens-auto max-[299px]:hyphens-manual">{item.title}</span>
                     </Link>
                   )}
                   store={item.store ?? undefined}

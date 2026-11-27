@@ -1,6 +1,7 @@
 import {getTranslations} from "next-intl/server";
 import {ButtonLink} from "@/components/ui/button";
-import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, ListRow, Rows, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {FairIsleBand} from "@/components/ui/knit/knit-svg";
 import {KnitMotif} from "@/components/ui/knit/knit-motif";
 import {KnitIn} from "@/components/ui/motion/knit-in";
@@ -44,9 +45,9 @@ export default async function ExchangesPage() {
         {active ? (
           <AppLink href={`/exchanges/${active.id}${organizer ? "/manage" : ""}`} transition="push" prefetch={false}
             className="fge-press block rounded-card">
-            <Card as="span" tone="next" className="flex flex-row items-center gap-3.5 py-4">
+            <Card as="span" tone="next" className={cn("flex flex-row items-center gap-3.5 py-4", stackRow)}>
               <IconDisc icon="gift" />
-              <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                 <span className="text-card-title">{active.name}</span>
                 <span className="text-body text-gold-ink">{t(organizer ? "manage" : "yourPerson")}</span>
               </span>
@@ -56,9 +57,9 @@ export default async function ExchangesPage() {
         ) : <Card><p className="text-body">{t("noExchanges")}</p></Card>}
         {organizer && (
           <AppLink href="/exchanges/practice" transition="push" prefetch={false} className="fge-press block rounded-card">
-            <Card as="span" className="flex flex-row items-center gap-3.5 py-4">
+            <Card as="span" className={cn("flex flex-row items-center gap-3.5 py-4", stackRow)}>
               <IconDisc icon="family" />
-              <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                 <span className="text-card-title">{t("practiceTitle")}</span>
                 <span className="text-body text-muted-ink">{t("setup.practiceRow")}</span>
               </span>

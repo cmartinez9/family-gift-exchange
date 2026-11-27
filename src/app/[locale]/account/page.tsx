@@ -83,7 +83,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
       </ActForm>
     )}>
       <BackRow href="/" parent={t("home")} backLabel={ui("back")} />
-      <div className="flex items-center gap-4 px-edge pt-4">
+      <div className="flex items-center gap-4 px-edge pt-4 max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-3">
         <Avatar name={name} size={64} on="ground" />
         <div className="flex min-w-0 flex-col">
           <h1 className="text-title break-words">{name}</h1>
@@ -152,7 +152,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
                 <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
                 {disputed ? <p>{auth("alreadyReported")}</p> : (
                   <ActForm action={reportSession.bind(null, sessionId)}>
-                    <Button type="submit" variant="outline">{auth("notMe")}</Button>
+                    <Button type="submit" variant="outline" className="border-ink/60! text-ink!">{auth("notMe")}</Button>
                   </ActForm>
                 )}
               </li>

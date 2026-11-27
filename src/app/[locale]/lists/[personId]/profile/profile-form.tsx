@@ -118,7 +118,7 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
     return (
       <div className="relative flex flex-col gap-1">
         <ChoiceChips legend={t(`size.${field}`)} name={`${ids}-${field}`} value={custom ? null : sizes[field] ?? null}
-          className="[&>div]:grid [&>div]:grid-cols-6 [&>div]:gap-1 [&_label]:min-w-0 [&_label]:px-0"
+          className="[&>div]:grid [&>div]:grid-cols-6 [&>div]:gap-1 [&_label]:min-w-0 [&_label]:px-0 max-[299px]:[&>div]:grid-cols-3"
           options={LETTERS.map((value) => ({value, label: sizeLabel(value)}))}
           onChange={(value) => {
             setOther(false);
@@ -127,7 +127,7 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
         {/* kids' and other sizes: a typed answer, from the link beside the heading */}
         {custom
           ? <div className="pt-2">{sizeField(field)}</div>
-          : <TextButton className="absolute -top-3 right-0 -mr-3" onClick={() => setOther(true)}>{t("otherSize")}</TextButton>}
+          : <TextButton className="absolute -top-3 right-0 -mr-3 max-[299px]:static max-[299px]:mr-0 max-[299px]:self-start max-[299px]:px-0" onClick={() => setOther(true)}>{t("otherSize")}</TextButton>}
       </div>
     );
   }
@@ -146,7 +146,7 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
     <div className="flex flex-col gap-card-gap px-edge pt-5 pb-8">
       <FormFeedback error={state.error} className="rounded-card bg-gold px-5 py-4 text-ink" />
       <Card>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 max-[299px]:flex-col max-[299px]:items-start">
           <p className="text-row-title">{t("noClothes")}</p>
           <Switch label={t("noClothes")} checked={noClothes} onCheckedChange={(checked) => {
             setNoClothes(checked);
@@ -162,12 +162,12 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
             {letters("tops", otherTops, setOtherTops)}
             {letters("bottoms", otherBottoms, setOtherBottoms)}
             {waist
-              ? <div className="-mt-2 grid grid-cols-2 gap-3">{sizeField("waist")}{sizeField("length")}</div>
+              ? <div className="-mt-2 grid grid-cols-2 gap-3 max-[299px]:grid-cols-1">{sizeField("waist")}{sizeField("length")}</div>
               : <TextButton className="-mt-3 -ml-3 self-start" onClick={() => setWaist(true)}>{t("waistAndLength")}</TextButton>}
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-x-3">
                 <label htmlFor={`${ids}-shoes`} className="text-body font-extrabold">{t("size.shoes")}</label>
-                <label className="relative inline-flex min-h-12 items-center text-body font-semibold underline underline-offset-4">
+                <label className="relative inline-flex min-h-12 items-center text-body font-semibold underline underline-offset-4 max-[299px]:max-w-full">
                   <span className="sr-only">{t("size.shoeSystem")}</span>
                   <select className="absolute inset-0 cursor-pointer opacity-0" value={shoeSystem} aria-label={t("size.shoeSystem")}
                     onChange={(event) => {
@@ -177,17 +177,17 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
                     <option value="">{t("chooseShoeSystem")}</option>
                     {sizePresets.shoeSystem.map((system) => <option value={system} key={system}>{t(`shoe.${system}`)}</option>)}
                   </select>
-                  <span aria-hidden="true" className="flex items-center gap-1">
+                  <span aria-hidden="true" className="flex items-center gap-1 max-[299px]:flex-col max-[299px]:items-start">
                     {shoeSystem ? t(`shoe.${shoeSystem as (typeof sizePresets.shoeSystem)[number]}`) : t("chooseShoeSystem")}
                     <Icon name="chevron" size={18} className="rotate-90" />
                   </span>
                 </label>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 max-[299px]:flex-wrap max-[299px]:justify-between">
                 {shoes && <IconButton icon="minus" label={t("shoeSmaller")} onClick={() => step(-1)} />}
                 <input id={`${ids}-shoes`} list={`${ids}-shoe-list`} value={sizes.shoes ? sizeLabel(sizes.shoes) : ""} maxLength={40}
                   inputMode={shoeSystem === "us-kids" || shoeSystem === "other" ? "text" : "decimal"} autoComplete="off"
-                  className={cn("h-12 min-w-0 flex-1 rounded-pill border-0 px-4 text-center text-body-strong",
+                  className={cn("h-12 min-w-0 flex-1 rounded-pill border-0 px-4 text-center text-body-strong max-[299px]:order-first max-[299px]:basis-full",
                     "focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-ink",
                     sizes.shoes ? "bg-ink text-snow-white" : "bg-[var(--track)] text-ink")}
                   onChange={(event) => setSize("shoes", event.currentTarget.value.replace("½", ".5"), false)}

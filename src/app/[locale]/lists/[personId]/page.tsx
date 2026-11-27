@@ -56,7 +56,7 @@ export default async function PersonListPage({params, searchParams}: {
   return (
     <Screen back="/lists">
       <BackRow href="/lists" parent={t("familyLists")} backLabel={ui("back")} />
-      <div className="flex items-center gap-4 px-edge pt-4 text-snow-white">
+      <div className="flex items-center gap-4 px-edge pt-4 text-snow-white max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-3">
         <Avatar name={list.owner.name} on="ground" size={56} />
         <h1 className="min-w-0 break-words text-title">{t("namedList", {name: list.owner.name})}</h1>
       </div>

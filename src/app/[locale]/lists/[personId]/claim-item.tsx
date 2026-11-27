@@ -55,7 +55,8 @@ export function ClaimItem({actingAs, item, ownerName, budget, canClaim}: {
   const common = {
     titleAs: "h2" as const,
     picture: <ItemThumb item={item} />,
-    title: <span className="break-words hyphens-auto">{item.title}</span>,
+    // at the largest text size the title has the card's width, so whole words wrap without hyphens
+    title: <span className="break-words hyphens-auto max-[299px]:hyphens-manual">{item.title}</span>,
     store: store || undefined,
     price: item.price !== null ? money(item.price) : undefined,
     note: item.note ? <span className="whitespace-pre-wrap break-words">{item.note}</span> : undefined,

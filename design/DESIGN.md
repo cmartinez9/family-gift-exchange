@@ -349,7 +349,7 @@ The supported glyphs and their grid live in [`STITCHED_ALPHABET`](../src/compone
 
 ## Layout
 
-The reference frame is 390 by 844. The web shell is a fluid phone column; its width limit and safe-area insets are defined in [`src/styles/tokens.css`](../src/styles/tokens.css).
+The reference frame is 390 by 844. The measurements below describe that regular phone layout; see [Accessibility](#accessibility) for enlarged-text reflow. The web shell is a fluid phone column; its width limit and safe-area insets are defined in [`src/styles/tokens.css`](../src/styles/tokens.css).
 
 - **One edge:** everything sits 20px from the screen edge: titles, cards, buttons, sheets' content. Cards are 350px wide at the reference width and adapt with the viewport.
 - **Rhythm:** a 4px base. 8px inside a group, 12px between cards, 24px between groups and before a section heading, 16px under a heading.
@@ -374,7 +374,7 @@ The reference frame is 390 by 844. The web shell is a fluid phone column; its wi
 A pine card at the top of Home and Family: "You're giving to", the name stitched at 6.4px cells, a 48px white disc with a chevron, then "Only you can see this" with a lock and the budget with a tag icon. Tapping it opens your person's page.
 
 ### Gift item
-A 72px picture (18px corners), the item title, the store and price, then one of: a note on a track, a "really wants this" line, a status line ("Someone is getting this"), an action ("I'm getting this", 48px ink pill), or a budget measure. Your own items show a 48px heart disc for "Really want this". On a claim, a knitted tag hangs from the card's top right on a yarn strand; the item title keeps 52px clear for it.
+A 72px picture (18px corners), the item title, the store and price, then one of: a note on a track, a "really wants this" line, a status line ("Someone is getting this"), an action ("I'm getting this", 48px ink pill), or a budget measure. Your own items show a 48px heart disc for "Really want this". On a claim, a knitted tag hangs from the card's top right on a yarn strand. When the title shares the picture's row, it reserves room for the tag; see [Accessibility](#accessibility) for stacked item cards.
 
 ### Buttons
 
@@ -393,7 +393,7 @@ Heights below are minimums. Labels wrap and pills grow on narrow cards.
 Yarn white, 34px top corners, a 40 by 5px grabber, a 28px title and a 48px close disc, content 20px in, 34px bottom padding, over the red-tinted scrim. They rise in 420ms, follow your finger when dragged, and close past 30% of their height or on a flick; tapping the scrim, the close disc or Escape also closes. Sheets are for a short choice or a short form that keeps its context (add something, edit, ask, confirm). A full task gets a page.
 
 ### Toasts
-An ink pill, 60px, with a gold icon, an 18px message and an optional gold "Undo" (48px target). It floats above the tab bar, or above the screen's own buttons, never over them. Undo replaces confirm dialogs for anything reversible: taking something off your list, "I'm getting this", dismissing the home-screen card.
+An ink pill, at least 60px high, with a gold icon, an 18px message and an optional gold "Undo" (48px target). It floats above the tab bar, or above the screen's own buttons, never over them. See [Accessibility](#accessibility) for long-message scrolling at enlarged text sizes. Undo replaces confirm dialogs for anything reversible: taking something off your list, "I'm getting this", dismissing the home-screen card.
 
 ### Inputs
 - **PIN:** four 64 by 76px slots; a filled slot is white with a stitched red dot. A refused PIN rings the slots gold and shows a gold card that names the problem ("1958 looks like a year").
@@ -408,7 +408,7 @@ A soft disc with the person's initial in ink (Rubik 800 at 44% of the size): tra
 The round-3 renderer, unchanged: each chart cell is a V of two lens-shaped leaves. Motifs: snowflake, gift (with a gold ribbon), lock (gold body), tree, check, dot. Fair Isle bands (zigzag on Home at 4.6px cells, trees on the greeting, snowflake under the revealed name) run full bleed and never carry text. Tone-on-tone knit appears only on the missing-picture tile, the loading tile, the claim tag and the draw's knitted panel.
 
 ### Iconography
-One set: line icons on a 24px grid, round caps and joins, 2.2 to 2.4 stroke, 20 to 24px. White on the ground, ink or pine on cards. An icon always sits next to a word, except the back, close and heart discs, which are 48px targets. Seasonal pictures are knit motifs, never line icons.
+One set: line icons on a 24px grid, round caps and joins, 2.2 to 2.4 stroke, 20 to 24px. White on the ground, ink or pine on cards. Pair icons with words, except the back, close and heart discs, which are 48px targets; placement follows the [enlarged-text reflow rules](#accessibility). Seasonal pictures are knit motifs, never line icons.
 
 ## Motion
 
@@ -460,7 +460,15 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
 - Every hold has a visible tap path, and the hold works from the keyboard.
 - Every ceremony has "Skip the animation" and a reduced-motion version.
 - State is always in words as well as colour.
-- At the largest text size, stack tab icons over labels and keep cards' colour meaning.
+- At the largest text size, use the narrow layout (`max-[299px]` in components; global overrides in [`tokens.css`](../src/styles/tokens.css)). Stack tab icons over labels and keep cards' colour meaning. Give words room to wrap between words and keep content within the screen:
+  - The edge and card sides tighten, and headings use the compact sizes defined by the global overrides; every sentence keeps its typography role size.
+  - A row's words take the row's whole width under its leading picture and trailing control ([`stackRow` and `stackWords`](../src/components/ui/card.tsx)). Heading counts move below their titles. Decorative icons can step aside in fact and field rows.
+  - Item-card words always take a full-width row below the picture, leaving the claim tag above them without reserved title padding. Loading rows and photo actions also give their words a full-width row.
+  - A button's icon stacks over its label, and its corners soften so two or three lines stay inside the shape. Ticks sit over their word. A field's action (Add) moves under the field, and its label stays visible above the input.
+  - Paired fields stack; size grids use fewer columns; shoe sizes get a full-width row above their stepper controls. QR images and loading placeholders stay square within the available width.
+  - A sheet's title drops under the close disc. Stitched greetings and pass names scale down with the column; the pass's chevron moves below its name and its privacy caption can wrap.
+  - A toast stays within the visible viewport, with its icon and Undo above a scrollable message, so a long item name cannot push Undo off screen.
+  - Only a word longer than the available full-width line, or an address or code, may break inside itself. [`tests/e2e/largest-text.spec.ts`](../tests/e2e/largest-text.spec.ts) covers screens and conditional states in both languages using the simulated enlarged-text viewport in [`tests/helpers/largest-text.ts`](../tests/helpers/largest-text.ts), with additional width checks for the organizer input and claimed items.
 - Focus: a 3px yarn-white ring, 3px offset (ink on light cards and inside sheets).
 
 ## Do's and Don'ts

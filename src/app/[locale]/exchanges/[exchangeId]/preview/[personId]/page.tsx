@@ -1,5 +1,6 @@
 import {getTranslations} from "next-intl/server";
-import {Card, IconDisc} from "@/components/ui/card";
+import {Card, IconDisc, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {KnitField} from "@/components/ui/knit/knit-svg";
 import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
 import {KnitIn} from "@/components/ui/motion/knit-in";
@@ -27,9 +28,9 @@ export default async function PreviewPage({params}: {params: Promise<{exchangeId
       <PageTitle title={t("previewTitle", {name: preview.displayName})} lead={`${preview.exchange.name}. ${t("previewNote")}`} />
       <KnitIn className="flex flex-col gap-3 px-edge pt-6 pb-8">
         <Card className="flex flex-col gap-3">
-          <div className="flex items-center gap-3.5">
+          <div className={cn("flex items-center gap-3.5", stackRow)}>
             <IconDisc icon="lock" />
-            <div className="flex min-w-0 flex-col">
+            <div className={cn("flex min-w-0 flex-col", stackWords)}>
               <h2 className="text-card-title">{t("setup.hiddenPerson", {name: preview.displayName})}</h2>
               <p className="text-body text-muted-ink">{t(preview.draw)}</p>
             </div>
@@ -38,9 +39,9 @@ export default async function PreviewPage({params}: {params: Promise<{exchangeId
             <KnitField stitch="#E5D8C3" cell={11} className="absolute inset-0" />
           </div>
         </Card>
-        <Card className="flex flex-row items-center gap-3.5">
+        <Card className={cn("flex flex-row items-center gap-3.5", stackRow)}>
           <IconDisc icon="message" />
-          <div className="flex min-w-0 flex-col">
+          <div className={cn("flex min-w-0 flex-col", stackWords)}>
             <h2 className="text-card-title">{t("questions")}</h2>
             <p className="text-body text-muted-ink">{t(preview.draw)}</p>
           </div>

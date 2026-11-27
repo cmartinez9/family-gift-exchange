@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from "react";
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from "react";
 import {cn} from "./cn";
 import {Icon, type IconName} from "./icon";
 import {DURATION} from "./motion/easing";
@@ -9,7 +9,7 @@ export type ToastOptions = {
   message: string;
   /** Undo instead of a confirm, for anything reversible. The toast then stays 5s instead of 2.6s. */
   undo?: () => void;
-  /** Gold, beside the message. A check by default; "alert" for no connection. */
+  /** Gold status icon. A check by default; "alert" for no connection. */
   icon?: IconName;
   /** "top" drops in under the status bar (no connection); otherwise it floats above the screen's buttons. */
   placement?: "bottom" | "top";
@@ -58,8 +58,8 @@ function bottomOffset(): string {
 }
 
 /**
- * The one toast: an ink pill, 60px, with a gold icon, an 18px message and an optional gold Undo (48px).
- * It rises 16px in 280ms and stays 2.6s, or 5s with Undo. Render once, in the shared layout.
+ * Render once in the shared layout. The visual and enlarged-text contracts live in
+ * design/DESIGN.md#toasts and #accessibility.
  */
 export function ToastHost({undoLabel}: {undoLabel: string}) {
   const state = useSyncExternalStore(subscribe, () => current, () => null);
@@ -84,19 +84,24 @@ export function ToastHost({undoLabel}: {undoLabel: string}) {
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const top = shown?.placement === "top";
+  const offset = top ? "calc(52px + var(--safe-top))" : bottom;
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4" style={top ? {top: "calc(52px + var(--safe-top))"} : {bottom}}
+    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4 max-[299px]:px-3" style={{
+      ...(top ? {top: offset} : {bottom: offset}),
+      "--toast-max-height": `calc(100dvh - ${offset} - var(${top ? "--safe-bottom" : "--safe-top"}) - 12px)`,
+    } as CSSProperties & {"--toast-max-height": string}}
       data-toast-host="">
       <div role="status" aria-live="polite" aria-atomic="true">
         <div data-show={visible} data-placement={top ? "top" : "bottom"}
-          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white")}
+          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white",
+            "max-[299px]:grid max-[299px]:grid-cols-[auto_minmax(0,1fr)] max-[299px]:grid-rows-[auto_minmax(0,1fr)] max-[299px]:max-h-[var(--toast-max-height)] max-[299px]:gap-y-1.5 max-[299px]:p-3")}
           inert={!visible}>
           {shown && <>
             <Icon name={shown.icon ?? "check"} size={22} strokeWidth={2.6} className="text-gold" />
-            <p className="flex-1 text-body font-semibold">{shown.message}</p>
+            <p className="flex-1 text-body font-semibold max-[299px]:order-last max-[299px]:col-span-2 max-[299px]:min-h-0 max-[299px]:self-stretch max-[299px]:overflow-y-auto max-[299px]:overscroll-contain">{shown.message}</p>
             {shown.undo && (
               <button type="button"
-                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4"
+                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4 max-[299px]:justify-self-end max-[299px]:px-2"
                 onClick={() => {
                   const undo = shown.undo;
                   dismissToast(shown.id);

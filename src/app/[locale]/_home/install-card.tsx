@@ -3,7 +3,8 @@
 import {useState, useSyncExternalStore} from "react";
 import {useTranslations} from "next-intl";
 import {Button, IconButton, TextButton} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {KnitMotif} from "@/components/ui/knit/knit-motif";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -77,11 +78,11 @@ export function InstallCard() {
   return (
     <>
       <Card tone="next" data-install="">
-        <div className="flex items-start gap-4">
+        <div className={cn("flex items-start gap-4", stackRow)}>
           <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-app-icon bg-sweater-red">
             <KnitMotif name="flake" cell={3.6} colors={{"#": "var(--color-yarn-white)"}} />
           </span>
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
             <h2 className="text-card-title">{t("installTitle")}</h2>
             <p className="pt-0.5 text-body text-gold-ink">{t("installLead")}</p>
           </div>
@@ -98,18 +99,18 @@ export function InstallCard() {
       </Card>
       <Sheet open={open} onClose={() => setOpen(false)} title={shown === "iphone" ? t("iphoneTitle") : t("androidTitle")} closeLabel={ui("close")}>
         {inApp && shown === "iphone" && (
-          <p className="flex items-start gap-3 rounded-[28px] bg-gold px-5 py-4 text-body font-semibold">
+          <p className={cn("flex items-start gap-3 rounded-[28px] bg-gold px-5 py-4 text-body font-semibold max-[299px]:px-3", stackRow)}>
             <Icon name="alert" size={24} strokeWidth={2.4} className="mt-0.5" />
-            <span>{t("inAppWarning")}</span>
+            <span className={stackWords}>{t("inAppWarning")}</span>
           </p>
         )}
         <ol className="flex flex-col gap-3.5">
           {steps.map(([key, icon], index) => (
-            <li key={key} className="flex min-h-12 items-center gap-4">
+            <li key={key} className={cn("flex min-h-12 items-center gap-4", stackRow)}>
               <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sweater-red text-body-strong text-snow-white">
                 {index + 1}
               </span>
-              <p className="min-w-0 flex-1 text-body">{t(key)}</p>
+              <p className={cn("min-w-0 flex-1 text-body", stackWords)}>{t(key)}</p>
               {icon
                 ? <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-card-track text-[#0A6CDB]"><Icon name={icon} size={24} /></span>
                 : (

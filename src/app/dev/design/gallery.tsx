@@ -436,7 +436,7 @@ export function Gallery({tab}: {tab: TabKey}) {
           </Demo>
           <Demo title="Back row and page title">
             <BackRow href="design/push" parent="Family" backLabel="Back to" right={<TextLink href="design/push" transition="push">Something wrong?</TextLink>} />
-            <div className="flex items-center gap-3.5 px-edge pt-3">
+            <div className="flex items-center gap-3.5 px-edge pt-3 max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-3">
               <Avatar name="Ana" size={56} on="ground" />
               <p className="text-title">Ana&apos;s list</p>
             </div>

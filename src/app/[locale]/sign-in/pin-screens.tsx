@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
 import {ErrorBlock} from "@/components/ui/blocks";
+import {stackRow, stackWords} from "@/components/ui/card";
 import {cn} from "@/components/ui/cn";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -18,9 +19,9 @@ type Problem = {title: string; sub?: string};
 /** A white line with an icon on the ground: the hint under the PIN slots. */
 export function GroundNote({icon, children}: {icon: IconName; children: ReactNode}) {
   return (
-    <p className="flex items-start justify-center gap-2.5 px-edge text-body font-semibold text-snow-white">
+    <p className={cn("flex items-start justify-center gap-2.5 px-edge text-body font-semibold text-snow-white", stackRow)}>
       <Icon name={icon} size={20} strokeWidth={2.3} className="mt-0.5" />
-      <span>{children}</span>
+      <span className={stackWords}>{children}</span>
     </p>
   );
 }

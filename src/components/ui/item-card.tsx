@@ -171,8 +171,9 @@ export function ItemCard({tone = "info", picture, title, titleAs: Title = "h3", 
       {/* at the largest text sizes the words drop under the picture rather than wrap a letter at a time */}
       <div className="flex flex-wrap items-start gap-3.5">
         {picture}
-        <div className="flex min-w-[min(100%,8.5rem)] flex-1 flex-col gap-0.5">
-          <Title className={cn("text-item-title", tag && "pr-[52px]")}>{title}</Title>
+        <div className="flex min-w-[min(100%,8.5rem)] flex-1 flex-col gap-0.5 max-[299px]:basis-full">
+          {/* the tag hangs beside the picture; once the words drop under it they need no room kept for it */}
+          <Title className={cn("text-item-title", tag && "pr-[52px] max-[299px]:pr-0")}>{title}</Title>
           {(store || price) && (
             <p className="text-body text-[var(--fg-muted)]">
               {store}{store && price && " · "}{price && <span className="font-bold text-[var(--fg)]">{price}</span>}

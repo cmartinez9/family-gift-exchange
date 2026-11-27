@@ -157,7 +157,8 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
 
   const photoRow = kind !== "note" && (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-4">
+      {/* at the largest text size the photo button drops under the picture */}
+      <div className="flex items-center gap-4 max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-3">
         {displayPhoto ? <ItemPicture src={displayPhoto} /> : <NoPicture camera={false} />}
         <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
           {store && <p className="text-body font-semibold text-[var(--fg-muted)]">{t("fromStore", {store})}</p>}
@@ -245,7 +246,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
           touchedTitle.current = true;
           setTitle(limit(event.currentTarget.value, TITLE_LIMIT));
         }} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-[299px]:grid-cols-1">
         <TextField id={`${ids}-price`} label={t("price")} name="price" inputMode="decimal" value={price} maxLength={11}
           placeholder="$" onChange={(event) => {
             touchedPrice.current = true;
@@ -270,7 +271,7 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
       <TextArea id={`${ids}-note`} label={t("note")} name="note" value={note} maxLength={NOTE_LIMIT * 2} rows={2}
         onChange={(event) => setNote(limit(event.currentTarget.value, NOTE_LIMIT))} />
       {initial && (
-        <p className="flex items-start gap-3 rounded-[24px] bg-[var(--track,var(--card-track))] px-4 py-3.5 text-body">
+        <p className="flex items-start gap-3 rounded-[24px] bg-[var(--track,var(--card-track))] px-4 py-3.5 text-body max-[299px]:flex-col max-[299px]:gap-2 max-[299px]:px-3.5">
           <Icon name="bell" size={22} strokeWidth={2.3} className="mt-0.5 text-pine" />
           <span>{t("editNotice")}</span>
         </p>

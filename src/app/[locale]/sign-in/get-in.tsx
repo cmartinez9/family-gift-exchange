@@ -7,7 +7,7 @@ import {Link, useRouter} from "@/i18n/navigation";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton, TextLink} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
 import {cn} from "@/components/ui/cn";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {TextField} from "@/components/ui/inputs";
@@ -41,14 +41,17 @@ export function fitCell(text: string, cell: number) {
   return Math.min(cell, Math.floor((COLUMN / columns) * 10) / 10);
 }
 
+/** At the largest text size the column is narrower than the fitted cell allows: the stitches scale down with it. */
+const GREETING_FIT = "block max-[299px]:max-w-full max-[299px]:[&>svg]:h-auto max-[299px]:[&>svg]:max-w-full";
+
 /** A greeting knitted in, one stitch at a time: "HI" over "ROSA!". `heading` makes it the screen's title. */
 export function Greeting({top, bottom, heading = false}: {top: string; bottom: string; heading?: boolean}) {
   const Tag = heading ? "h1" : "div";
   return (
-    <Tag className="flex flex-col items-center gap-4 pt-6" data-greeting="">
-      <StitchedText as="span" className="block" text={top} cell={fitCell(top, STITCH_CELL.greeting)} knit stepMs={7} />
+    <Tag className="flex flex-col items-center gap-4 pt-6 max-[299px]:px-edge" data-greeting="">
+      <StitchedText as="span" className={GREETING_FIT} text={top} cell={fitCell(top, STITCH_CELL.greeting)} knit stepMs={7} />
       <span className="sr-only"> </span>
-      <StitchedText as="span" className="block" text={bottom} cell={fitCell(bottom, STITCH_CELL.greeting)} knit stepMs={5} delayMs={180} />
+      <StitchedText as="span" className={GREETING_FIT} text={bottom} cell={fitCell(bottom, STITCH_CELL.greeting)} knit stepMs={5} delayMs={180} />
     </Tag>
   );
 }
@@ -355,9 +358,9 @@ function AskedCard({organizer, at}: {organizer: string; at: Date}) {
   const format = useFormatter();
   return (
     <Card role="status" className="px-5 py-[18px]">
-      <div className="flex items-center gap-3.5">
+      <div className={cn("flex items-center gap-3.5", stackRow)}>
         <Avatar name={organizer} size={52} />
-        <div className="flex min-w-0 flex-col">
+        <div className={cn("flex min-w-0 flex-col", stackWords)}>
           <p className="text-card-title">{t("asked", {organizer})}</p>
           <p className="text-body text-muted-ink">{t("when", {time: format.dateTime(at, {hour: "numeric", minute: "2-digit"})})}</p>
         </div>
