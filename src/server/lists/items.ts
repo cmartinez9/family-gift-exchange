@@ -261,6 +261,8 @@ async function changeListItem(
       const nextImageKey = keepUploaded ? item.imageKey : imageKey ?? (newLink === undefined ? item.imageKey : null);
       const imageSource = input.upload || keepUploaded ? "upload" : nextImageKey ? "preview" : undefined;
       const nextIconKey = nextImageKey ? undefined : iconKey ?? (newLink === undefined ? oldPreview.iconKey : undefined);
+      // Preserve ownership markers on every preview replacement: a title matching the store default
+      // or an intentionally cleared price must stay protected through deferred fills and later refreshes.
       const nextPreview = item.kind === "link" ? {
         ...(preview ? previewFields({
           ...preview,
@@ -307,8 +309,8 @@ export function refreshListItem(viewer: ListViewer, ownerId: string, itemId: str
 }
 
 /**
- * Reads the store's page for a link saved before it loaded, then stores its picture, title and price. A
- * failed read leaves the item as saved, without a picture, for the owner to refresh later.
+ * Reads the store's page for a link saved before it loaded, then fills in its generated details. A
+ * failed read leaves the item as saved, including any uploaded photo, for the owner to refresh later.
  */
 export async function fillLinkPreview(
   viewer: ListViewer, ownerId: string, itemId: string, source: string, services: ItemServices = {},

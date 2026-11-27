@@ -22,7 +22,7 @@ Build screens with `Screen` for the ground, tab roots, pushed pages, and bottom 
 
 ## Requests and data access
 
-Keep reads in Server Components and use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
+Keep page reads in Server Components; the authenticated [wishlist preview route](../src/app/[locale]/lists/[personId]/link-preview/route.ts) handles client-requested previews for both the list form and onboarding. Use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
 
 Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep direct connection access limited to tooling, the local message viewer, and the reminder scheduler's discovery call in [`reminders.ts`](../src/server/messages/reminders.ts). RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
