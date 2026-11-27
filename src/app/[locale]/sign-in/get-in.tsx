@@ -257,10 +257,7 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
   );
 }
 
-/**
- * A key that was already opened (10.5): this phone only asks for the PIN, and the owner's phone is told.
- * "Forgot?" holds the ways out: a new key from the organizer, or saying you never opened it.
- */
+/** Preserve the opening identity across PIN retries and Face ID recovery to avoid duplicate notices. */
 export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noticeQueued}: {
   familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string; noticeQueued?: boolean;
 }) {
