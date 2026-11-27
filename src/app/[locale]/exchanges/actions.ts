@@ -5,6 +5,7 @@ import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {requireViewer, type Viewer} from "@/server/auth";
 import {getWishlist} from "@/server/lists";
+import {noteEmptyListViewed} from "@/server/messages";
 import {sizeKinds, sizePresets} from "@/server/lists/validation";
 import {
   answerQuestion, askYourPerson, changeParticipation, closeExchange, createExchange, DrawError, dryRunDraw,
@@ -18,7 +19,8 @@ export type PersonItem = {
 };
 /** What your person's page shows after the reveal: their list, sizes and likes. */
 export type PersonList = {items: PersonItem[]; sizes: string | null; likes: string | null};
-export type RevealState = {error?: string; personName?: string; personId?: string; list?: PersonList};
+/** `nudged`: their list is empty and they will get today's nudge, without being told who looked. */
+export type RevealState = {error?: string; personName?: string; personId?: string; list?: PersonList; nudged?: boolean};
 
 async function drawAction<T>(operation: () => Promise<T>): Promise<T | {error: string}> {
   const t = await getTranslations("draw");
@@ -220,7 +222,11 @@ export async function reveal(context: MemberContext): Promise<RevealState> {
       : await revealMyPerson(viewer, context.id, context.version);
     await refreshDrawPages();
     const list = context.practice ? undefined : await personList(viewer, person.id);
-    return {personName: person.displayName, personId: person.id, list};
+    // only a person the draw just revealed to this viewer can be nudged from here
+    const nudged = list?.items.length === 0
+      ? await noteEmptyListViewed(viewer, context.id, person.id).catch(() => false)
+      : false;
+    return {personName: person.displayName, personId: person.id, list, nudged};
   });
 }
 
