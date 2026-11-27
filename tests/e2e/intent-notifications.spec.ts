@@ -137,6 +137,7 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
         await f.database.db.delete(outbox).where(eq(outbox.familyId, f.familyId));
       };
       const check = async (template: string) => {
+        await expect.poll(async () => (await f.notices()).map(row => row.personId).sort()).toEqual(expected);
         const rows = await f.notices();
         expect(rows.map(row => row.personId).sort()).toEqual(expected);
         expect(rows.every(row => row.template === template && row.requesterName === null)).toBe(true);
@@ -153,17 +154,42 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
       await page.getByRole("button", {name: en.lists.saveBudget, exact: true}).click();
       await expect(page.getByRole("button", {name: en.lists.saveBudget, exact: true})).toBeEnabled();
       await check("budget-changed");
+      // Clearing and setting a budget are changes too, in every exchange state.
+      for (const amount of ["", "35"]) {
+        await reset();
+        await page.getByLabel(en.lists.budget, {exact: true}).fill(amount);
+        await page.getByRole("button", {name: en.lists.saveBudget, exact: true}).click();
+        await expect(page.getByRole("main").getByRole("status")).toHaveText(en.lists.saved);
+        await check("budget-changed");
+        expect((await f.database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId)))[0].budgetAmount)
+          .toBe(amount ? `${amount}.00` : null);
+      }
       await reset();
       await page.goto(f.manage);
       const budget = page.getByLabel("Budget in US dollars", {exact: true});
       if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
       await budget.fill("40");
       await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
+      // Saving setup promotes it to open and collapses Exchange details.
+      await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
+      if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
       await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeVisible();
       await check("budget-changed");
+      for (const amount of ["", "45"]) {
+        await reset();
+        await page.goto(f.manage);
+        if (!(await budget.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
+        await budget.fill(amount);
+        await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
+        await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
+        await check("budget-changed");
+        expect((await f.database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId)))[0].budgetAmount)
+          .toBe(amount ? `${amount}.00` : null);
+      }
       await member.page.goto("/es/notifications");
       await expect(member.page.getByRole("heading", {name: es.notify.templates["budget-changed"].title, exact: true})).toBeVisible();
       await capture(member.page, info, `${state}-private-budget-notice`);
+      await noticeEvidence(f, info, `${state}-budget-notice-routing`);
       for (const [label, value] of [["Gift day", "2026-12-26"], ["Gift time at the location", "19:00"], ["Place", "Lantern Hall"], ["List deadline", "2026-12-19"]]) {
         await reset();
         await page.goto(f.manage);
@@ -171,6 +197,8 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
         if (!(await field.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
         await field.fill(value);
         await page.getByRole("button", {name: "Save exchange details", exact: true}).click();
+        await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeAttached();
+        if (!(await field.isVisible())) await page.locator("summary").filter({hasText: /^Exchange details$/}).click();
         await expect(page.getByText(en.draw.detailsSaved, {exact: true})).toBeVisible();
         await check("exchange-details-changed");
       }
@@ -393,5 +421,13 @@ test("a low-choice roster remains drawable and warns that pairings may be worked
     await organizer.page.locator("summary").filter({hasText: /^Draw names$/}).click();
     await organizer.page.getByRole("button", {name: "Yes, draw names", exact: true}).click();
     await expect(organizer.page.getByText("0 of 4 have opened their person.", {exact: true})).toBeVisible();
+    const rows = await f.notices();
+    expect(rows.map(row => row.personId).sort()).toEqual([...f.ids].sort());
+    expect(rows.every(row => row.template === "names-drawn" && row.requesterName === null)).toBe(true);
+    await organizer.page.goto("/en/notifications");
+    await expect(organizer.page.getByRole("heading", {name: en.notify.templates["names-drawn"].title, exact: true})).toBeVisible();
+    for (const name of f.names) await expect(organizer.page.getByRole("main")).not.toContainText(name);
+    await capture(organizer.page, info, "initial-draw-private-notice");
+    await noticeEvidence(f, info, "initial-draw-notice-routing");
   } finally { await f.close(); }
 });
