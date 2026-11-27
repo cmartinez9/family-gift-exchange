@@ -152,7 +152,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
                 <time dateTime={openedAt.toISOString()}>{format.dateTime(openedAt, activityDateFormat)}</time>
                 {disputed ? <p>{auth("alreadyReported")}</p> : (
                   <ActForm action={reportSession.bind(null, sessionId)}>
-                    <Button type="submit" variant="outline">{auth("notMe")}</Button>
+                    <Button type="submit" variant="outline" className="border-ink/60! text-ink!">{auth("notMe")}</Button>
                   </ActForm>
                 )}
               </li>

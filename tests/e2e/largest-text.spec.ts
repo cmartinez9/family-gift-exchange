@@ -492,6 +492,35 @@ for (const locale of ["en", "es"] as const) {
       });
     }
 
+    test("account report control stays readable after another-device reveal", async () => {
+      const t = messages[locale];
+      const first = await drawn.open("Christian", {...largest, reducedMotion: "reduce"});
+      const second = await drawn.open("Christian", {...largest, reducedMotion: "reduce"});
+      try {
+        await first.goto(`/${locale}/exchanges/${drawn.exchangeId}`);
+        await first.getByRole("button", {name: t.draw.reveal, exact: true}).click();
+        await expect(first.getByRole("heading", {name: t.draw.person.listTitle.replace("{name}", "Rosa"), exact: true})).toBeVisible();
+        await second.goto(`/${locale}/account`);
+        const section = second.locator("section").filter({has: second.getByRole("heading", {name: t.auth.revealActivity, exact: true})});
+        const report = section.getByRole("button", {name: t.auth.notMe, exact: true}).first();
+        await expect(report).toBeVisible();
+        for (const width of [195, 390]) {
+          await second.setViewportSize({width, height: width === 195 ? 422 : 844});
+          await report.scrollIntoViewIfNeeded();
+          await settle(second);
+          await expect(report).toHaveCSS("font-size", "20px");
+          await expect(report).toHaveCSS("min-height", "60px");
+          expect(await layoutProblems(second, "section")).toEqual([]);
+          await second.screenshot({path: test.info().outputPath(`${locale}-account-report-${width}-viewport.png`)});
+          await section.screenshot({path: test.info().outputPath(`${locale}-account-report-${width}-card.png`)});
+          expect((await new AxeBuilder({page: second}).include("section").analyze()).violations).toEqual([]);
+        }
+      } finally {
+        await first.context().close();
+        await second.context().close();
+      }
+    });
+
     for (const width of [195, 390]) {
       test(`notification installation steps fit at ${width}px`, async () => {
         const page = await drawn.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
