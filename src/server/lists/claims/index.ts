@@ -117,7 +117,7 @@ type ChangeColumns = {
   itemStore: string | null; itemPrice: string | null; itemImageKey: string | null;
 };
 
-/** Each gift with what its owner changed since you last looked, and the version you are being shown. */
+/** Project baseline differences and the current version without exposing the stored snapshot. */
 function withChanges<T extends ChangeColumns>({seen, itemNote, itemUrl, itemStore, itemPrice, itemImageKey, ...row}: T) {
   const current = seenOf({
     title: row.title, note: itemNote, url: itemUrl, store: itemStore, price: itemPrice, imageKey: itemImageKey,

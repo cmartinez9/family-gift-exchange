@@ -14,9 +14,8 @@ import {ItemThumb, photoPath} from "../item-view";
 import {ChangedItem} from "./changed-item";
 
 /**
- * Things I'm getting: every gift you marked, with Bought and Wrapped. Only you see this page and these
- * ticks. Gifts for your person are pine, as everything only you may see is. A gift its owner edited since
- * you last looked says so, old to new, until you say you are still getting it or let it go.
+ * Private Bought and Wrapped checklist. Uses ChangedItem for unacknowledged owner edits;
+ * the user workflow is documented in README.md#wishlists-and-gifts.
  */
 export default async function GettingPage() {
   const viewer = await requireViewer();

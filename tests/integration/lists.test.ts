@@ -172,7 +172,7 @@ describe("wishlist access and claims", () => {
       await release.promise;
     });
     void revoking.catch(ready.reject);
-    let mutation: Promise<void> | undefined;
+    let mutation: Promise<unknown> | undefined;
     try {
       const revokerPid = await ready.promise;
       mutation = command === "claim" ? claimItem(actor, item.id)

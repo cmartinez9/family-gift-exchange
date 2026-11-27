@@ -18,13 +18,9 @@ import {runListAction} from "../client-action";
 type Phase = "changed" | "settling" | "settled";
 
 /**
- * "Ana changed this": a gift you are getting whose owner edited it since you last looked. Each change
- * reads old to new (struck through, then an arrow), so you do not buy the wrong one. "Still getting it"
- * says you have seen it: the gold recedes into your thumb and the usual card, with its ticks, is
- * underneath. "Let it go" gives the gift back, the way Undo on a list does, with Undo in the toast.
- *
- * Only the first changed gift on the screen is gold (the one thing to do now); any others say the same
- * in words on yarn white.
+ * Change card for the workflow in README.md#wishlists-and-gifts. Acknowledgment reveals the settled
+ * card with a receding layer, or a fade with reduced motion. Only the first changed gift is gold;
+ * the rest use yarn white.
  */
 export function ChangedItem({actingAs, itemId, title, ownerName, version, changes, gold, picture, settled}: {
   /** Who you are getting gifts as: you, or the person you look after. */
@@ -149,7 +145,6 @@ export function ChangedItem({actingAs, itemId, title, ownerName, version, change
   );
 }
 
-/** One change: the old value struck through, then an arrow and the new one. */
 function ChangeLines({change}: {change: ItemChange}) {
   const t = useTranslations("lists.changed");
   const format = useFormatter();

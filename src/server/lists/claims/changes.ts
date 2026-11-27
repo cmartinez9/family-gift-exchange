@@ -3,10 +3,10 @@ import type {ClaimSeen} from "../../db/schema";
 import {safeStoredLink} from "../link-preview/url";
 
 /**
- * What the person getting an item last saw of it: kept on their claim when they mark it and each time
- * they say "Still getting it", and gone with the claim. The owner's edit never touches it, so editing
- * reads and writes exactly the same whether or not anyone is getting the item; the difference is worked
- * out only when the getter opens their own list.
+ * Comparison baseline stored for the claim's lifetime: captured when the claim is created or the
+ * getter successfully acknowledges the displayed version. List reads and owner edits never advance it;
+ * differences are computed only for the getter's list. A photo is represented by its storage key, never
+ * image data; keeping this baseline does not retain the previous picture.
  */
 export type SeenItem = ClaimSeen;
 
@@ -30,7 +30,7 @@ export function seenVersion(seen: SeenItem) {
 
 const amount = (price: string | null) => price === null ? null : Number(price);
 
-/** The fields the owner changed since the getter last looked, in the order the card shows them. */
+/** Differences from the claim baseline, in display order; a null baseline produces no changes. */
 export function diffSeen(seen: SeenItem | null, current: SeenItem): ItemChange[] {
   if (!seen) return [];
   const changes: ItemChange[] = [];

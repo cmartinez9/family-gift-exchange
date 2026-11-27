@@ -1,12 +1,15 @@
 import {randomUUID} from "node:crypto";
-import {mkdirSync} from "node:fs";
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
+import {join} from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type BrowserContextOptions, type Page} from "@playwright/test";
 import {and, eq} from "drizzle-orm";
+import sharp from "sharp";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {claims, families, items, people} from "../../src/server/db/schema";
+import {openKey, skipFaceId} from "../helpers/pin-pad";
 
 // 5.6 "Ana changed this": a gift you are getting whose owner edited it since you last looked. Shot at
 // 390 by 844, in Spanish, with reduced motion and at the largest text size (the browser at 200%, so the
@@ -156,6 +159,212 @@ test("shows what Ana changed on a gift you are getting, until you keep it or let
     await page.getByRole("button", {name: en.ui.undo}).click();
     await expect(card.getByLabel(lists.bought)).toBeVisible();
     await expect(page.getByText(changed.title.replace("{name}", "Ana"))).toHaveCount(0);
+  } finally {
+    await withDatabase(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
+  }
+});
+
+test("a photo-only owner edit shows the current picture, and Undo restores Bought and Wrapped", async ({page, browser}) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize(phone.viewport);
+  const familyId = await startFamily(page);
+  const member = await browser.newContext({viewport: phone.viewport, ignoreHTTPSErrors: true});
+  try {
+    await page.locator("summary").filter({hasText: /^Add a person$/}).click();
+    await page.getByRole("textbox", {name: en.auth.name}).fill("Ana");
+    await page.getByRole("button", {name: en.auth.addMember}).click();
+    await expect(page.getByRole("heading", {name: "Ana"})).toBeVisible();
+    await page.getByRole("link", {name: en.auth.sendKeys}).click();
+    await page.getByRole("button", {name: en.auth.prepareKey}).click();
+    const url = (await page.getByText("Hi Ana! This is your private key", {exact: false}).innerText()).split(" ").at(-1)!;
+    const buyer = await member.newPage();
+    await openKey(buyer, url, pin);
+    await skipFaceId(buyer);
+
+    const ownerId = await withDatabase(familyId, async (tx) => {
+      const [rosa] = await tx.select({id: people.id}).from(people).where(and(eq(people.familyId, familyId), eq(people.displayName, "Rosa")));
+      return rosa.id;
+    });
+    const upload = async (color: string) => ({name: "slippers.png", mimeType: "image/png",
+      buffer: await sharp({create: {width: 80, height: 80, channels: 3, background: color}}).png().toBuffer()});
+    await page.goto(`/en/lists/${ownerId}/items/new?kind=photo`);
+    await page.getByLabel(lists.photo, {exact: true}).setInputFiles(await upload("#c33136"));
+    await page.getByLabel(lists.title).fill("Christmas slippers");
+    await page.getByRole("button", {name: lists.saveItem}).click();
+    await expect(page.getByRole("article", {name: "Christmas slippers"})).toBeVisible();
+    const [item] = await withDatabase(familyId, (tx) => tx.select().from(items).where(eq(items.ownerId, ownerId)));
+    await buyer.goto(`/en/lists/${ownerId}`);
+    await buyer.getByRole("article", {name: item.title}).getByRole("button", {name: lists.claim}).click();
+    await expect(buyer.getByText(lists.mine, {exact: true})).toBeVisible();
+    await buyer.goto("/en/lists/getting");
+    const card = buyer.getByRole("article", {name: item.title});
+    for (const label of [lists.bought, lists.wrapped]) {
+      await card.getByLabel(label).check();
+      await expect(card.getByLabel(label)).toBeEnabled();
+    }
+    const [before] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)));
+    const oldPhoto = before.seen!.imageKey!;
+
+    await page.goto(`/en/lists/${ownerId}/items/${item.id}/edit`);
+    await page.getByLabel(lists.replacePhoto, {exact: true}).setInputFiles(await upload("#287454"));
+    await page.getByRole("button", {name: lists.saveItem}).click();
+    await expect(page.getByRole("article", {name: item.title})).toBeVisible();
+    // The owner never sees a reservation or the buyer's change acknowledgment.
+    await expect(page.getByText(lists.mine, {exact: true})).toHaveCount(0);
+    await expect(page.getByText(lists.someone, {exact: true})).toHaveCount(0);
+    await buyer.reload();
+    await expect(card.getByText(changed.newPicture, {exact: true})).toBeVisible();
+    await expect(card.locator("del")).toHaveCount(0);
+    const image = card.locator("img");
+    await expect(image).toBeVisible();
+    expect(await image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
+    const response = await buyer.request.get((await image.getAttribute("src"))!);
+    expect(response.headers()["content-type"]).toBe("image/webp");
+    const [current] = await withDatabase(familyId, (tx) => tx.select().from(items).where(eq(items.id, item.id)));
+    expect(current.imageKey).not.toBe(oldPhoto);
+    expect(existsSync(join(process.env.LIST_PHOTO_DIR!, oldPhoto))).toBe(false);
+    expect(await response.body()).toEqual(readFileSync(join(process.env.LIST_PHOTO_DIR!, current.imageKey!)));
+    const [stillUnseen] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)));
+    expect(stillUnseen.seen).toEqual(before.seen);
+    await shoot(buyer, "photo-only-current-picture", true);
+    await buyer.goto("/es/lists/getting");
+    await expect(buyer.getByText(es.lists.changed.newPicture, {exact: true})).toBeVisible();
+    await shoot(buyer, "es-photo-only-current-picture", true);
+    await buyer.goto("/en/lists/getting");
+    await card.getByRole("button", {name: changed.letGo}).click();
+    await expect(card).toHaveCount(0);
+    expect(await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)))).toEqual([]);
+    await buyer.getByRole("button", {name: en.ui.undo, exact: true}).click();
+    for (const label of [lists.bought, lists.wrapped]) await expect(card.getByLabel(label)).toBeChecked();
+    await buyer.reload();
+    for (const label of [lists.bought, lists.wrapped]) await expect(card.getByLabel(label)).toBeChecked();
+    await expect(card.getByText(changed.newPicture, {exact: true})).toHaveCount(0);
+    const [restored] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, item.id)));
+    expect(restored.seen?.imageKey).toBe(current.imageKey);
+    expect(restored.boughtAt).not.toBeNull();
+    expect(restored.wrappedAt).not.toBeNull();
+    await shoot(buyer, "undo-restores-bought-and-wrapped", true);
+    writeFileSync(join(shots, `${test.info().project.name}-photo-undo-state.json`), JSON.stringify({
+      oldPhotoDeleted: true, currentPictureServed: true, before: before.seen, after: restored.seen,
+      bought: Boolean(restored.boughtAt), wrapped: Boolean(restored.wrappedAt),
+    }, null, 2));
+  } finally {
+    await member.close();
+    await withDatabase(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
+  }
+});
+
+test("a second owner edit cannot be acknowledged from an older changed card", async ({page}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(phone.viewport);
+  const familyId = await startFamily(page);
+  try {
+    const {ana, socks} = await seedAna(familyId);
+    await page.goto(`/en/lists/${ana}`);
+    await page.getByRole("article", {name: "Cozy slipper socks"}).getByRole("button", {name: lists.claim}).click();
+    await expect(page.getByRole("article", {name: "Cozy slipper socks"}).getByText(lists.mine, {exact: true})).toBeVisible();
+    await anaEdits(familyId, socks, {note: "Large"});
+    await page.goto("/en/lists/getting");
+    const card = page.getByRole("article", {name: "Cozy slipper socks"});
+    await expect(card.locator("ins")).toHaveText(`${changed.now} Large`);
+    await anaEdits(familyId, socks, {note: "Extra large"});
+    await card.getByRole("button", {name: changed.keep}).click();
+    await expect(page.getByRole("status").filter({hasText: lists.feedback["item-changed"]})).toBeVisible();
+    await expect(card.locator("ins")).toHaveText(`${changed.now} Extra large`);
+    const [rejected] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, socks)));
+    expect(rejected.seen?.note).toBe("Size 7 to 8");
+    await shoot(page, "stale-acknowledgment-rejected", true);
+    await card.getByRole("button", {name: changed.keep}).click();
+    await expect(card.getByLabel(lists.bought)).toBeVisible();
+    await page.reload();
+    await expect(card.getByLabel(lists.bought)).toBeVisible();
+    const [accepted] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, socks)));
+    expect(accepted.seen?.note).toBe("Extra large");
+    writeFileSync(join(shots, `${test.info().project.name}-acknowledgment-state.json`), JSON.stringify({
+      afterStaleClick: rejected.seen, afterCurrentClick: accepted.seen,
+    }, null, 2));
+  } finally {
+    await withDatabase(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
+  }
+});
+
+test("shows changed titles, cleared details and a different page at the same store, and ignores reverted edits", async ({page}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(phone.viewport);
+  const familyId = await startFamily(page);
+  try {
+    const {ana, socks} = await seedAna(familyId);
+    await withDatabase(familyId, (tx) => tx.update(items).set({
+      kind: "link", url: "https://shop.example.com/slippers-red", store: "shop.example.com",
+    }).where(eq(items.id, socks)).execute());
+    await page.goto(`/en/lists/${ana}`);
+    const original = page.getByRole("article", {name: "Cozy slipper socks"});
+    await original.getByRole("button", {name: lists.claim}).click();
+    await expect(original.getByText(lists.mine, {exact: true})).toBeVisible();
+    await withDatabase(familyId, (tx) => tx.update(items).set({
+      title: "Purple slipper socks", note: null, price: null,
+      url: "https://shop.example.com/slippers-purple", updatedAt: new Date(),
+    }).where(eq(items.id, socks)).execute());
+    await page.goto("/en/lists/getting");
+    const card = page.getByRole("article", {name: "Purple slipper socks"});
+    await expect(card.locator("del")).toHaveText([
+      `${changed.was} Cozy slipper socks`, `${changed.was} Size 7 to 8`, `${changed.was} $12.97`, `${changed.was} At shop.example.com`,
+    ]);
+    await expect(card.locator("ins")).toHaveText([
+      `${changed.now} Purple slipper socks`, `${changed.now} ${changed.noNote}`, `${changed.now} ${changed.noPrice}`,
+      `${changed.now} ${changed.newLinkAt.replace("{store}", "shop.example.com")}`,
+    ]);
+    await expect(card.locator("ins a")).toHaveAttribute("href", "https://shop.example.com/slippers-purple");
+    await shoot(page, "title-cleared-details-same-store-link", true);
+    await card.getByRole("button", {name: changed.keep}).click();
+    await expect(card.getByLabel(lists.bought)).toBeVisible();
+    // An owner may change their mind. Only the final values matter, not the edit timestamp.
+    await anaEdits(familyId, socks, {note: "Any color"});
+    await page.reload();
+    await expect(card.locator("ins")).toHaveText(`${changed.now} Any color`);
+    await withDatabase(familyId, (tx) => tx.update(items).set({note: null, updatedAt: new Date()}).where(eq(items.id, socks)).execute());
+    await page.reload();
+    await expect(card.getByLabel(lists.bought)).toBeVisible();
+    await expect(card.locator("del")).toHaveCount(0);
+    await shoot(page, "reverted-edit-has-no-warning", true);
+  } finally {
+    await withDatabase(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
+  }
+});
+
+test("Undo cannot take a released gift or copy progress onto someone else's reservation", async ({page}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(phone.viewport);
+  const familyId = await startFamily(page);
+  try {
+    const {ana, socks} = await seedAna(familyId);
+    await page.goto(`/en/lists/${ana}`);
+    const onList = page.getByRole("article", {name: "Cozy slipper socks"});
+    await onList.getByRole("button", {name: lists.claim}).click();
+    await expect(onList.getByText(lists.mine, {exact: true})).toBeVisible();
+    await page.goto("/en/lists/getting");
+    const card = page.getByRole("article", {name: "Cozy slipper socks"});
+    for (const label of [lists.bought, lists.wrapped]) {
+      await card.getByLabel(label).check();
+      await expect(card.getByLabel(label)).toBeEnabled();
+    }
+    await anaEdits(familyId, socks, {note: "Large"});
+    await page.reload();
+    await card.getByRole("button", {name: changed.letGo}).click();
+    await expect(card).toHaveCount(0);
+    const other = await withDatabase(familyId, async (tx) => {
+      const [person] = await tx.insert(people).values({familyId, displayName: "Caro"}).returning({id: people.id});
+      await tx.insert(claims).values({familyId, itemId: socks, claimerId: person.id});
+      return person.id;
+    });
+    await page.getByRole("button", {name: en.ui.undo, exact: true}).click();
+    await expect(page.getByRole("status").filter({hasText: lists.feedback["already-claimed"]})).toBeVisible();
+    const [reserved] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, socks)));
+    expect(reserved.claimerId).toBe(other);
+    expect(reserved.boughtAt).toBeNull();
+    expect(reserved.wrappedAt).toBeNull();
+    await expect(card).toHaveCount(0);
+    await shoot(page, "undo-after-someone-else-claims", true);
   } finally {
     await withDatabase(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
   }
