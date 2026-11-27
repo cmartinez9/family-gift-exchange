@@ -1,12 +1,12 @@
 import {randomUUID} from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type Browser, type Page} from "@playwright/test";
-import {and, eq} from "drizzle-orm";
+import {and, eq, ne} from "drizzle-orm";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {issueKey, redeemKey, signInDevice, type Device} from "../../src/server/auth/access";
 import {createFamily, saveMember} from "../../src/server/auth/families";
-import {authEvents, passkeys, sessions} from "../../src/server/auth/schema";
+import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families, people} from "../../src/server/db/schema";
@@ -306,3 +306,173 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
     }
   });
 }
+
+test("phone sign-out rejects tampered targets and restores the row for retry", async ({browser}) => {
+  const rosa = await context(browser, family.rosa);
+  const otherFamily = await seed();
+  try {
+    const page = await rosa.newPage();
+    const [otherMember] = await stored(family.familyId, (t) => t.select({id: sessions.id}).from(sessions)
+      .where(and(eq(sessions.familyId, family.familyId), ne(sessions.personId, family.rosaId))));
+    for (const target of [parseSession(family.rosa)!.id, otherMember.id, otherFamily.ipadSessionId, randomUUID(), "invalid"]) {
+      await page.goto("/en/account/phones");
+      // Change the action argument before it leaves the browser; the real server handles it.
+      // This also avoids WebKit's duplicated requests when a routed POST body is overridden.
+      await page.evaluate(({from, to}) => {
+        const original = window.fetch;
+        window.fetch = (input, init) => {
+          if (init?.method?.toUpperCase() === "POST" && typeof init.body === "string") {
+            init = {...init, body: init.body.replace(from, to)};
+          }
+          return original(input, init);
+        };
+      }, {from: family.ipadSessionId, to: target});
+      const button = page.getByRole("button", {name: /^Sign out the iPad/});
+      const sent = page.waitForRequest((request) => request.method() === "POST" && Boolean(request.headers()["next-action"]));
+      await button.click();
+      expect((await sent).postData()).toContain(target);
+      await expect(page.getByRole("alert").filter({hasText: en.auth.feedback.unavailable})).toBeVisible();
+      await expect(button).toBeVisible();
+      await expect(button).toBeEnabled();
+      const [ipad] = await stored(family.familyId, (t) => t.select({revokedAt: sessions.revokedAt}).from(sessions)
+        .where(eq(sessions.id, family.ipadSessionId)));
+      expect(ipad.revokedAt).toBeNull();
+    }
+    await shot(page, "tampered-phone-restored");
+    await page.reload();
+    await page.getByRole("button", {name: /^Sign out the iPad/}).click();
+    await expect(page.getByRole("status").filter({hasText: "The iPad is signed out"})).toBeVisible();
+    for (const [familyId, id] of [[family.familyId, otherMember.id], [otherFamily.familyId, otherFamily.ipadSessionId]]) {
+      const [untouched] = await stored(familyId, (t) => t.select({revokedAt: sessions.revokedAt}).from(sessions).where(eq(sessions.id, id)));
+      expect(untouched.revokedAt).toBeNull();
+    }
+  } finally {
+    await rosa.close();
+    await remove(otherFamily.familyId);
+  }
+});
+
+for (const state of ["missing", "replacementRequired", "locked"] as const) {
+  test(`Face ID can be turned off when the PIN is ${state}`, async ({browser}) => {
+    const rosa = await context(browser, family.rosa);
+    try {
+      if (state === "missing") {
+        await stored(family.familyId, (t) => t.update(pinCredentials).set({pinHash: null}).where(eq(pinCredentials.personId, family.rosaId)));
+      } else if (state === "replacementRequired") {
+        await stored(family.familyId, (t) => t.update(people).set({needsNewKey: true}).where(eq(people.id, family.rosaId)));
+      } else {
+        await stored(family.familyId, (t) => t.update(pinCredentials).set({lockedUntil: new Date(Date.now() + 15 * 60_000)})
+          .where(eq(pinCredentials.personId, family.rosaId)));
+      }
+      const before = await stored(family.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, family.rosaId)));
+      const page = await rosa.newPage();
+      await page.goto("/en/account");
+      await page.getByRole("switch", {name: t.you.faceId}).click();
+      await expect(page.getByRole("status").filter({hasText: /^Face ID is off on this /})).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "false");
+      const credentials = await stored(family.familyId, (t) => t.select({revokedAt: passkeys.revokedAt}).from(passkeys));
+      expect(credentials.every(({revokedAt}) => revokedAt !== null)).toBe(true);
+      expect(await stored(family.familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, family.rosaId)))).toEqual(before);
+      await shot(page, `face-id-off-pin-${state}`);
+    } finally {
+      await rosa.close();
+    }
+  });
+}
+
+test("opening pages updates last use only after the fifteen-minute interval", async ({browser}) => {
+  const rosa = await context(browser, family.rosa);
+  try {
+    const id = parseSession(family.rosa)!.id;
+    const read = () => stored(family.familyId, (t) => t.select({id: sessions.id, lastUsedAt: sessions.lastUsedAt}).from(sessions));
+    const page = await rosa.newPage();
+    await page.goto("/en/account");
+    const initial = await read();
+    const at = initial.find((row) => row.id === id)!.lastUsedAt;
+    expect(at).not.toBeNull();
+    await page.goto("/en/account/phones");
+    await page.reload();
+    expect(await read()).toEqual(initial);
+    const stale = new Date(Date.now() - 16 * 60_000);
+    await stored(family.familyId, (t) => t.update(sessions).set({lastUsedAt: stale}).where(eq(sessions.id, id)));
+    await page.reload();
+    const renewed = await read();
+    expect(renewed.find((row) => row.id === id)!.lastUsedAt!.getTime()).toBeGreaterThan(stale.getTime() + 15 * 60_000);
+    expect(renewed.filter((row) => row.id !== id)).toEqual(initial.filter((row) => row.id !== id));
+    await test.info().attach("last-use-state", {body: JSON.stringify({initial, renewed}, null, 2), contentType: "application/json"});
+  } finally {
+    await rosa.close();
+  }
+});
+
+test("a shared passkey stops signing in on both phones while their sessions stay open", async ({browser, browserName}) => {
+  test.skip(browserName !== "chromium", "WebKit has no CDP virtual-authenticator interface");
+  const phoneA = await context(browser, family.rosa);
+  const phoneB = await context(browser, null);
+  const independent = await context(browser, family.rosaIpad);
+  try {
+    const a = await phoneA.newPage();
+    const b = await phoneB.newPage();
+    const c = await independent.newPage();
+    const cdpA = await phoneA.newCDPSession(a);
+    const cdpB = await phoneB.newCDPSession(b);
+    const cdpC = await independent.newCDPSession(c);
+    const options = {protocol: "ctap2", transport: "internal", hasResidentKey: true,
+      hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true} as const;
+    await cdpA.send("WebAuthn.enable");
+    await cdpB.send("WebAuthn.enable");
+    await cdpC.send("WebAuthn.enable");
+    const authA = await cdpA.send("WebAuthn.addVirtualAuthenticator", {options});
+    const authB = await cdpB.send("WebAuthn.addVirtualAuthenticator", {options});
+    await cdpC.send("WebAuthn.addVirtualAuthenticator", {options});
+    await c.goto("/en/account");
+    await expect(c.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "false");
+    await c.getByRole("switch", {name: t.you.faceId}).click();
+    await expect(c.getByRole("status").filter({hasText: /^Face ID is on/})).toBeVisible();
+    await a.goto("/en/account");
+    await a.getByRole("switch", {name: t.you.faceId}).click();
+    await expect(a.getByRole("status").filter({hasText: /^Face ID is off/})).toBeVisible();
+    await a.getByRole("switch", {name: t.you.faceId}).click();
+    await expect(a.getByRole("status").filter({hasText: /^Face ID is on/})).toBeVisible();
+    const {credentials} = await cdpA.send("WebAuthn.getCredentials", {authenticatorId: authA.authenticatorId});
+    expect(credentials).toHaveLength(1);
+    await cdpB.send("WebAuthn.addCredential", {authenticatorId: authB.authenticatorId, credential: credentials[0]});
+    await b.goto("/en");
+    await b.getByRole("button", {name: en.auth.signInFaceId}).click();
+    await expect(b).toHaveURL(/\/en\/account/);
+    await expect(b.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "true");
+    await expect(b.getByText(/Turning it off also turns it off on devices sharing this passkey/)).toBeVisible();
+    await b.getByRole("switch", {name: t.you.faceId}).click();
+    await expect(b.getByRole("status").filter({hasText: /^Face ID is off/})).toBeVisible();
+    await a.reload();
+    await expect(a.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "false");
+    await b.reload();
+    await expect(b.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "false");
+    await shot(b, "shared-passkey-off-sessions-open");
+    await c.reload();
+    await expect(c.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "true");
+    await independent.clearCookies();
+    await c.goto("/en");
+    await c.getByRole("button", {name: en.auth.signInFaceId}).click();
+    await expect(c).toHaveURL(/\/en\/account/);
+    await expect(c.getByRole("switch", {name: t.you.faceId})).toHaveAttribute("aria-checked", "true");
+    await shot(c, "independent-passkey-still-signs-in");
+    // Restore the platform copy if the browser's credential-deletion signal removed it.
+    // The server must reject it even when a different synced device still holds the private key.
+    for (const [ctx, page, cdp, auth] of [[phoneA, a, cdpA, authA], [phoneB, b, cdpB, authB]] as const) {
+      await cdp.send("WebAuthn.clearCredentials", {authenticatorId: auth.authenticatorId});
+      await cdp.send("WebAuthn.addCredential", {authenticatorId: auth.authenticatorId, credential: credentials[0]});
+      await ctx.clearCookies();
+      await page.goto("/en");
+      await page.getByRole("button", {name: en.auth.signInFaceId}).click();
+      await expect(page.getByRole("alert").filter({hasText: en.auth.faceSignInFailed})).toBeVisible();
+      await expect(page.getByRole("button", {name: en.auth.signInFaceId})).toBeEnabled();
+      await shot(page, `shared-passkey-rejected-${page === a ? "a" : "b"}`);
+    }
+  } finally {
+    await phoneA.close();
+    await phoneB.close();
+    await independent.close();
+  }
+});

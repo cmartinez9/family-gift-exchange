@@ -69,7 +69,7 @@ export async function signedInDevices(tx: FamilyTransaction, viewer: Viewer, now
   return rows
     .map(({id, kind, at, deviceHash, passkeyId, usedAt}) => ({
       id, kind, at, current: id === viewer.sessionId,
-      /** when it last opened a page; a session that has not opened one since signing in was used then */
+      /** Pre-tracking sessions have no usage sample, so their sign-in time is the fallback. */
       lastUsed: usedAt && usedAt > at ? usedAt : at,
       faceId: withFace.has(deviceHash) || (passkeyId !== null && faceIds.has(passkeyId)),
     }))

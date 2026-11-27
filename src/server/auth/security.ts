@@ -46,11 +46,7 @@ export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Da
   return true;
 }
 
-/**
- * Your phones (11.3): sign out one other phone. Only that session ends, and that phone is no longer
- * remembered, so signing in there again is a new phone. This phone, the person's other phones, their
- * Face ID and their PIN are untouched. Refuses this phone: "Sign out" on You does that.
- */
+/** Remote sign-out must preserve credentials; access disputes have separate revocation rules. */
 export async function signOutDevice(tx: FamilyTransaction, viewer: Viewer, targetId: string, now: Date) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
