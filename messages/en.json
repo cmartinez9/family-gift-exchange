@@ -384,6 +384,8 @@
     "fromStore": "From {store}",
     "tookOff": "Took off {title}",
     "added": "Added to your list",
+    "pictureComing": "Getting the picture from {store}",
+    "pictureComingSub": "Saved. The picture is on its way.",
     "editNotice": "If someone is already getting this, they’ll be told what changed. You won’t see who, or whether anyone is.",
     "starOn": "Yes",
     "starOff": "No",

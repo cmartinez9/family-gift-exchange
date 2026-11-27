@@ -4,7 +4,7 @@ import {useOptimistic, useState, useTransition} from "react";
 import {useFormatter, useLocale, useTranslations} from "next-intl";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
-import {EmptyBlock} from "@/components/ui/blocks";
+import {EmptyBlock, LoadingBlock} from "@/components/ui/blocks";
 import {HeartToggle, ItemCard} from "@/components/ui/item-card";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -17,6 +17,7 @@ import {itemCommand, setItemStar} from "../actions";
 import {ItemForm} from "../item-form";
 import {runListAction} from "../client-action";
 import {ItemThumb, missesPicture, type ListItemView} from "../item-view";
+import {PictureWatch} from "../picture-watch";
 import {commitPendingRemovals, removeWithUndo, usePendingRemovals} from "../pending-removals";
 
 const ADD_OPTIONS = [
@@ -129,6 +130,14 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
           {shown.map((item) => {
             const gold = item.id === goldId;
             const starred = item.starred;
+            if (item.pictureComing) {
+              // Saved at once; the store's page is still loading (4.4). It turns into the item when it lands.
+              return (
+                <li key={item.id} data-picture-coming="">
+                  <LoadingBlock title={t("pictureComing", {store: item.store ?? ""})}>{t("pictureComingSub")}</LoadingBlock>
+                </li>
+              );
+            }
             return (
               <li key={item.id}>
                 <article aria-label={item.title}>
@@ -161,6 +170,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
             );
           })}
         </KnitIn>
+        <PictureWatch waiting={shown.some((item) => item.pictureComing)} />
       </div>
 
       <Sheet open={adding} onClose={() => setAdding(false)} title={t("addSomething")} closeLabel={closeLabel}>
