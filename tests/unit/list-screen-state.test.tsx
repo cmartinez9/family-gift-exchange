@@ -8,7 +8,7 @@ import en from "../../messages/en.json";
 import {ClaimItem} from "../../src/app/[locale]/lists/[personId]/claim-item";
 import {OwnList} from "../../src/app/[locale]/lists/[personId]/own-list";
 import {POST} from "../../src/app/[locale]/lists/[personId]/items/[itemId]/remove/route";
-import {claimCommand, removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
+import {claimCommand, itemCommand, removeItem, saveItem, setItemStar} from "../../src/app/[locale]/lists/actions";
 import type {FormState} from "../../src/app/[locale]/lists/action-types";
 import {ItemThumb, toItemView, type ListItemView} from "../../src/app/[locale]/lists/item-view";
 import {removeWithUndo} from "../../src/app/[locale]/lists/pending-removals";
@@ -93,11 +93,111 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function takeOff() {
-  await click(container.querySelector<HTMLElement>("article a")!);
+async function takeOff(title?: string) {
+  await click(container.querySelector<HTMLElement>(title ? `article[aria-label="${title}"] a` : "article a")!);
   const remove = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === en.lists.deleteItem)!;
   await click(remove);
 }
+
+async function command(title: string, name: "up" | "down" | "refresh") {
+  await click(container.querySelector<HTMLElement>(`article[aria-label="${title}"] a`)!);
+  const label = name === "up" ? en.lists.moveUp : name === "down" ? en.lists.moveDown : en.lists.refresh;
+  await click([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!);
+}
+
+const orderedItems: ListItemView[] = [
+  {...item, id: "a", title: "First gift"},
+  {...item, id: "b", title: "Middle gift"},
+  {...item, id: "c", title: "Last gift"},
+];
+
+it.each([
+  ["up", "undo"], ["down", "undo"], ["up", "timer"], ["down", "pagehide"],
+] as const)("waits for a removal in %s moves while it is in %s state", async (direction, pendingState) => {
+  vi.useFakeTimers();
+  items = [...orderedItems];
+  const response = Promise.withResolvers<FormState>();
+  vi.mocked(removeItem).mockImplementationOnce(async (_owner, id) => {
+    const result = await response.promise;
+    items = items.filter((entry) => entry.id !== id);
+    root.render(screen());
+    return result;
+  });
+  vi.mocked(itemCommand).mockImplementation(async (_owner, id, name) => {
+    const index = items.findIndex((entry) => entry.id === id);
+    const neighbor = index + (name === "up" ? -1 : 1);
+    [items[index], items[neighbor]] = [items[neighbor], items[index]];
+    root.render(screen());
+    return {};
+  });
+  await render();
+  await takeOff(orderedItems[1].title);
+  if (pendingState === "timer") await act(async () => vi.advanceTimersByTimeAsync(5400));
+  else if (pendingState === "pagehide") await act(async () => window.dispatchEvent(new Event("pagehide")));
+  const moving = direction === "up" ? orderedItems[2] : orderedItems[0];
+  await command(moving.title, direction);
+  expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, orderedItems[1].id);
+  expect(itemCommand).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).toHaveBeenCalledOnce();
+  expect(itemCommand).not.toHaveBeenCalled();
+  await act(async () => response.resolve({status: "saved"}));
+  expect(itemCommand).toHaveBeenCalledExactlyOnceWith(ownerId, moving.id, direction);
+  expect([...container.querySelectorAll("article")].map((card) => card.getAttribute("aria-label"))).toEqual([
+    orderedItems[2].title, orderedItems[0].title,
+  ]);
+});
+
+it.each(["returned", "rejected"] as const)("cancels a move after a %s removal failure and permits retry", async (failure) => {
+  vi.useFakeTimers();
+  items = [...orderedItems];
+  if (failure === "returned") vi.mocked(removeItem).mockResolvedValueOnce({error: "forbidden"});
+  else vi.mocked(removeItem).mockRejectedValueOnce(new Error("Offline"));
+  vi.mocked(itemCommand).mockResolvedValue({});
+  await render();
+  await takeOff(orderedItems[1].title);
+  await command(orderedItems[2].title, "up");
+  expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, orderedItems[1].id);
+  expect(itemCommand).not.toHaveBeenCalled();
+  expect([...container.querySelectorAll("article")].map((card) => card.getAttribute("aria-label"))).toEqual(orderedItems.map(({title}) => title));
+  const message = en.lists.feedback[failure === "returned" ? "forbidden" : "could-not-save"];
+  expect(container.querySelector(".fge-toast")?.textContent).toContain(message);
+  await command(orderedItems[2].title, "up");
+  expect(itemCommand).toHaveBeenCalledExactlyOnceWith(ownerId, orderedItems[2].id, "up");
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).toHaveBeenCalledOnce();
+});
+
+it("keeps another list's pending removal undoable when moving an item", async () => {
+  vi.useFakeTimers();
+  items = [...orderedItems];
+  vi.mocked(itemCommand).mockResolvedValue({});
+  await render();
+  await takeOff(orderedItems[1].title);
+  ownerId = randomUUID();
+  await render();
+  await command(orderedItems[2].title, "up");
+  expect(itemCommand).toHaveBeenCalledExactlyOnceWith(ownerId, orderedItems[2].id, "up");
+  expect(removeItem).not.toHaveBeenCalled();
+  await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).not.toHaveBeenCalled();
+});
+
+it("keeps pending removals undoable when refreshing a link", async () => {
+  vi.useFakeTimers();
+  items = orderedItems.map((entry) => entry.id === "c" ? {...entry, kind: "link", url: "https://gift.example/book"} : entry);
+  vi.mocked(itemCommand).mockResolvedValue({});
+  await render();
+  await takeOff(orderedItems[1].title);
+  await command(orderedItems[2].title, "refresh");
+  expect(itemCommand).toHaveBeenCalledExactlyOnceWith(ownerId, orderedItems[2].id, "refresh");
+  expect(removeItem).not.toHaveBeenCalled();
+  await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
+  expect(container.querySelectorAll("article")).toHaveLength(3);
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(removeItem).not.toHaveBeenCalled();
+});
 
 it("keeps Undo effective after leaving the list while the page stays visible", async () => {
   vi.useFakeTimers();

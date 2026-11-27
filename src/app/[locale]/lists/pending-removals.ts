@@ -7,7 +7,7 @@ import type {Feedback, FormState} from "./action-types";
 import {removeItem} from "./actions";
 import {runListAction} from "./client-action";
 
-type Removal = {timer: number; state: "undo" | "saving" | "saved"; save: (keepalive: boolean) => Promise<void>};
+type Removal = {timer: number; state: "undo" | "saving" | "saved"; save: (keepalive: boolean) => Promise<boolean>};
 const pending = new Map<string, Map<string, Removal>>();
 const empty: ReadonlySet<string> = new Set();
 let hidden: ReadonlyMap<string, ReadonlySet<string>> = new Map();
@@ -21,6 +21,11 @@ function flush() {
 
 function visibilityChanged() {
   if (document.visibilityState === "hidden") flush();
+}
+
+export async function commitPendingRemovals(ownerId: string) {
+  const results = await Promise.all([...(pending.get(ownerId)?.values() ?? [])].map((removal) => removal.save(false)));
+  return results.every(Boolean);
 }
 
 function emit() {
@@ -65,11 +70,11 @@ export function removeWithUndo(locale: string, ownerId: string, itemId: string, 
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", visibilityChanged);
   }
+  let saving: Promise<boolean> | undefined;
   const removal: Removal = {
     timer: 0,
     state: "undo",
-    save: async (keepalive) => {
-      if (removal.state !== "undo") return;
+    save: (keepalive) => saving ??= (async () => {
       window.clearTimeout(removal.timer);
       removal.state = "saving";
       dismissToast(toastId);
@@ -86,7 +91,8 @@ export function removeWithUndo(locale: string, ownerId: string, itemId: string, 
         removal.state = "saved";
         emit();
       }
-    },
+      return !error;
+    })(),
   };
   items.set(itemId, removal);
   pending.set(ownerId, items);

@@ -17,7 +17,7 @@ import {itemCommand, setItemStar} from "../actions";
 import {ItemForm} from "../item-form";
 import {runListAction} from "../client-action";
 import {ItemThumb, missesPicture, type ListItemView} from "../item-view";
-import {removeWithUndo, usePendingRemovals} from "../pending-removals";
+import {commitPendingRemovals, removeWithUndo, usePendingRemovals} from "../pending-removals";
 
 const ADD_OPTIONS = [
   {kind: "note", icon: "pencil", title: "newNote", sub: "addNoteSub"},
@@ -77,6 +77,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const command = (item: ListItemView, name: "up" | "down" | "refresh") => {
     setEditing(null);
     startTransition(async () => {
+      if ((name === "up" || name === "down") && !await commitPendingRemovals(ownerId)) return;
       const result = await runListAction(() => itemCommand(ownerId, item.id, name));
       if (result?.error) toast({message: t(`feedback.${result.error}`), icon: "alert"});
     });
