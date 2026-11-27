@@ -27,6 +27,7 @@ import {
 import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
+import {AskForHelp} from "./ask-for-help";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -188,18 +189,19 @@ type KeyView = NonNullable<CodeResult["key"]>;
  * Opening your own key: "HI ROSA! Is this your phone?", then a PIN made in two tries.
  * `otherLanguage` switches the whole flow to the other language without losing the key.
  */
-export function KeyWelcome({familyId, value, typed, entry, sender, otherLanguage}: {
-  familyId: string; value: string; typed: boolean; entry: KeyView; sender: string | null;
+export function KeyWelcome({familyId, value, typed, entry, sender, organizer, otherLanguage}: {
+  familyId: string; value: string; typed: boolean; entry: KeyView; sender: string | null; organizer: string;
   otherLanguage?: {href: string; locale: "en" | "es"};
 }) {
   const t = useTranslations("getIn.hello");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
+  const help = <AskForHelp organizer={organizer} asker={{familyId, key: {value, typed, preview: entry.preview ?? null}}} />;
 
   if (phase === "pin") {
     const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);
     return (
       <Screen>
-        <MakePin top={<WelcomeSteps step={1} />} save={(pin) => save({}, pinForm(pin))} />
+        <MakePin top={<WelcomeSteps step={1} />} save={(pin) => save({}, pinForm(pin))} footer={help} />
       </Screen>
     );
   }
@@ -222,12 +224,15 @@ export function KeyWelcome({familyId, value, typed, entry, sender, otherLanguage
         setPhase("pin");
       }}>{t("yes")}</Button>
       <Button variant="outline" onClick={() => setPhase("helper")}>{t("helping", {name: entry.name})}</Button>
-      {otherLanguage && (
-        <Link href={otherLanguage.href} locale={otherLanguage.locale} lang={otherLanguage.locale}
-          className="inline-flex min-h-12 items-center justify-center self-center px-3 text-body font-semibold underline underline-offset-4">
-          {t("otherLanguage")}
-        </Link>
-      )}
+      <div className="flex flex-wrap items-start justify-center gap-x-1">
+        {otherLanguage && (
+          <Link href={otherLanguage.href} locale={otherLanguage.locale} lang={otherLanguage.locale}
+            className="inline-flex min-h-12 items-center justify-center px-3 text-body font-semibold underline underline-offset-4">
+            {t("otherLanguage")}
+          </Link>
+        )}
+        {help}
+      </div>
     </>}>
       <WelcomeSteps step={1} />
       <Greeting top={t("hi")} bottom={t("name", {name: entry.name})} />
@@ -266,7 +271,8 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         note={result.success
           ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>
           : <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote>}
-        left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>} />
+        left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>}
+        footer={<AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
         <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
           const response = await tryAuthAction(() => forgotPin(familyId, entry.personId));
@@ -318,7 +324,8 @@ export function SignInWithPin({familyId, personId, name, organizer, backHref}: {
       <EnterPin title={t("title")} lead={t("lead", {name})} organizer={organizer}
         onLocked={(minutes) => setView({kind: "locked", minutes})}
         submit={(data) => enterPin(familyId, personId, {}, data)}
-        left={<TextButton className="px-1 text-snow-white" onClick={() => setView({kind: "forgot"})}>{t("forgot")}</TextButton>} />
+        left={<TextButton className="px-1 text-snow-white" onClick={() => setView({kind: "forgot"})}>{t("forgot")}</TextButton>}
+        footer={<AskForHelp organizer={organizer} asker={{familyId, personId}} />} />
     </Screen>
   );
 }
@@ -449,7 +456,7 @@ export function CodeEntry({familyId, backHref, sender, organizer}: {
   if (result.key && result.code) {
     return result.key.usedAt
       ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} />
-      : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} />;
+      : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} organizer={organizer} />;
   }
   return (
     <Screen back={backHref}>

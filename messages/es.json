@@ -587,6 +587,20 @@
       "helperTitle": "Ábrela en el teléfono de {name}",
       "helperBack": "Volver"
     },
+    "preview": {
+      "title": "La llave de {name}",
+      "family": "Familia {family}",
+      "season": "Navidad {year}",
+      "generic": "Una llave para un intercambio familiar de regalos. Ábrela en tu propio teléfono.",
+      "picture": "{name}, bordado en lana",
+      "genericPicture": "Un regalo tejido entre dos copos de nieve"
+    },
+    "help": {
+      "ask": "Pedirle ayuda a {organizer}",
+      "asked": "Ya le avisamos a {organizer}. Revisa tu chat.",
+      "already": "Ya le avisamos a {organizer} hoy. Revisa tu chat.",
+      "failed": "No se pudo enviar. Inténtalo de nuevo."
+    },
     "pin": {
       "makeTitle": "Crea un PIN de 4 dígitos",
       "makeLead": "Lo usarás para volver a entrar.",

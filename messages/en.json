@@ -587,6 +587,20 @@
       "helperTitle": "Open it on {name}'s phone",
       "helperBack": "Go back"
     },
+    "preview": {
+      "title": "{name}'s own key",
+      "family": "{family} family",
+      "season": "Christmas {year}",
+      "generic": "A key for a family gift exchange. Open it on your own phone.",
+      "picture": "{name}, stitched in yarn",
+      "genericPicture": "A knitted gift between two snowflakes"
+    },
+    "help": {
+      "ask": "Ask {organizer} for help",
+      "asked": "{organizer} has been asked. Watch your chat.",
+      "already": "{organizer} was already asked today. Watch your chat.",
+      "failed": "That didn't send. Try again."
+    },
     "pin": {
       "makeTitle": "Make a 4-digit PIN",
       "makeLead": "You'll use it to get back in.",

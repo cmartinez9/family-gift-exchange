@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
 import {ErrorBlock} from "@/components/ui/blocks";
+import {cn} from "@/components/ui/cn";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
 import {prefersReducedMotion} from "@/components/ui/motion/reduced-motion";
@@ -31,6 +32,11 @@ function Refusal({problem, version}: {problem: Problem; version: number}) {
       <ErrorBlock title={problem.title}>{problem.sub}</ErrorBlock>
     </div>
   );
+}
+
+/** The footer under a keypad, over the home indicator. */
+function PinFooter({children}: {children: ReactNode}) {
+  return <div className="px-edge pb-[26px]">{children}</div>;
 }
 
 const settle = () => (prefersReducedMotion() ? 60 : 260);
@@ -69,10 +75,12 @@ export function pinForm(pin: string, confirmation = pin) {
  * Make a 4-digit PIN (1.3 to 1.5): type four digits, see at once why an easy one is refused, then type it
  * once more. `save` gets the PIN when both match, owns navigation on success, and returns an error on failure.
  */
-export function MakePin({save, top}: {
+export function MakePin({save, top, footer}: {
   save: (pin: string) => Promise<AuthResult | void>;
   /** The step bar, when this is part of onboarding. */
   top?: ReactNode;
+  /** A line under the keypad: "Ask Christian for help". */
+  footer?: ReactNode;
 }) {
   const t = useTranslations("getIn.pin");
   const feedback = useTranslations("auth.feedback");
@@ -136,7 +144,7 @@ export function MakePin({save, top}: {
     <>
       {top}
       <PageTitle title={t(phase === "make" ? "makeTitle" : "againTitle")} lead={t(phase === "make" ? "makeLead" : "againLead")} />
-      <div className="flex flex-1 flex-col px-edge pt-6 pb-[34px]">
+      <div className={cn("flex flex-1 flex-col px-edge pt-6", footer ? "pb-2" : "pb-[34px]")}>
         <PinPad fill value={pin} slotsLabel={t("slots", {count: pin.length})} deleteLabel={t("delete")}
           bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending}
           onChange={(next) => {
@@ -152,6 +160,7 @@ export function MakePin({save, top}: {
                 : <GroundNote icon="lock">{t("hint")}</GroundNote>}
           </div>} />
       </div>
+      {footer && <PinFooter>{footer}</PinFooter>}
     </>
   );
 }
@@ -162,13 +171,15 @@ export type PinRefusal = AuthResult;
  * Enter your PIN (10.2, 10.5): four digits, then the server says yes (and redirects) or why not.
  * A rest after too many tries hands over to `onLocked`.
  */
-export function EnterPin({title, lead, submit, left, note, onLocked, organizer, suspended = false}: {
+export function EnterPin({title, lead, submit, left, note, footer, onLocked, organizer, suspended = false}: {
   title: string; lead: string;
   submit: (data: FormData) => Promise<AuthResult | void>;
   /** The keypad's bottom-left key: "Forgot?". */
   left?: ReactNode;
   /** The line under the slots before anything goes wrong. */
   note?: ReactNode;
+  /** A line under the keypad: "Ask Christian for help". */
+  footer?: ReactNode;
   onLocked: (minutes: number) => void;
   organizer: string;
   suspended?: boolean;
@@ -219,7 +230,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer, 
   return (
     <>
       <PageTitle title={title} lead={lead} />
-      <div className="flex flex-1 flex-col px-edge pt-6 pb-[34px]">
+      <div className={cn("flex flex-1 flex-col px-edge pt-6", footer ? "pb-2" : "pb-[34px]")}>
         <PinPad fill value={pin} slotsLabel={pinText("slots", {count: pin.length})} deleteLabel={pinText("delete")}
           bad={bad} shown={bad ? 4 : undefined} shakeKey={shake} disabled={pending || suspended} left={left}
           onChange={(next) => {
@@ -234,6 +245,7 @@ export function EnterPin({title, lead, submit, left, note, onLocked, organizer, 
             {problem ? <Refusal problem={problem} version={version} /> : note}
           </div>} />
       </div>
+      {footer && <PinFooter>{footer}</PinFooter>}
     </>
   );
 }

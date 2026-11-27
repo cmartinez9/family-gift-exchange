@@ -1,3 +1,4 @@
+import type {ReactNode} from "react";
 import {getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {Avatar} from "@/components/ui/avatar";
@@ -15,6 +16,7 @@ import {currentDeviceHash, rememberedFamily} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
 import {Bullet, CodeEntry, FaceIdLink, FaceIdTile, FindFamily, Greeting, SignInWithPin} from "./get-in";
+import {AskForHelp} from "./ask-for-help";
 import {RefreshSession} from "./controls";
 import {linkClass} from "./styles";
 
@@ -81,7 +83,9 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
 
   const selected = names.find(({id}) => id === search.person);
   if (selected) {
-    if (selected.needsNewKey) return <NeedsKey name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
+    if (selected.needsNewKey) {
+      return <NeedsKey familyId={familyId} personId={selected.id} name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
+    }
     return <SignInWithPin familyId={familyId} personId={selected.id} name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
   }
 
@@ -89,18 +93,20 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
   const mine = names.filter(({id}) => known.includes(id));
   if (mine.length === 1 && search.all !== "1") {
     const [me] = mine;
-    return <WelcomeBack name={me.name} pinHref={`${familyUrl}&person=${me.id}`} othersHref={`${familyUrl}&all=1`} />;
+    return <WelcomeBack name={me.name} pinHref={`${familyUrl}&person=${me.id}`} othersHref={`${familyUrl}&all=1`}
+      help={<AskForHelp organizer={organizer} asker={{familyId, personId: me.id}} />} />;
   }
   return <WhoIsUsing names={names} familyUrl={familyUrl} />;
 }
 
-async function WelcomeBack({name, pinHref, othersHref}: {name: string; pinHref: string; othersHref: string}) {
+async function WelcomeBack({name, pinHref, othersHref, help}: {name: string; pinHref: string; othersHref: string; help: ReactNode}) {
   const t = await getTranslations("getIn.back");
   const hello = await getTranslations("getIn.hello");
   return (
     <Screen actions={<>
       <TextLink href={pinHref} className="self-center">{t("usePin")}</TextLink>
       <TextLink href={othersHref} className="self-center">{t("notMe", {name})}</TextLink>
+      {help}
     </>}>
       <div className="pt-10"><Greeting heading top={t("hi")} bottom={hello("name", {name})} /></div>
       <FaceIdTile />
@@ -134,11 +140,13 @@ async function WhoIsUsing({names, familyUrl}: {names: Array<{id: string; name: s
   );
 }
 
-async function NeedsKey({name, organizer, backHref}: {name: string; organizer: string; backHref: string}) {
+async function NeedsKey({familyId, personId, name, organizer, backHref}: {
+  familyId: string; personId: string; name: string; organizer: string; backHref: string;
+}) {
   const t = await getTranslations("getIn.enter");
   const back = await getTranslations("getIn.back");
   return (
-    <Screen back={backHref}>
+    <Screen back={backHref} actions={<AskForHelp organizer={organizer} asker={{familyId, personId}} />}>
       <BackRow href={backHref} parent={back("notMe", {name})} />
       <PageTitle title={name} className="pt-6" />
       <div className="px-edge pt-6">

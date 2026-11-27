@@ -262,7 +262,8 @@ export async function redeemKey(
   await tx.update(participants).set({joinedAt: now}).where(and(
     eq(participants.familyId, familyId), eq(participants.personId, person.id), isNull(participants.joinedAt),
   ));
-  if (key.kind === "reset") await answerResetRequests(tx, familyId, person.id, now);
+  // any key opened answers the person's requests for help, the first one included
+  await answerResetRequests(tx, familyId, person.id, now);
   await tx.insert(authEvents).values({
     familyId, personId: person.id, keyId: key.id, sessionId: session.id,
     kind: key.kind === "reset" ? "resetUsed" : "keyUsed", deviceKind: device.kind, at: now,
@@ -302,12 +303,18 @@ export async function signInWithPin(
   return {session: await signInDevice(tx, familyId, personId, device, now)};
 }
 
+/**
+ * Forgot my PIN: ask the organizers for a new key, at most three times a day per person. The same request is
+ * the "Ask the organizer for help" link; `beforeJoining` lets it come from a first key, before any PIN exists.
+ */
 export async function requestPinReset(
   tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date,
+  {beforeJoining = false}: {beforeJoining?: boolean} = {},
 ) {
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
   const person = await activePerson(tx, familyId, personId);
-  if (!person || person.helperId || !await credential(tx, familyId, personId)) return {error: "unavailable"} as const;
+  if (!person || person.helperId) return {error: "unavailable"} as const;
+  if (!beforeJoining && !await credential(tx, familyId, personId)) return {error: "unavailable"} as const;
   const [recent] = await tx.select({total: count()}).from(pinResetRequests).where(and(
     eq(pinResetRequests.familyId, familyId), eq(pinResetRequests.personId, personId),
     gt(pinResetRequests.requestedAt, new Date(now.getTime() - day)),
@@ -315,6 +322,28 @@ export async function requestPinReset(
   if (recent.total >= 3) return {error: "tryLater"} as const;
   await tx.insert(pinResetRequests).values({familyId, personId, deviceKind: device.kind, requestedAt: now});
   return {success: "resetRequested"} as const;
+}
+
+/**
+ * "Ask the organizer for help" from an unopened key (1.2 to 1.5): the key says whose request it is, so it works
+ * before the person has a PIN. A typed code must carry the signed preview from checking it, so asking never
+ * becomes a way to try codes.
+ */
+export async function requestHelpWithKey(
+  tx: FamilyTransaction, input: {
+    familyId: string; value: string; typed: boolean; preview: string | null; pepper: string; device: Device; now: Date;
+  },
+) {
+  const {familyId, value, typed, preview, pepper, device, now} = input;
+  if (!(typed ? keyCodePattern : keyTokenPattern).test(value)) return {error: "unavailable"} as const;
+  if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
+  const key = await lookupKey(tx, familyId, pepper, value, typed);
+  if (!key || key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
+  if (typed && (typeof preview !== "string" || !validCodePreview(preview, pepper, familyId, key, value, device.hash))) {
+    return {error: "unavailable"} as const;
+  }
+  const result = await requestPinReset(tx, familyId, key.personId, device, now, {beforeJoining: true});
+  return result.success ? {...result, personId: key.personId} : result;
 }
 
 async function answerResetRequests(tx: FamilyTransaction, familyId: string, personId: string, now: Date) {
