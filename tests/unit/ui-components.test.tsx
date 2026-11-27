@@ -173,6 +173,7 @@ describe("buttons, navigation and inputs", () => {
     expect(buttonClass("outline")).toContain("border-white/60");
     expect(buttonClass("card")).toContain("h-[52px]");
     expect(buttonClass("small")).toContain("h-12");
+    expect(buttonClass("smallSoft")).toContain("bg-[var(--track)]");
     expect(buttonClass("danger")).toContain("bg-danger");
     expect(html(<Button icon="plus">Add</Button>)).toContain('data-icon="plus"');
     expect(html(<IconButton icon="close" label="Close" />)).toContain('aria-label="Close"');

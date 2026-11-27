@@ -149,7 +149,9 @@
       "resetUsed": "A new key was used to replace your PIN.",
       "keyDisputed": "Someone with your used key reported that its first use was not them.",
       "familyLockdown": "Everyone was signed out for safety.",
-      "signIn": "A session signed in on this device."
+      "signIn": "A session signed in on this device.",
+      "deviceSignedOut": "A phone was signed out.",
+      "faceIdOff": "Face ID was turned off on a phone."
     },
     "feedback": {
       "pinLength": "Enter four digits.",
@@ -789,8 +791,8 @@
       "shoesShort": "Shoes {size}",
       "language": "Language",
       "faceId": "Face ID",
-      "faceOn": "On for this {device}",
-      "faceOff": "Off on this {device}",
+      "faceOn": "On for this {device}. Turning it off also turns it off on devices sharing this passkey, for example through iCloud Keychain.",
+      "faceOff": "Off on this {device} and on devices sharing this passkey, for example through iCloud Keychain.",
       "phones": "Your phones",
       "phonesSub": "{count, plural, one {# signed in} other {# signed in}}",
       "activity": "Family activity",
@@ -802,7 +804,9 @@
       "homeScreen": "Put it on your home screen",
       "signOut": "Sign out",
       "helping": "You're helping {name}",
-      "stopHelping": "Back to me"
+      "stopHelping": "Back to me",
+      "faceTurnedOff": "Face ID is off on this {device} and on devices sharing this passkey. Your PIN hasn't changed.",
+      "faceTurnedOn": "Face ID is on for this {device}"
     },
     "notices": {
       "title": "Notices",
@@ -823,13 +827,17 @@
         "resetSent": "Your new key was sent",
         "resetUsed": "Your PIN was changed with a new key",
         "keyDisputed": "Someone said they didn't open your key first",
-        "familyLockdown": "Everyone was signed out for safety"
+        "familyLockdown": "Everyone was signed out for safety",
+        "deviceSignedOut": "{device} was signed out",
+        "faceIdOff": "Face ID was turned off on {device}"
       },
       "sub": {
         "pinLocked": "Your PIN rested for 15 minutes",
         "newDevicesLocked": "Use Face ID or a phone you've used before",
         "resetPrepared": "Because you asked for a new PIN",
-        "familyLockdown": "Your list and your person are safe"
+        "familyLockdown": "Your list and your person are safe",
+        "deviceSignedOut": "From Your phones",
+        "faceIdOff": "Your PIN hasn't changed"
       },
       "device": {
         "iphone": "an iPhone",
@@ -873,14 +881,18 @@
       "lead": "Where you are signed in as {name}.",
       "thisOne": "This one",
       "now": "Now",
-      "since": "Signed in {date}",
       "faceOn": "Face ID on",
-      "tip": "Don't recognize one? Open Notices and tap \"That wasn't me\" on it.",
+      "tip": "Lost one, or lent it out? Sign just that one out. Don't recognize one? Open Notices and tap \"That wasn't me\" on it.",
       "signOutAll": "Sign out everywhere",
       "sheetTitle": "Sign out everywhere?",
       "sheetAll": "Every phone and iPad signed in as {name} is signed out, this one too.",
       "sheetSafe": "Get back in with your PIN or Face ID. Your list and your person are safe.",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "thisDevice": "{kind, select, iphone {This iPhone} ipad {This iPad} android {This Android device} computer {This computer} other {This device}}",
+      "lastUsed": "Last used {date}",
+      "signOut": "Sign out",
+      "signOutLabel": "{kind, select, iphone {Sign out the iPhone} ipad {Sign out the iPad} android {Sign out the Android device} computer {Sign out the computer} other {Sign out the device}}, {when}",
+      "signedOut": "{kind, select, iphone {The iPhone is signed out} ipad {The iPad is signed out} android {The Android device is signed out} computer {The computer is signed out} other {That device is signed out}}"
     },
     "activity": {
       "title": "Family activity",
@@ -891,7 +903,11 @@
       "secondPhone": "A key was opened on a second phone",
       "secondPhoneSub": "{date} · it was reported",
       "paused": "The exchange was paused for safety",
-      "none": "Nothing has happened yet."
+      "none": "Nothing has happened yet.",
+      "signedOut": "A phone was signed out",
+      "signedOutSub": "{date} · by its owner",
+      "faceOff": "Face ID was turned off on a phone",
+      "faceOffSub": "{date} · their PIN hasn't changed"
     },
     "language": {
       "title": "Language",

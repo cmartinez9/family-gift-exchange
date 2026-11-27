@@ -406,6 +406,7 @@ export function Gallery({tab}: {tab: TabKey}) {
               <div className="flex flex-col gap-2">
                 <Button variant="card" icon="message">Send my question</Button>
                 <Button variant="small" icon="share">Send</Button>
+                <Button variant="smallSoft">Sign out</Button>
                 <Button variant="soft" icon="link">Paste a link</Button>
                 <Button variant="danger">Yes, take Beto out</Button>
                 <TextLink href="design/push" transition="push" className="self-center">Something wrong?</TextLink>

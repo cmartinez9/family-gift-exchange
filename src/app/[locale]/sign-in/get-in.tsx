@@ -77,7 +77,8 @@ export function Bullet({icon, children, tone = "pine"}: {icon: IconName; childre
 // Face ID
 // ---------------------------------------------------------------------------------------------
 
-function useFaceId(enroll: boolean, onDone: () => void) {
+/** Face ID setup (`enroll`) or sign-in, with its pending and failed states. The Face ID switch on You uses setup too. */
+export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => void) {
   const [failed, setFailed] = useState(false);
   const [pending, start] = useTransition();
   function begin() {
@@ -97,6 +98,7 @@ function useFaceId(enroll: boolean, onDone: () => void) {
         onDone();
       } catch {
         setFailed(true);
+        onFail?.();
       }
     });
   }

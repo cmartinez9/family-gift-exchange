@@ -56,7 +56,7 @@ export async function peopleOnDevice(tx: FamilyTransaction, familyId: string, de
 export async function signedInDevices(tx: FamilyTransaction, viewer: Viewer, now: Date) {
   const rows = await tx.select({
     id: sessions.id, kind: sessions.deviceKind, at: sessions.createdAt, passkeyId: sessions.passkeyId,
-    deviceHash: sessions.deviceHash,
+    deviceHash: sessions.deviceHash, usedAt: sessions.lastUsedAt,
   }).from(sessions).where(and(
     eq(sessions.familyId, viewer.familyId), eq(sessions.personId, viewer.personId),
     isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
@@ -67,11 +67,13 @@ export async function signedInDevices(tx: FamilyTransaction, viewer: Viewer, now
   const withFace = new Set(faces.map(({deviceHash}) => deviceHash));
   const faceIds = new Set(faces.map(({id}) => id));
   return rows
-    .map(({id, kind, at, deviceHash, passkeyId}) => ({
+    .map(({id, kind, at, deviceHash, passkeyId, usedAt}) => ({
       id, kind, at, current: id === viewer.sessionId,
+      /** Pre-tracking sessions have no usage sample, so their sign-in time is the fallback. */
+      lastUsed: usedAt && usedAt > at ? usedAt : at,
       faceId: withFace.has(deviceHash) || (passkeyId !== null && faceIds.has(passkeyId)),
     }))
-    .sort((a, b) => Number(b.current) - Number(a.current));
+    .sort((a, b) => Number(b.current) - Number(a.current) || b.lastUsed.getTime() - a.lastUsed.getTime());
 }
 
 /** What the "You" screen summarises. */
@@ -115,18 +117,20 @@ export async function faceIdOnDevice(tx: FamilyTransaction, viewer: Viewer) {
 }
 
 /**
- * Only joining may include a person's name; PIN resets and disputed-key activity must stay anonymous.
- * Pairing details must never enter this projection.
+ * Only joining may include a person's name; PIN resets, disputed keys, signed-out phones and Face ID
+ * turned off must stay anonymous. Pairing details must never enter this projection.
  */
 export async function familyActivity(tx: FamilyTransaction, familyId: string) {
   const rows = await tx.select({
     id: authEvents.id, kind: authEvents.kind, at: authEvents.at, name: people.displayName,
   }).from(authEvents)
     .innerJoin(people, and(eq(people.familyId, authEvents.familyId), eq(people.id, authEvents.personId)))
-    .where(and(eq(authEvents.familyId, familyId), inArray(authEvents.kind, ["keyUsed", "resetUsed", "keyDisputed", "familyLockdown"])))
+    .where(and(eq(authEvents.familyId, familyId), inArray(authEvents.kind, [
+      "keyUsed", "resetUsed", "keyDisputed", "familyLockdown", "deviceSignedOut", "faceIdOff",
+    ])))
     .orderBy(desc(authEvents.at)).limit(60);
   const seen = new Set<number>();
-  const out: Array<{id: string; kind: "joined" | "reset" | "secondPhone" | "paused"; at: Date; name?: string}> = [];
+  const out: Array<{id: string; kind: "joined" | "reset" | "secondPhone" | "paused" | "signedOut" | "faceOff"; at: Date; name?: string}> = [];
   for (const row of rows) {
     if (row.kind === "familyLockdown") {
       // one lockdown writes a row per person: show it once
@@ -136,6 +140,8 @@ export async function familyActivity(tx: FamilyTransaction, familyId: string) {
       out.push({id: row.id, kind: "paused", at: row.at});
     } else if (row.kind === "keyUsed") out.push({id: row.id, kind: "joined", at: row.at, name: row.name});
     else if (row.kind === "resetUsed") out.push({id: row.id, kind: "reset", at: row.at});
+    else if (row.kind === "deviceSignedOut") out.push({id: row.id, kind: "signedOut", at: row.at});
+    else if (row.kind === "faceIdOff") out.push({id: row.id, kind: "faceOff", at: row.at});
     else out.push({id: row.id, kind: "secondPhone", at: row.at});
   }
   return out.slice(0, 30);

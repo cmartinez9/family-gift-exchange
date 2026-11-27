@@ -4,7 +4,6 @@ import {Avatar} from "@/components/ui/avatar";
 import {Button, ButtonLink, TextButton} from "@/components/ui/button";
 import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Card, Chevron, ListRow, Rows} from "@/components/ui/card";
-import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {AppLink} from "@/components/ui/navigation";
 import {BackRow} from "@/components/ui/page-header";
@@ -20,7 +19,7 @@ import {getUnreadCount, listNotifications} from "@/server/messages/inbox";
 import {shoeLabel} from "../welcome/shoe-label";
 import {reportSession, signOut, switchProfile} from "./actions";
 import {noticeText} from "./notice-text";
-import {ActForm, LanguageRow, RowDisc} from "./rows";
+import {ActForm, FaceIdRow, LanguageRow, RowDisc} from "./rows";
 import {screenTitle} from "../sign-in/title";
 import {activityDateFormat} from "../sign-in/styles";
 import styles from "./rows.module.css";
@@ -121,14 +120,7 @@ export default async function AccountPage({searchParams}: {searchParams: Promise
         <Card flush className="px-[18px] py-0.5">
           <Rows as="ul">
             <LanguageRow current={locale} />
-            {summary.faceId ? (
-              <li>
-                <ListRow className={styles.row} lead={<RowDisc icon="faceid" />} title={t("faceId")} sub={t("faceOn", {device})}
-                  trail={<Tick done size={34} label={t("faceOn", {device})} />} />
-              </li>
-            ) : (
-              <RowLink href="/face-id" icon="faceid" title={t("faceId")} sub={t("faceOff", {device})} />
-            )}
+            <FaceIdRow key={String(summary.faceId)} on={summary.faceId} device={device} className={styles.row} />
             <RowLink href="/account/phones" icon="phone" title={t("phones")} sub={t("phonesSub", {count: summary.devices})} />
             <RowLink href="/account/activity" icon="eye" title={t("activity")} sub={t("activitySub")} />
           </Rows>

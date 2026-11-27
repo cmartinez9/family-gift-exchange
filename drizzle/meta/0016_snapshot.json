@@ -1,5 +1,5 @@
 {
-  "id": "eafb168e-0035-4e3b-82f2-e0e9f6d41615",
+  "id": "d327ae61-3661-46d9-833a-c5a30c52c0dd",
   "prevId": "e3f0c966-bb7f-4165-8c1d-45defe3e629a",
   "version": "7",
   "dialect": "postgresql",
@@ -50,30 +50,30 @@
         "about_me_family_id_families_id_fk": {
           "name": "about_me_family_id_families_id_fk",
           "tableFrom": "about_me",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "about_me_person_fk": {
           "name": "about_me_person_fk",
           "tableFrom": "about_me",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -138,30 +138,30 @@
         "audit_family_id_families_id_fk": {
           "name": "audit_family_id_families_id_fk",
           "tableFrom": "audit",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "audit_actor_fk": {
           "name": "audit_actor_fk",
           "tableFrom": "audit",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "actor_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -244,9 +244,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "claims_claimer_idx": {
           "name": "claims_claimer_idx",
@@ -265,69 +265,69 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "claims_family_id_families_id_fk": {
           "name": "claims_family_id_families_id_fk",
           "tableFrom": "claims",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "claims_item_fk": {
           "name": "claims_item_fk",
           "tableFrom": "claims",
+          "tableTo": "items",
           "columnsFrom": [
             "family_id",
             "item_id"
           ],
-          "tableTo": "items",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "claims_claimer_fk": {
           "name": "claims_claimer_fk",
           "tableFrom": "claims",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "claimer_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "claims_exchange_fk": {
           "name": "claims_exchange_fk",
           "tableFrom": "claims",
+          "tableTo": "exchanges",
           "columnsFrom": [
             "family_id",
             "exchange_id"
           ],
-          "tableTo": "exchanges",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -443,15 +443,15 @@
         "exchanges_family_id_families_id_fk": {
           "name": "exchanges_family_id_families_id_fk",
           "tableFrom": "exchanges",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -485,8 +485,8 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "type": "stored",
-            "as": "id"
+            "as": "id",
+            "type": "stored"
           }
         },
         "name": {
@@ -515,17 +515,17 @@
         "families_created_by_fk": {
           "name": "families_created_by_fk",
           "tableFrom": "families",
+          "tableTo": "people",
           "columnsFrom": [
             "id",
             "created_by"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -563,15 +563,15 @@
         "households_family_id_families_id_fk": {
           "name": "households_family_id_families_id_fk",
           "tableFrom": "households",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -719,39 +719,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "items_family_id_families_id_fk": {
           "name": "items_family_id_families_id_fk",
           "tableFrom": "items",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "items_owner_fk": {
           "name": "items_owner_fk",
           "tableFrom": "items",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "owner_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -809,49 +809,49 @@
         "keep_apart_family_id_families_id_fk": {
           "name": "keep_apart_family_id_families_id_fk",
           "tableFrom": "keep_apart",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "keep_apart_person_a_fk": {
           "name": "keep_apart_person_a_fk",
           "tableFrom": "keep_apart",
+          "tableTo": "participants",
           "columnsFrom": [
             "family_id",
             "exchange_id",
             "person_a"
           ],
-          "tableTo": "participants",
           "columnsTo": [
             "family_id",
             "exchange_id",
             "person_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "keep_apart_person_b_fk": {
           "name": "keep_apart_person_b_fk",
           "tableFrom": "keep_apart",
+          "tableTo": "participants",
           "columnsFrom": [
             "family_id",
             "exchange_id",
             "person_b"
           ],
-          "tableTo": "participants",
           "columnsTo": [
             "family_id",
             "exchange_id",
             "person_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -988,9 +988,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "outbox_person_created_idx": {
           "name": "outbox_person_created_idx",
@@ -1015,9 +1015,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "outbox_pending_idx": {
           "name": "outbox_pending_idx",
@@ -1036,40 +1036,40 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"outbox\".\"status\" = 'pending'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "outbox_family_id_families_id_fk": {
           "name": "outbox_family_id_families_id_fk",
           "tableFrom": "outbox",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "outbox_person_fk": {
           "name": "outbox_person_fk",
           "tableFrom": "outbox",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1139,45 +1139,45 @@
         "participants_family_id_families_id_fk": {
           "name": "participants_family_id_families_id_fk",
           "tableFrom": "participants",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "participants_exchange_fk": {
           "name": "participants_exchange_fk",
           "tableFrom": "participants",
+          "tableTo": "exchanges",
           "columnsFrom": [
             "family_id",
             "exchange_id"
           ],
-          "tableTo": "exchanges",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "participants_person_fk": {
           "name": "participants_person_fk",
           "tableFrom": "participants",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1278,45 +1278,45 @@
         "people_family_id_families_id_fk": {
           "name": "people_family_id_families_id_fk",
           "tableFrom": "people",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "people_helper_fk": {
           "name": "people_helper_fk",
           "tableFrom": "people",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "helper_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "people_household_fk": {
           "name": "people_household_fk",
           "tableFrom": "people",
+          "tableTo": "households",
           "columnsFrom": [
             "family_id",
             "household_id"
           ],
-          "tableTo": "households",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1374,30 +1374,30 @@
         "sizes_family_id_families_id_fk": {
           "name": "sizes_family_id_families_id_fk",
           "tableFrom": "sizes",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "sizes_person_fk": {
           "name": "sizes_person_fk",
           "tableFrom": "sizes",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1455,32 +1455,32 @@
         "assignments_family_id_families_id_fk": {
           "name": "assignments_family_id_families_id_fk",
           "tableFrom": "assignments",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "assignments_giver_fk": {
           "name": "assignments_giver_fk",
           "tableFrom": "assignments",
+          "tableTo": "participants",
           "columnsFrom": [
             "family_id",
             "exchange_id",
             "giver_id"
           ],
-          "tableTo": "participants",
           "columnsTo": [
             "family_id",
             "exchange_id",
             "person_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1501,6 +1501,406 @@
           "value": "\"assignments\".\"version\" > 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.draw_openings": {
+      "name": "draw_openings",
+      "schema": "",
+      "columns": {
+        "family_id": {
+          "name": "family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "giver_id": {
+          "name": "giver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "viewer_id": {
+          "name": "viewer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "invalidated_at": {
+          "name": "invalidated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "draw_openings_family_id_families_id_fk": {
+          "name": "draw_openings_family_id_families_id_fk",
+          "tableFrom": "draw_openings",
+          "tableTo": "families",
+          "columnsFrom": [
+            "family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "draw_openings_giver_fk": {
+          "name": "draw_openings_giver_fk",
+          "tableFrom": "draw_openings",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "family_id",
+            "exchange_id",
+            "giver_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "exchange_id",
+            "person_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "draw_openings_viewer_fk": {
+          "name": "draw_openings_viewer_fk",
+          "tableFrom": "draw_openings",
+          "tableTo": "people",
+          "columnsFrom": [
+            "family_id",
+            "viewer_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "draw_openings_family_id_exchange_id_giver_id_version_session_id_pk": {
+          "name": "draw_openings_family_id_exchange_id_giver_id_version_session_id_pk",
+          "columns": [
+            "family_id",
+            "exchange_id",
+            "giver_id",
+            "version",
+            "session_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "draw_openings_positive_version": {
+          "name": "draw_openings_positive_version",
+          "value": "\"draw_openings\".\"version\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.draw_reports": {
+      "name": "draw_reports",
+      "schema": "",
+      "columns": {
+        "family_id": {
+          "name": "family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "giver_id": {
+          "name": "giver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "draw_reports_family_id_families_id_fk": {
+          "name": "draw_reports_family_id_families_id_fk",
+          "tableFrom": "draw_reports",
+          "tableTo": "families",
+          "columnsFrom": [
+            "family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "draw_reports_giver_fk": {
+          "name": "draw_reports_giver_fk",
+          "tableFrom": "draw_reports",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "family_id",
+            "exchange_id",
+            "giver_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "exchange_id",
+            "person_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "draw_reports_family_id_exchange_id_giver_id_pk": {
+          "name": "draw_reports_family_id_exchange_id_giver_id_pk",
+          "columns": [
+            "family_id",
+            "exchange_id",
+            "giver_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.draw_rule_snapshots": {
+      "name": "draw_rule_snapshots",
+      "schema": "",
+      "columns": {
+        "family_id": {
+          "name": "family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roster": {
+          "name": "roster",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "keep_apart": {
+          "name": "keep_apart",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "draw_rule_snapshots_family_id_families_id_fk": {
+          "name": "draw_rule_snapshots_family_id_families_id_fk",
+          "tableFrom": "draw_rule_snapshots",
+          "tableTo": "families",
+          "columnsFrom": [
+            "family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "draw_rule_snapshots_exchange_fk": {
+          "name": "draw_rule_snapshots_exchange_fk",
+          "tableFrom": "draw_rule_snapshots",
+          "tableTo": "exchanges",
+          "columnsFrom": [
+            "family_id",
+            "exchange_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "draw_rule_snapshots_family_id_exchange_id_pk": {
+          "name": "draw_rule_snapshots_family_id_exchange_id_pk",
+          "columns": [
+            "family_id",
+            "exchange_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.draw_practice_families": {
+      "name": "draw_practice_families",
+      "schema": "",
+      "columns": {
+        "family_id": {
+          "name": "family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "practice_family_id": {
+          "name": "practice_family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "practice_organizer_id": {
+          "name": "practice_organizer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "draw_practice_families_family_id_families_id_fk": {
+          "name": "draw_practice_families_family_id_families_id_fk",
+          "tableFrom": "draw_practice_families",
+          "tableTo": "families",
+          "columnsFrom": [
+            "family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "draw_practice_families_practice_family_id_families_id_fk": {
+          "name": "draw_practice_families_practice_family_id_families_id_fk",
+          "tableFrom": "draw_practice_families",
+          "tableTo": "families",
+          "columnsFrom": [
+            "practice_family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "draw_practice_families_owner_fk": {
+          "name": "draw_practice_families_owner_fk",
+          "tableFrom": "draw_practice_families",
+          "tableTo": "people",
+          "columnsFrom": [
+            "family_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "draw_practice_families_organizer_fk": {
+          "name": "draw_practice_families_organizer_fk",
+          "tableFrom": "draw_practice_families",
+          "tableTo": "people",
+          "columnsFrom": [
+            "practice_family_id",
+            "practice_organizer_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "draw_practice_families_exchange_fk": {
+          "name": "draw_practice_families_exchange_fk",
+          "tableFrom": "draw_practice_families",
+          "tableTo": "exchanges",
+          "columnsFrom": [
+            "practice_family_id",
+            "exchange_id"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "draw_practice_families_family_id_owner_id_pk": {
+          "name": "draw_practice_families_family_id_owner_id_pk",
+          "columns": [
+            "family_id",
+            "owner_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "draw_practice_families_practice_family_id_unique": {
+          "name": "draw_practice_families_practice_family_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "practice_family_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.questions": {
@@ -1575,32 +1975,32 @@
         "questions_family_id_families_id_fk": {
           "name": "questions_family_id_families_id_fk",
           "tableFrom": "questions",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "questions_asker_fk": {
           "name": "questions_asker_fk",
           "tableFrom": "questions",
+          "tableTo": "participants",
           "columnsFrom": [
             "family_id",
             "exchange_id",
             "asker_id"
           ],
-          "tableTo": "participants",
           "columnsTo": [
             "family_id",
             "exchange_id",
             "person_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1701,69 +2101,69 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auth_events_family_id_families_id_fk": {
           "name": "auth_events_family_id_families_id_fk",
           "tableFrom": "auth_events",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "auth_events_person_fk": {
           "name": "auth_events_person_fk",
           "tableFrom": "auth_events",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "auth_events_session_fk": {
           "name": "auth_events_session_fk",
           "tableFrom": "auth_events",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "auth_events_key_fk": {
           "name": "auth_events_key_fk",
           "tableFrom": "auth_events",
+          "tableTo": "personal_keys",
           "columnsFrom": [
             "family_id",
             "key_id"
           ],
-          "tableTo": "personal_keys",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1814,15 +2214,15 @@
         "auth_limits_family_id_families_id_fk": {
           "name": "auth_limits_family_id_families_id_fk",
           "tableFrom": "auth_limits",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1898,30 +2298,30 @@
         "passkeys_family_id_families_id_fk": {
           "name": "passkeys_family_id_families_id_fk",
           "tableFrom": "passkeys",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "passkeys_person_fk": {
           "name": "passkeys_person_fk",
           "tableFrom": "passkeys",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2046,9 +2446,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "personal_keys_code_idx": {
           "name": "personal_keys_code_idx",
@@ -2067,9 +2467,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "personal_keys_person_idx": {
           "name": "personal_keys_person_idx",
@@ -2088,84 +2488,84 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "personal_keys_family_id_families_id_fk": {
           "name": "personal_keys_family_id_families_id_fk",
           "tableFrom": "personal_keys",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "personal_keys_person_fk": {
           "name": "personal_keys_person_fk",
           "tableFrom": "personal_keys",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "personal_keys_issuer_fk": {
           "name": "personal_keys_issuer_fk",
           "tableFrom": "personal_keys",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "issued_by"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "personal_keys_session_fk": {
           "name": "personal_keys_session_fk",
           "tableFrom": "personal_keys",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "used_session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "personal_keys_issuing_session_fk": {
           "name": "personal_keys_issuing_session_fk",
           "tableFrom": "personal_keys",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "issued_by_session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2257,30 +2657,30 @@
         "pin_credentials_family_id_families_id_fk": {
           "name": "pin_credentials_family_id_families_id_fk",
           "tableFrom": "pin_credentials",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "pin_credentials_person_fk": {
           "name": "pin_credentials_person_fk",
           "tableFrom": "pin_credentials",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2358,39 +2758,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "pin_reset_requests_family_id_families_id_fk": {
           "name": "pin_reset_requests_family_id_families_id_fk",
           "tableFrom": "pin_reset_requests",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "pin_reset_requests_person_fk": {
           "name": "pin_reset_requests_person_fk",
           "tableFrom": "pin_reset_requests",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2461,75 +2861,75 @@
         "session_disputes_family_id_families_id_fk": {
           "name": "session_disputes_family_id_families_id_fk",
           "tableFrom": "session_disputes",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "session_disputes_event_fk": {
           "name": "session_disputes_event_fk",
           "tableFrom": "session_disputes",
+          "tableTo": "auth_events",
           "columnsFrom": [
             "family_id",
             "event_id"
           ],
-          "tableTo": "auth_events",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "session_disputes_person_fk": {
           "name": "session_disputes_person_fk",
           "tableFrom": "session_disputes",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "session_disputes_target_fk": {
           "name": "session_disputes_target_fk",
           "tableFrom": "session_disputes",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "disputed_session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "session_disputes_reporter_fk": {
           "name": "session_disputes_reporter_fk",
           "tableFrom": "session_disputes",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "reported_by_session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2605,6 +3005,12 @@
           "notNull": true,
           "default": "now()"
         },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -2650,69 +3056,69 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "sessions_family_id_families_id_fk": {
           "name": "sessions_family_id_families_id_fk",
           "tableFrom": "sessions",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "sessions_passkey_fk": {
           "name": "sessions_passkey_fk",
           "tableFrom": "sessions",
+          "tableTo": "passkeys",
           "columnsFrom": [
             "family_id",
             "passkey_id"
           ],
-          "tableTo": "passkeys",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "sessions_person_fk": {
           "name": "sessions_person_fk",
           "tableFrom": "sessions",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "sessions_acting_as_fk": {
           "name": "sessions_acting_as_fk",
           "tableFrom": "sessions",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "acting_as"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2788,9 +3194,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "push_subscriptions_person_idx": {
           "name": "push_subscriptions_person_idx",
@@ -2809,54 +3215,54 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "push_subscriptions_family_id_families_id_fk": {
           "name": "push_subscriptions_family_id_families_id_fk",
           "tableFrom": "push_subscriptions",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "push_subscriptions_person_fk": {
           "name": "push_subscriptions_person_fk",
           "tableFrom": "push_subscriptions",
+          "tableTo": "people",
           "columnsFrom": [
             "family_id",
             "person_id"
           ],
-          "tableTo": "people",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "push_subscriptions_session_fk": {
           "name": "push_subscriptions_session_fk",
           "tableFrom": "push_subscriptions",
+          "tableTo": "sessions",
           "columnsFrom": [
             "family_id",
             "session_id"
           ],
-          "tableTo": "sessions",
           "columnsTo": [
             "family_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2869,406 +3275,6 @@
         }
       },
       "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.draw_openings": {
-      "name": "draw_openings",
-      "schema": "",
-      "columns": {
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exchange_id": {
-          "name": "exchange_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "giver_id": {
-          "name": "giver_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "viewer_id": {
-          "name": "viewer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "invalidated_at": {
-          "name": "invalidated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "draw_openings_family_id_families_id_fk": {
-          "name": "draw_openings_family_id_families_id_fk",
-          "tableFrom": "draw_openings",
-          "columnsFrom": [
-            "family_id"
-          ],
-          "tableTo": "families",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "draw_openings_giver_fk": {
-          "name": "draw_openings_giver_fk",
-          "tableFrom": "draw_openings",
-          "columnsFrom": [
-            "family_id",
-            "exchange_id",
-            "giver_id"
-          ],
-          "tableTo": "participants",
-          "columnsTo": [
-            "family_id",
-            "exchange_id",
-            "person_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "draw_openings_viewer_fk": {
-          "name": "draw_openings_viewer_fk",
-          "tableFrom": "draw_openings",
-          "columnsFrom": [
-            "family_id",
-            "viewer_id"
-          ],
-          "tableTo": "people",
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "draw_openings_family_id_exchange_id_giver_id_version_session_id_pk": {
-          "name": "draw_openings_family_id_exchange_id_giver_id_version_session_id_pk",
-          "columns": [
-            "family_id",
-            "exchange_id",
-            "giver_id",
-            "version",
-            "session_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "draw_openings_positive_version": {
-          "name": "draw_openings_positive_version",
-          "value": "\"draw_openings\".\"version\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.draw_reports": {
-      "name": "draw_reports",
-      "schema": "",
-      "columns": {
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exchange_id": {
-          "name": "exchange_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "giver_id": {
-          "name": "giver_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "draw_reports_family_id_families_id_fk": {
-          "name": "draw_reports_family_id_families_id_fk",
-          "tableFrom": "draw_reports",
-          "columnsFrom": [
-            "family_id"
-          ],
-          "tableTo": "families",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "draw_reports_giver_fk": {
-          "name": "draw_reports_giver_fk",
-          "tableFrom": "draw_reports",
-          "columnsFrom": [
-            "family_id",
-            "exchange_id",
-            "giver_id"
-          ],
-          "tableTo": "participants",
-          "columnsTo": [
-            "family_id",
-            "exchange_id",
-            "person_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "draw_reports_family_id_exchange_id_giver_id_pk": {
-          "name": "draw_reports_family_id_exchange_id_giver_id_pk",
-          "columns": [
-            "family_id",
-            "exchange_id",
-            "giver_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.draw_rule_snapshots": {
-      "name": "draw_rule_snapshots",
-      "schema": "",
-      "columns": {
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exchange_id": {
-          "name": "exchange_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "roster": {
-          "name": "roster",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "keep_apart": {
-          "name": "keep_apart",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "draw_rule_snapshots_family_id_families_id_fk": {
-          "name": "draw_rule_snapshots_family_id_families_id_fk",
-          "tableFrom": "draw_rule_snapshots",
-          "columnsFrom": [
-            "family_id"
-          ],
-          "tableTo": "families",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "draw_rule_snapshots_exchange_fk": {
-          "name": "draw_rule_snapshots_exchange_fk",
-          "tableFrom": "draw_rule_snapshots",
-          "columnsFrom": [
-            "family_id",
-            "exchange_id"
-          ],
-          "tableTo": "exchanges",
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "draw_rule_snapshots_family_id_exchange_id_pk": {
-          "name": "draw_rule_snapshots_family_id_exchange_id_pk",
-          "columns": [
-            "family_id",
-            "exchange_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.draw_practice_families": {
-      "name": "draw_practice_families",
-      "schema": "",
-      "columns": {
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "practice_family_id": {
-          "name": "practice_family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "practice_organizer_id": {
-          "name": "practice_organizer_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exchange_id": {
-          "name": "exchange_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "draw_practice_families_family_id_families_id_fk": {
-          "name": "draw_practice_families_family_id_families_id_fk",
-          "tableFrom": "draw_practice_families",
-          "columnsFrom": [
-            "family_id"
-          ],
-          "tableTo": "families",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "draw_practice_families_practice_family_id_families_id_fk": {
-          "name": "draw_practice_families_practice_family_id_families_id_fk",
-          "tableFrom": "draw_practice_families",
-          "columnsFrom": [
-            "practice_family_id"
-          ],
-          "tableTo": "families",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "draw_practice_families_owner_fk": {
-          "name": "draw_practice_families_owner_fk",
-          "tableFrom": "draw_practice_families",
-          "columnsFrom": [
-            "family_id",
-            "owner_id"
-          ],
-          "tableTo": "people",
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "draw_practice_families_organizer_fk": {
-          "name": "draw_practice_families_organizer_fk",
-          "tableFrom": "draw_practice_families",
-          "columnsFrom": [
-            "practice_family_id",
-            "practice_organizer_id"
-          ],
-          "tableTo": "people",
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "draw_practice_families_exchange_fk": {
-          "name": "draw_practice_families_exchange_fk",
-          "tableFrom": "draw_practice_families",
-          "columnsFrom": [
-            "practice_family_id",
-            "exchange_id"
-          ],
-          "tableTo": "exchanges",
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "draw_practice_families_family_id_owner_id_pk": {
-          "name": "draw_practice_families_family_id_owner_id_pk",
-          "columns": [
-            "family_id",
-            "owner_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {
-        "draw_practice_families_practice_family_id_unique": {
-          "name": "draw_practice_families_practice_family_id_unique",
-          "columns": [
-            "practice_family_id"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -3348,10 +3354,10 @@
     }
   },
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
