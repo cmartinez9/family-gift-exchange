@@ -8,7 +8,7 @@ import {families, people} from "../../src/server/db/schema";
 import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
 import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
 import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
-import {account, disputeEvent} from "../../src/server/auth/security";
+import {account, disputeEvent, turnOffFaceId} from "../../src/server/auth/security";
 import {getViewer, type Viewer} from "../../src/server/auth";
 import {requestDevice, setSession} from "../../src/server/auth/request";
 import {issueKey, issueOrganizerKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
@@ -120,6 +120,27 @@ afterEach(async () => {
     await withFamily(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)));
   }
   cleanup.clear();
+});
+
+it("turns Face ID off on both phones sharing a passkey without ending their sessions", async () => {
+  const {familyId, viewer} = await fixture();
+  const phoneA = device();
+  const phoneB = device();
+  const shared = await enroll(familyId, viewer.personId, phoneA);
+  const independent = await enroll(familyId, viewer.personId, device());
+  const sessionA = (await shared.authenticate(phoneA))!.session;
+  const sessionB = (await shared.authenticate(phoneB))!.session;
+  const viewerB = (await resolve(sessionB.cookie))!;
+
+  await expect(withFamily(familyId, (tx) => turnOffFaceId(tx, viewerB, new Date())))
+    .resolves.toEqual({credentials: [shared.id]});
+
+  await expect(shared.authenticate(phoneA)).resolves.toBeNull();
+  await expect(shared.authenticate(phoneB)).resolves.toBeNull();
+  await expect(independent.authenticate(device())).resolves.toHaveProperty("session");
+  for (const session of [sessionA, sessionB]) {
+    await expect(resolve(session.cookie)).resolves.toMatchObject({personId: viewer.personId});
+  }
 });
 
 it("revokes the authenticating passkey after cookies change while preserving another credential", async () => {

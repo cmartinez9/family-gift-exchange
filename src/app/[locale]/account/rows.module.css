@@ -23,4 +23,11 @@
     grid-column: 2;
     grid-row: 1;
   }
+
+  /* a row whose trail is a button with words (Sign out on Your phones): the button goes under the words */
+  .row.rowAction > :last-child {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: start;
+  }
 }

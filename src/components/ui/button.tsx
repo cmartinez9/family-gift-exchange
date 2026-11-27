@@ -8,11 +8,12 @@ import {AppLink} from "./navigation";
  * outline: a real alternative on the ground — transparent, 2px border at 60% white, 60px.
  * card: the action inside a card or sheet — ink pill, 52px, 18px label.
  * small: row actions (Send, Nudge, I'm getting this) — ink pill, 48px.
+ * smallSoft: a quieter row action on a card's track tone (Sign out on Your phones) — track pill, 48px.
  * danger: only inside a confirm sheet, for what cannot be undone — 56px.
  * soft: a secondary pill on a card's track tone, 52px.
  * Heights are minimums so labels can wrap on narrow cards.
  */
-export type ButtonVariant = "ground" | "outline" | "card" | "small" | "danger" | "soft";
+export type ButtonVariant = "ground" | "outline" | "card" | "small" | "smallSoft" | "danger" | "soft";
 
 const BASE = "fge-press inline-flex max-w-full shrink-0 items-center justify-center gap-2.5 rounded-pill py-2 whitespace-normal cursor-pointer "
   + "disabled:cursor-default aria-disabled:cursor-default";
@@ -25,11 +26,13 @@ const VARIANT: Readonly<Record<ButtonVariant, string>> = {
     + "disabled:bg-[var(--track)] disabled:text-[var(--fg-muted)]",
   small: "min-h-12 self-start px-[18px] gap-2 bg-ink text-snow-white text-body-strong "
     + "disabled:bg-[var(--track)] disabled:text-[var(--fg-muted)]",
+  smallSoft: "min-h-12 self-start px-[18px] gap-2 bg-[var(--track)] text-ink text-body-strong "
+    + "disabled:text-[var(--fg-muted)]",
   danger: "min-h-14 w-full px-6 bg-danger text-snow-white text-body-strong",
   soft: "min-h-[52px] w-full px-3 bg-[var(--track)] text-ink text-body-strong",
 };
 
-const ICON_SIZE: Readonly<Record<ButtonVariant, number>> = {ground: 22, outline: 22, card: 22, small: 20, danger: 22, soft: 22};
+const ICON_SIZE: Readonly<Record<ButtonVariant, number>> = {ground: 22, outline: 22, card: 22, small: 20, smallSoft: 20, danger: 22, soft: 22};
 
 export function buttonClass(variant: ButtonVariant = "ground", className?: string): string {
   return cn(BASE, VARIANT[variant], className);

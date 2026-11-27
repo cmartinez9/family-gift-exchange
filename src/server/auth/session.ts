@@ -1,5 +1,5 @@
 import {createHash, randomBytes, randomUUID, timingSafeEqual} from "node:crypto";
-import {and, eq, gt, isNull} from "drizzle-orm";
+import {and, eq, gt, isNull, lte, or} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
 import {people} from "../db/schema";
 import type {FamilyTransaction} from "../db/database";
@@ -65,6 +65,15 @@ export async function findViewer(tx: FamilyTransaction, session: NonNullable<Ret
   const {familyId, id, token} = session;
   const row = await sessionIdentity(tx, familyId, id);
   return row && matchesHash(token, row.tokenHash) ? viewerIdentity(row, familyId, id) : null;
+}
+
+export const lastUsedGraceMs = 15 * 60_000;
+
+export async function touchSession(tx: FamilyTransaction, viewer: Viewer, now: Date) {
+  await tx.update(sessions).set({lastUsedAt: now}).where(and(
+    eq(sessions.familyId, viewer.familyId), eq(sessions.id, viewer.sessionId), isNull(sessions.revokedAt),
+    or(isNull(sessions.lastUsedAt), lte(sessions.lastUsedAt, new Date(now.getTime() - lastUsedGraceMs))),
+  ));
 }
 
 export async function revalidateViewer(tx: FamilyTransaction, viewer: Viewer): Promise<(Viewer & {deviceHash: string}) | null> {
