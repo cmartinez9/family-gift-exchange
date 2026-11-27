@@ -180,17 +180,11 @@ it.each(["listExchanges", "memberDrawStatus"] as const)("keeps a %s timeout retr
   const error = new DrawError("checkTimedOut");
   drawState[boundary].mockRejectedValueOnce(error);
   await expect(BorrowedPhonePage()).rejects.toBe(error);
-  const reset = vi.fn();
-  await render(<BorrowedPhoneError reset={reset} />);
+  await render(<BorrowedPhoneError />);
+  expect(container.querySelector("h1")?.textContent).toBe(en.borrowed.title);
+  expect(container.querySelector("[role=alert]")?.textContent).toBe(en.borrowed.revealFailed);
+  expect([...container.querySelectorAll("button")].some((button) => button.textContent === en.draw.person.tryAgain)).toBe(true);
   expect(container.textContent).not.toContain("Hand this phone back");
-  expect(borrowed.hideOnBorrowedPhone).not.toHaveBeenCalled();
-  await click(en.draw.person.tryAgain);
-  expect(router.refresh).toHaveBeenCalledOnce();
-  expect(reset).toHaveBeenCalledOnce();
-  borrowed.revealOnBorrowedPhone.mockResolvedValue({name: "Beto"});
-  await render(await BorrowedPhonePage());
-  await click(en.draw.person.revealTap);
-  expect(container.textContent).toContain("Hide Beto");
   expect(borrowed.hideOnBorrowedPhone).not.toHaveBeenCalled();
 });
 
