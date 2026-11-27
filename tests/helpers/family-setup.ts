@@ -1,6 +1,6 @@
 import {expect, type Page} from "@playwright/test";
-import en from "../../messages/en.json";
-import es from "../../messages/es.json";
+import en from "../../messages/en.json" with {type: "json"};
+import es from "../../messages/es.json" with {type: "json"};
 
 export async function openFamilyAfterDetails(page: Page, locale: "en" | "es" = "en") {
   const {draw} = locale === "en" ? en : es;

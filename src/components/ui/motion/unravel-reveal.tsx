@@ -398,7 +398,7 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
         )}
         <div data-reveal-only="" style={{opacity: 0}}><OnlyYou>{labels.onlyYou}</OnlyYou></div>
       </div>
-      <p className="sr-only" aria-live="assertive">{announce}</p>
+      <div className="sr-only" aria-live="assertive">{revealed && <Title>{announce}</Title>}</div>
 
       <div data-reveal-band="" className="pointer-events-none absolute inset-x-0" style={{top: BAND_TOP, opacity: 0}}>
         <FairIsleBand kind="flake" cell={7} />

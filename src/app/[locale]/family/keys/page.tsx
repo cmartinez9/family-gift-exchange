@@ -24,7 +24,8 @@ export default async function KeysPage() {
   // the last setup step: names are drawn and someone still has a key to open
   const setup = !board.constraintsOpen && own.some(({joinedAt}) => !joinedAt);
   return (
-    <Screen back="/family" actions={<ButtonLink href="/family/group-chat" transition="push" icon="share">{draw("keys.tellFamily")}</ButtonLink>}>
+    <Screen back="/family" className="print:min-h-0 print:bg-white print:text-black print:[&>[data-actions]]:hidden"
+      actions={<ButtonLink href="/family/group-chat" transition="push" icon="share">{draw("keys.tellFamily")}</ButtonLink>}>
       <div className="print:hidden">
         {setup ? <SetupSteps step={5} /> : <BackRow href="/family" parent={draw("season.peopleAndHouses")} backLabel={ui("back")} />}
         <PageTitle title={t("sendKeys")} lead={draw("keys.lead")} />

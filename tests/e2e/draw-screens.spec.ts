@@ -11,7 +11,7 @@ import {practiceFamilies} from "../../src/server/draw/schema";
 
 // Walks the organizer's setup and draw, the season, and each member's person, on the Sweater Weather
 // screens, at 390 by 844. Every screen is checked with axe and photographed into test-results/design.
-const DIR = "test-results/design";
+const DIR = process.env.E2E_SCREENSHOT_DIR || "test-results/design";
 const phone = {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true};
 const NAMES = ["Rosa", "Tito", "Ana", "Beto", "Leo"] as const;
 
@@ -29,7 +29,7 @@ async function shot(page: Page, name: string, {axe = true} = {}) {
   await page.screenshot({path: `${DIR}/${name}.png`});
   if (axe) {
     const {violations} = await new AxeBuilder({page}).exclude("nextjs-portal").analyze();
-    expect(violations.map(({id, nodes}) => `${name}: ${id} ${nodes.map(({target}) => target.join(" ")).join(", ")}`)).toEqual([]);
+    expect.soft(violations.map(({id, nodes}) => `${name}: ${id} ${nodes.map(({target}) => target.join(" ")).join(", ")}`)).toEqual([]);
   }
 }
 

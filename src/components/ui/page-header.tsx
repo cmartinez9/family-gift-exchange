@@ -40,7 +40,7 @@ export function BackRow({href, parent, backLabel, right, dark = false}: {
   dark?: boolean;
 }) {
   return (
-    <div className={cn("flex items-center justify-between px-4 pt-2", dark ? "text-ink" : "text-snow-white")} data-back-row="">
+    <div className={cn("flex flex-wrap items-center justify-between gap-x-2 px-4 pt-2", dark ? "text-ink" : "text-snow-white")} data-back-row="">
       <AppLink href={href} transition="back" className="fge-press inline-flex min-h-12 items-center gap-2.5 rounded-pill pr-2">
         <span aria-hidden="true" className={cn("inline-flex size-12 items-center justify-center rounded-full", dark ? "bg-card-track" : "bg-on-ground")}>
           <Icon name="back" size={24} strokeWidth={2.5} />
