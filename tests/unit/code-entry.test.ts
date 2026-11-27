@@ -73,7 +73,7 @@ it("discards an edited pending preview and submits the code and proof from the d
   await type("4268");
   expect(container.textContent).toContain("againTitle");
   await type("4268");
-  expect(actions.useKey).toHaveBeenCalledWith("family", "BBBBBB", true, "proof-B", {}, expect.any(FormData));
-  const sent = actions.useKey.mock.calls[0][5] as FormData;
+  expect(actions.useKey).toHaveBeenCalledWith("family", "BBBBBB", true, "proof-B", expect.any(String), {}, expect.any(FormData));
+  const sent = actions.useKey.mock.calls[0][6] as FormData;
   expect([sent.get("pin"), sent.get("confirmation")]).toEqual(["4268", "4268"]);
 });
