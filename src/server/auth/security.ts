@@ -41,8 +41,13 @@ export async function actFor(tx: FamilyTransaction, viewer: Viewer, actingAs: st
 export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Date, all: boolean) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
-  if (!await revalidateViewer(tx, viewer)) return false;
-  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false, resetNoticeEligible: false} : {revokedAt: now, resetNoticeEligible: false}).where(and(
+  const current = await revalidateViewer(tx, viewer);
+  if (!current) return false;
+  if (!all) await tx.update(sessions).set({resetNoticeEligible: false}).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, current.deviceHash),
+    eq(sessions.resetNoticeEligible, true),
+  ));
+  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false, resetNoticeEligible: false} : {revokedAt: now}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), all ? undefined : eq(sessions.id, sessionId),
   ));
   return true;

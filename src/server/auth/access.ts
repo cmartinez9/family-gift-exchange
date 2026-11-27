@@ -290,7 +290,7 @@ export async function redeemKey(
     kind: key.kind === "reset" ? "resetUsed" : "keyUsed", deviceKind: device.kind, at: now,
   });
   const notice = key.kind === "reset"
-    ? await recordUsedKeyOpening(tx, {...key, usedAt: now, usedSessionId: session.id}, null, now) : null;
+    ? await recordUsedKeyOpening(tx, {...key, usedAt: now, usedSessionId: session.id}, null, now, input.openingId) : null;
   return {session, queued: notice?.queued ?? false};
 }
 
