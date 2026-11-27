@@ -313,6 +313,7 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
       cancelAnimationFrame(all.yarn);
       // Effect replay can follow the first input. Stop user-started motion only after a real unmount.
       queueMicrotask(() => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the live ref distinguishes effect replay from a real unmount
         if (stage.current) return;
         cancelAnimationFrame(all.hold);
         cancelAnimationFrame(all.tap);
