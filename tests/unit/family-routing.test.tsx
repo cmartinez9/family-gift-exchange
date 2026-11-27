@@ -35,9 +35,14 @@ beforeEach(() => {
     members: [], devices: [], groups: [], pairs: [], requests: [], sent: [], activity: []});
 });
 
-it("continues a new family's setup at exchange details", async () => {
+it("leads a new family's setup with the exchange details while keeping the family manageable", async () => {
   listExchanges.mockResolvedValue([{id: "exchange", status: "setup"}]);
-  await expect(FamilyPage()).rejects.toThrow("/en/exchanges/exchange/manage");
+  const tree = await renderServerTree(await FamilyPage());
+  const markup = renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={en} timeZone="UTC">{tree}</NextIntlClientProvider>);
+  expect(redirect).not.toHaveBeenCalled();
+  expect(markup).toContain('href="/exchanges/exchange/manage"');
+  expect(markup).toContain(en.draw.setup.startExchange);
+  expect(markup).toContain("Add a person");
 });
 
 it("keeps the family add-person form available after details are saved", async () => {
