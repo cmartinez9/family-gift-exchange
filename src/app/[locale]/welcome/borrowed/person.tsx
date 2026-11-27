@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useRef, useState, useTransition} from "react";
+import {useRef, useState, useTransition} from "react";
 import {useTranslations} from "next-intl";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button} from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {hideOnBorrowedPhone, revealOnBorrowedPhone} from "./actions";
 import {HandBack, useForgetOnRestore} from "./hand-back";
 
 /**
- * Your person, on someone else's phone (9.3): the relative holds the gift and their person knits in, the
+ * Your person, on someone else's phone (9.3): holding the gift opens the relative's person and knits it in, the
  * whole screen turns pine, and the one button hides it again before the phone goes back to its owner.
  * With no person to open yet, or once hidden, it goes straight to handing the phone back (9.4).
  */
@@ -25,31 +25,36 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
   hidden: boolean;
 }) {
   const t = useTranslations("borrowed");
+  const draw = useTranslations("draw");
   const [view, setView] = useState<"person" | "back">(exchange && !hidden ? "person" : "back");
   const [person, setPerson] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<"ready" | "opening" | "open">("ready");
+  const asked = useRef(false);
   const [hiding, startHiding] = useTransition();
   const [hideFailed, setHideFailed] = useState(false);
   const pine = useRef<HTMLDivElement>(null);
   useForgetOnRestore();
 
-  // The relative has the phone now: the name is fetched once, and shown only when they open the gift.
-  useEffect(() => {
-    if (view !== "person" || !exchange) return;
-    let current = true;
-    revealOnBorrowedPhone(exchange.id, exchange.version).then((result) => {
-      if (!current) return;
-      if (result.name) setPerson(result.name);
-      else setFailed(true);
-    }, () => current && setFailed(true));
-    return () => {
-      current = false;
-    };
-  }, [view, exchange, attempt]);
-
   if (view === "back") return <HandBack name={name} owner={owner} shown={hidden || Boolean(exchange)} />;
+
+  /** The hold has started: only now is the person opened, and the name knits in as soon as it arrives. */
+  function open() {
+    setPhase("opening");
+    if (asked.current || !exchange) return;
+    asked.current = true;
+    revealOnBorrowedPhone(exchange.id, exchange.version).then((result) => {
+      if (result.name) setPerson(result.name);
+      else {
+        asked.current = false;
+        setFailed(true);
+      }
+    }, () => {
+      asked.current = false;
+      setFailed(true);
+    });
+  }
 
   function revealed() {
     setPhase("open");
@@ -80,9 +85,11 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
   }
 
   const labels = {
-    ready: t("reveal.ready"), readyHint: t("reveal.readyHint"), holding: t("reveal.holding"), holdingHint: t("reveal.holdingHint"),
-    holdLonger: t("reveal.holdLonger"), letGo: t("reveal.letGo"), watching: t("reveal.watching"), watchingHint: t("reveal.watchingHint"),
-    tapToOpen: t("reveal.tap"), gift: t("reveal.gift"), progress: t("reveal.progress"), lead: t("reveal.lead"), onlyYou: t("reveal.onlyYou"),
+    ready: draw("person.revealReady"), readyHint: draw("person.revealReadyHint"),
+    holding: draw("person.revealHolding"), holdingHint: draw("person.revealHoldingHint"), holdLonger: draw("person.revealHoldLonger"),
+    letGo: draw("person.revealLetGo"), watching: draw("person.revealWatching"), watchingHint: draw("person.revealWatchingHint"),
+    tapToOpen: draw("person.revealTap"), gift: draw("person.revealGift"), progress: draw("person.revealProgress"),
+    lead: draw("person.lead"), onlyYou: draw("person.onlyYou"),
   };
 
   return (
@@ -92,24 +99,22 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
         aria-hidden={phase === "opening"}>
         <WelcomeSteps step={2} />
       </div>
-      {person ? (
-        <UnravelReveal key={attempt} name={person} labels={labels} onStart={() => setPhase("opening")} onRevealed={revealed}
-          next={<>
-            <Button icon="eye" disabled={hiding} onClick={hide}>{t("hide", {person})}</Button>
-            {hideFailed
-              ? <p role="alert" className="text-center text-body font-semibold">{t("hideFailed")}</p>
-              : <p className="pt-1 text-center text-body">{t("handBackLine", {owner})}</p>}
-          </>} />
-      ) : failed ? (
-        <div className="relative flex flex-col gap-3 px-edge pt-8">
+      <UnravelReveal key={attempt} name={person} labels={labels} onStart={open} onRevealed={revealed}
+        next={person && <>
+          <Button icon="eye" disabled={hiding} onClick={hide}>{t("hide", {person})}</Button>
+          {hideFailed
+            ? <p role="alert" className="text-center text-body font-semibold">{t("hideFailed")}</p>
+            : <p className="pt-1 text-center text-body">{t("handBackLine", {owner})}</p>}
+        </>} />
+      {failed && (
+        <div className="absolute inset-x-edge top-[150px] z-10 flex flex-col gap-2">
           <ErrorBlock title={t("revealFailed")} />
           <Button variant="outline" onClick={() => {
             setFailed(false);
+            setPhase("ready");
             setAttempt((value) => value + 1);
-          }}>{t("tryAgain")}</Button>
+          }}>{draw("person.tryAgain")}</Button>
         </div>
-      ) : (
-        <p role="status" aria-busy="true" className="sr-only">{t("reveal.ready")}</p>
       )}
     </Screen>
   );

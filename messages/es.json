@@ -1307,22 +1307,6 @@
     "signOut": "Cerrar la sesión de {name} en este teléfono",
     "hideFailed": "No se pudo ocultar. Revisa la conexión y vuelve a intentarlo.",
     "signOutFailed": "No se pudo cerrar la sesión de {name}. Revisa la conexión y vuelve a intentarlo.",
-    "revealFailed": "No se pudo abrir a la persona. Revisa la conexión y vuelve a intentarlo.",
-    "tryAgain": "Intentar de nuevo",
-    "reveal": {
-      "ready": "Tu persona está lista",
-      "readyHint": "Mantén presionado el regalo para jalar el estambre.",
-      "holding": "Sigue presionando",
-      "holdingHint": "El regalo se desteje, fila por fila.",
-      "holdLonger": "Mantén presionado un poco más.",
-      "letGo": "Puedes soltar cuando quieras. Presiona para seguir jalando.",
-      "watching": "Sigue mirando",
-      "watchingHint": "El estambre está tejiendo un nombre.",
-      "tap": "O toca aquí para abrirlo",
-      "gift": "El regalo tejido. Mantén presionado para jalar el estambre, o usa el enlace de abajo.",
-      "progress": "Destejiendo",
-      "lead": "Le regalas a",
-      "onlyYou": "Solo tú puedes ver esto"
-    }
+    "revealFailed": "No se pudo abrir a la persona. Revisa la conexión y vuelve a intentarlo."
   }
 }

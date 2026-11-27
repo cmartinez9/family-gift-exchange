@@ -84,7 +84,12 @@ async function family(browser: Browser, {drawn = true} = {}) {
   async function sessionsOf(name: Name) {
     return database.db.select().from(sessions).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, ids[name])));
   }
-  return {familyId, exchangeId, ids, signedIn, keyFor, sessionsOf, async close() {
+  async function seen(name: Name) {
+    const [row] = await database.db.select({version: participants.seenVersion}).from(participants)
+      .where(and(eq(participants.familyId, familyId), eq(participants.personId, ids[name])));
+    return row?.version ?? null;
+  }
+  return {familyId, exchangeId, ids, signedIn, keyFor, sessionsOf, seen, async close() {
     await Promise.allSettled(contexts.map((context) => context.close()));
     await database.db.delete(families).where(eq(families.id, familyId));
     await database.close();
@@ -107,8 +112,9 @@ async function shot(page: Page, name: string) {
       return false;
     };
     return [...document.querySelectorAll("body *")]
-      .filter((element) => (element.getBoundingClientRect().right > width + 0.5 && !clipped(element))
-        || (element.scrollWidth > element.clientWidth + 1 && element.clientWidth > 0 && getComputedStyle(element).overflowX === "visible"))
+      // (screen-reader-only text sits in a 1px clipped box, so it is clipped too)
+      .filter((element) => !clipped(element) && (element.getBoundingClientRect().right > width + 0.5
+        || (element.scrollWidth > element.clientWidth + 1 && element.clientWidth > 0 && getComputedStyle(element).overflowX === "visible")))
       .map((element) => `${element.tagName.toLowerCase()}.${element.getAttribute("class") ?? ""}`.slice(0, 120));
   });
   expect(overflow, "nothing runs off the screen").toEqual([]);
@@ -153,10 +159,13 @@ for (const language of ["en", "es"] as const) {
       await handOver(page, await f.keyFor("Rosa"), language, prefix);
 
       // 9.3: Rosa opens the gift; her person knits in on pine. Only she sees it.
-      await expect(page.getByRole("heading", {name: t.borrowed.reveal.ready})).toBeVisible();
-      await page.getByRole("button", {name: t.borrowed.reveal.tap}).click();
+      await expect(page.getByRole("heading", {name: t.draw.person.revealReady})).toBeVisible();
+      // nothing is opened until Rosa starts on the gift
+      expect(await f.seen("Rosa")).toBeNull();
+      await page.getByRole("button", {name: t.draw.person.revealTap}).click();
       const hide = page.getByRole("button", {name: fill(t.borrowed.hide, {person: "Beto"})});
       await expect(hide).toBeVisible({timeout: 15_000});
+      expect(await f.seen("Rosa")).toBe(1);
       await expect(page.getByText(fill(t.borrowed.handBackLine, {owner: "Ana"}))).toBeVisible();
       await expect(page.getByText(t.getIn.steps.person, {exact: true})).toBeVisible();
       await shot(page, `${prefix}-9_3-on-a-borrowed-phone`);
@@ -250,13 +259,14 @@ test("the borrowed-phone screens reflow at the largest text size", async ({brows
     const {page} = await f.signedIn("Ana", largest);
     await page.emulateMedia({reducedMotion: "reduce"});
     await handOver(page, await f.keyFor("Rosa"), "en", "f13-13_5-largest");
-    await page.getByRole("button", {name: en.borrowed.reveal.tap}).click();
+    await page.getByRole("button", {name: en.draw.person.revealTap}).click();
     await expect(page.getByRole("button", {name: "Hide Beto"})).toBeVisible();
     await shot(page, "f13-13_5-largest-9_3-on-a-borrowed-phone");
     await page.getByRole("button", {name: "Hide Beto"}).click();
     await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toBeVisible();
     await shot(page, "f13-13_5-largest-9_4-hand-the-phone-back");
     await page.getByRole("button", {name: "Ana has the phone"}).click();
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes$/);
     await page.goto("/en/welcome/done");
     await expect(page.getByRole("heading", {name: "Rosa's all set"})).toBeVisible();
     await shot(page, "f13-13_5-largest-9_5-rosa-all-set");

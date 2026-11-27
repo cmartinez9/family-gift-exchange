@@ -1307,22 +1307,6 @@
     "signOut": "Sign {name} out of this phone",
     "hideFailed": "Couldn't hide it. Check the connection and try again.",
     "signOutFailed": "Couldn't sign {name} out. Check the connection and try again.",
-    "revealFailed": "Couldn't open the person. Check the connection and try again.",
-    "tryAgain": "Try again",
-    "reveal": {
-      "ready": "Your person is ready",
-      "readyHint": "Press and hold the gift to pull the yarn.",
-      "holding": "Keep holding",
-      "holdingHint": "The gift is coming undone, row by row.",
-      "holdLonger": "Hold a little longer.",
-      "letGo": "Let go any time. Hold to keep pulling.",
-      "watching": "Keep watching",
-      "watchingHint": "The yarn is knitting a name.",
-      "tap": "Or tap here to open it",
-      "gift": "The knitted gift. Press and hold to pull the yarn, or use the link below.",
-      "progress": "Unravelling",
-      "lead": "You're giving to",
-      "onlyYou": "Only you can see this"
-    }
+    "revealFailed": "Couldn't open the person. Check the connection and try again."
   }
 }

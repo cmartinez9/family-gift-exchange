@@ -93,7 +93,10 @@ export function BorrowedAllSet({name, owner, organizer}: {name: string; owner: s
       {failed && <p role="alert" className="text-center text-body font-semibold">{t("signOutFailed", {name})}</p>}
     </>}>
       <StepBar id="welcome" step={4} total={4} done progress={t("allDone", {total: 4, owner})} />
-      <Greeting top={done("top")} bottom={done("bottom")} />
+      {/* at the largest text size the stitched words shrink to the column */}
+      <div className="px-edge [&_svg]:h-auto [&_svg]:max-w-full">
+        <Greeting top={done("top")} bottom={done("bottom")} />
+      </div>
       <PageTitle title={t("doneTitle", {name})} lead={t("doneLead", {name})} className="pt-[26px]" />
       <div className="px-edge pt-[18px]">
         <Note icon="phone">{t("nextTime", {name, organizer})}</Note>
