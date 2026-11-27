@@ -1,5 +1,5 @@
 import {randomInt, randomUUID} from "node:crypto";
-import {and, count, eq, gt, isNull, ne} from "drizzle-orm";
+import {and, count, eq, gt, isNull, ne, sql} from "drizzle-orm";
 import type {FamilyTransaction} from "../db/database";
 import {families, people, participants} from "../db/schema";
 import type {Viewer} from "./index";
@@ -8,6 +8,7 @@ import {createSession, digest, revalidateViewer, secret, seasonSeconds, uuidPatt
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
 import {validCodePreview} from "./code-preview";
 import {organizerContacts} from "./account";
+import {recordUsedKeyOpening} from "./used-key-notice";
 
 export type DeviceKind = "iphone" | "ipad" | "android" | "computer" | "other";
 export type Device = {hash: string; kind: DeviceKind; network: string | null};
@@ -15,6 +16,10 @@ export type KeyKind = typeof personalKeys.$inferInsert.kind;
 export const codeAlphabet = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
 export const keyCodePattern = new RegExp(`^[${codeAlphabet}]{6}$`);
 export const keyTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+export type KeyOpening = {value: string; typed: boolean; openingId: string};
+type SessionKeyOpening = KeyOpening & {pepper: string};
+
+class InvalidKeyOpening extends Error {}
 
 export function makeCode() {
   return Array.from({length: 6}, () => codeAlphabet[randomInt(codeAlphabet.length)]).join("");
@@ -79,9 +84,17 @@ export async function lookupKey(tx: FamilyTransaction, familyId: string, pepper:
   return row;
 }
 
+/** How long a relative may stay signed in on someone else's phone: one sitting, then it is the owner's again. */
+export const lendSeconds = 30 * 60;
+
 export async function inspectKey(tx: FamilyTransaction, familyId: string, token: string, now: Date, pepper?: string) {
   const key = await lookupKey(tx, familyId, pepper ?? "", token, Boolean(pepper));
   if (!key) return null;
+  return describeKey(tx, key, now);
+}
+
+export async function describeKey(tx: FamilyTransaction, key: typeof personalKeys.$inferSelect, now: Date) {
+  const {familyId} = key;
   const person = await activePerson(tx, familyId, key.personId);
   if (!person || person.helperId) return null;
   const [family] = await tx.select({name: families.name}).from(families).where(eq(families.id, familyId));
@@ -92,6 +105,8 @@ export async function inspectKey(tx: FamilyTransaction, familyId: string, token:
     personId: person.id, name: person.displayName, familyName: family.name,
     usedAt: key.usedAt, usedDevice: usedDevice?.kind,
     available: !key.revokedAt && !key.usedAt && key.expiresAt > now,
+    /** A first key, which can also be opened on a relative's signed-in phone; a replacement key cannot. */
+    first: key.kind !== "reset",
   };
 }
 
@@ -189,8 +204,20 @@ export async function disputeUsedKey(
 
 export async function signInDevice(
   tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date, passkeyId: string | null = null,
+  reset = false, opening?: SessionKeyOpening,
 ) {
+  let key: typeof personalKeys.$inferSelect | undefined;
+  if (opening) {
+    if (typeof opening.openingId !== "string" || !uuidPattern.test(opening.openingId)
+      || typeof opening.typed !== "boolean" || typeof opening.value !== "string"
+      || !(opening.typed ? keyCodePattern : keyTokenPattern).test(opening.value)) throw new InvalidKeyOpening();
+    key = await lookupKey(tx, familyId, opening.pepper, opening.value, opening.typed);
+    if (!key || key.personId !== personId || (!key.usedAt && !(reset && key.kind === "reset"))) throw new InvalidKeyOpening();
+  }
   const remembered = await isTrustedDevice(tx, familyId, personId, device.hash, now);
+  if (!reset) await tx.update(sessions).set({resetNoticeEligible: false}).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.resetNoticeEligible, true),
+  ));
   await tx.update(sessions).set({revokedAt: now}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, device.hash),
     isNull(sessions.revokedAt),
@@ -199,7 +226,22 @@ export async function signInDevice(
   if (!remembered) await tx.insert(authEvents).values({
     familyId, personId, sessionId: session.id, kind: "newDevice", deviceKind: device.kind, at: now,
   });
-  return session;
+  const notice = key && opening ? await recordUsedKeyOpening(tx,
+    reset ? {...key, usedAt: now, usedSessionId: session.id} : key, null, now, opening.openingId,
+  ) : null;
+  return {...session, queued: notice?.queued ?? false};
+}
+
+/**
+ * Signs a relative in on the owner's phone, inside the owner's session (9.1 to 9.5): never trusted, never
+ * remembered by the phone, and over within `lendSeconds` or as soon as the owner's session ends.
+ */
+async function lendDevice(
+  tx: FamilyTransaction, familyId: string, personId: string, device: Device, lenderSessionId: string, now: Date,
+) {
+  const session = await createSession(tx, familyId, personId, device.hash, device.kind, now, null, {lenderSessionId, seconds: lendSeconds});
+  await tx.insert(authEvents).values({familyId, personId, sessionId: session.id, kind: "newDevice", deviceKind: device.kind, at: now});
+  return {...session, queued: false};
 }
 
 async function isTrustedDevice(tx: FamilyTransaction, familyId: string, personId: string, hash: string, now: Date) {
@@ -213,10 +255,14 @@ async function isTrustedDevice(tx: FamilyTransaction, familyId: string, personId
 export async function redeemKey(
   tx: FamilyTransaction, input: {
     familyId: string; value: string; typed: boolean; pepper: string; pin: string; confirmation: string;
-    device: Device; currentViewer: Viewer | null; now: Date; preview?: string | null;
+    device: Device; currentViewer: Viewer | null; now: Date; preview?: string | null; openingId?: string;
+    /** The key's person is here, using `currentViewer`'s phone: sign them in beside its owner. */
+    lend?: boolean;
   },
 ) {
   const {familyId, value, typed, pepper, pin, confirmation, device, currentViewer, now} = input;
+  const openingId = input.openingId ?? randomUUID();
+  if (currentViewer?.borrowed) return {error: "otherPerson"} as const;
   const problem = pinProblem(pin, confirmation);
   if (problem) return {error: problem};
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
@@ -227,16 +273,27 @@ export async function redeemKey(
     return {error: "unavailable"} as const;
   }
   const key = await lookupKey(tx, familyId, pepper, value, typed);
-  if (!key || key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
+  if (!key) return {error: "unavailable"} as const;
   if (typed && (typeof input.preview !== "string" || !validCodePreview(input.preview, pepper, familyId, key, value, device.hash))) {
     return {error: "previewAgain"} as const;
   }
   const person = await activePerson(tx, familyId, key.personId);
   if (!person || person.helperId) return {error: "unavailable"} as const;
-  if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
+  let lender: Awaited<ReturnType<typeof revalidateViewer>> = null;
+  if (input.lend) {
+    // only a first link key, on the same family's live, signed-in phone, and never inside another borrowed session
+    lender = currentViewer && currentViewer.familyId === familyId && currentViewer.personId !== person.id && !typed
+      && key.kind !== "reset" ? await revalidateViewer(tx, currentViewer) : null;
+    if (!lender || lender.borrowed || lender.deviceHash !== device.hash) return {error: "otherPerson"} as const;
+  } else if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
     return {error: "otherPerson"} as const;
   }
-  if (key.usedAt) return {error: "usedKey"} as const;
+  if (key.usedAt) {
+    const notice = await recordUsedKeyOpening(tx, key, currentViewer, now, openingId);
+    return {error: "usedKey", usedAt: key.usedAt.toISOString(), openingId,
+      noticeQueued: Boolean(notice), queued: notice?.queued ?? false} as const;
+  }
+  if (key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
   const previous = await credential(tx, familyId, person.id);
   if (Boolean(previous) !== (key.kind === "reset")) return {error: "unavailable"} as const;
 
@@ -245,14 +302,21 @@ export async function redeemKey(
     .onConflictDoUpdate({target: [pinCredentials.familyId, pinCredentials.personId], set: {pinHash, changedAt: now, ...clearedAttempts}});
   await tx.update(people).set({needsNewKey: false}).where(and(eq(people.familyId, familyId), eq(people.id, person.id)));
   if (key.kind === "reset") {
-    await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+    await tx.update(sessions).set({
+      revokedAt: sql`coalesce(${sessions.revokedAt}, ${now})`, trusted: false,
+      resetNoticeEligible: sql`${sessions.resetNoticeEligible} OR ${sessions.revokedAt} IS NULL`,
+    }).where(and(
       eq(sessions.familyId, familyId), eq(sessions.personId, person.id),
     ));
     await tx.update(passkeys).set({revokedAt: now}).where(and(
       eq(passkeys.familyId, familyId), eq(passkeys.personId, person.id),
     ));
   }
-  const session = await signInDevice(tx, familyId, person.id, device, now);
+  const session = lender
+    ? await lendDevice(tx, familyId, person.id, device, lender.sessionId, now)
+    : await signInDevice(tx, familyId, person.id, device, now, null, key.kind === "reset",
+      key.kind === "reset" ? {value, typed, openingId, pepper} : undefined,
+    );
   await tx.update(personalKeys).set({usedAt: now, usedSessionId: session.id}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.id, key.id),
   ));
@@ -269,12 +333,12 @@ export async function redeemKey(
     familyId, personId: person.id, keyId: key.id, sessionId: session.id,
     kind: key.kind === "reset" ? "resetUsed" : "keyUsed", deviceKind: device.kind, at: now,
   });
-  return {session};
+  return {session, queued: session.queued};
 }
 
 export async function signInWithPin(
   tx: FamilyTransaction, familyId: string, personId: string, pin: string, pepper: string,
-  device: Device, now: Date,
+  device: Device, now: Date, opening?: KeyOpening,
 ) {
   if (!/^[0-9]{4}$/.test(pin) || !await lockFamily(tx, familyId)) return {error: "invalidPin"} as const;
   const person = await activePerson(tx, familyId, personId);
@@ -300,8 +364,14 @@ export async function signInWithPin(
     }
     return {error: "invalidPin"} as const;
   }
-  if (trusted) await clearAttempts(tx, familyId, personId);
-  return {session: await signInDevice(tx, familyId, personId, device, now)};
+  try {
+    const session = await signInDevice(tx, familyId, personId, device, now, null, false, opening ? {...opening, pepper} : undefined);
+    if (trusted) await clearAttempts(tx, familyId, personId);
+    return {session, queued: session.queued};
+  } catch (error) {
+    if (error instanceof InvalidKeyOpening) return {error: "unavailable"} as const;
+    throw error;
+  }
 }
 
 /**

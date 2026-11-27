@@ -104,14 +104,14 @@ test("rejects code and private links, then saves a real store preview without a 
       ["https://localhost/private", "unsafe-link"],
     ] as const) {
       await input.fill(value);
-      await input.blur();
+      await page.getByRole("button", {name: lists.preview, exact: true}).click();
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(lists.feedback[code]);
     }
     await screenshot(page, "unsafe-private-link-rejected");
     const publicUrl = new URL(process.env.E2E_LIVE_PRODUCT_URL!);
     publicUrl.searchParams.set("utm_source", "wishlist-test");
     await input.fill(publicUrl.href.replace(/^https:\/\//, ""));
-    await input.blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     const preview = page.getByRole("region", {name: lists.previewTitle});
     // the fetched picture fills the form's photo tile
     const photo = page.locator("form img");

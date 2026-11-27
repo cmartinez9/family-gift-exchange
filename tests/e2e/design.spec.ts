@@ -89,7 +89,7 @@ test.describe("the design gallery", () => {
     const gift = reveal.getByRole("button", {name: /The knitted gift/});
     await gift.focus();
     await page.keyboard.down("Space");
-    await expect(reveal.locator("[data-reveal]")).toHaveAttribute("data-reveal", /watching|revealed/, {timeout: 4000});
+    await expect(reveal.getByRole("progressbar", {name: "Unravelling"})).toHaveAttribute("aria-valuenow", "100", {timeout: 4000});
     await page.keyboard.up("Space");
     await expect(reveal.locator("[data-reveal]")).toHaveAttribute("data-reveal", "revealed", {timeout: 5000});
   });

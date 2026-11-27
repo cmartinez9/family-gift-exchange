@@ -60,9 +60,11 @@ test("sets up the family, joins by key, switches devices, disputes a session and
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole("button", {name: "Mark as sent"}).click();
     await expect(page.getByText("Marked as sent.", {exact: true})).toBeVisible();
+    // on the organizer's own signed-in phone the key offers to help Snowbit there (9.1); going back changes nothing
     await page.goto(url);
-    await expect(page.getByRole("heading", {name: "This key is Snowbit's"})).toBeVisible();
-    await expect(page.getByText("This phone is signed in as Northstar, so it can't open Snowbit's key. Nothing was changed.")).toBeVisible();
+    await expect(page.getByRole("heading", {name: "Helping Snowbit?"})).toBeVisible();
+    await page.getByRole("button", {name: "Go back", exact: true}).click();
+    await expect(page).toHaveURL(/\/en$/);
 
     const memberPage = await member.newPage();
     await memberPage.goto(url);

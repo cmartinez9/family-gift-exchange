@@ -53,7 +53,9 @@ export async function keySender(tx: FamilyTransaction, familyId: string, keyId: 
 export async function peopleOnDevice(tx: FamilyTransaction, familyId: string, deviceHash: string) {
   const rows = await tx.select({personId: sessions.personId, at: sessions.createdAt}).from(sessions)
     .innerJoin(people, and(eq(people.familyId, sessions.familyId), eq(people.id, sessions.personId)))
-    .where(and(eq(sessions.familyId, familyId), eq(sessions.deviceHash, deviceHash), isNull(people.removedAt)))
+    // someone who only borrowed this phone is not remembered by it
+    .where(and(eq(sessions.familyId, familyId), eq(sessions.deviceHash, deviceHash), isNull(people.removedAt),
+      isNull(sessions.lentBySessionId)))
     .orderBy(desc(sessions.createdAt));
   return [...new Set(rows.map(({personId}) => personId))];
 }
@@ -123,8 +125,7 @@ export async function faceIdOnDevice(tx: FamilyTransaction, viewer: Viewer) {
 }
 
 /**
- * Only joining may include a person's name; PIN resets, disputed keys, signed-out phones and Face ID
- * turned off must stay anonymous. Pairing details must never enter this projection.
+ * Only joining may include a person's name. Other entries omit identities and pairing details.
  */
 export async function familyActivity(tx: FamilyTransaction, familyId: string) {
   const rows = await tx.select({
@@ -132,11 +133,11 @@ export async function familyActivity(tx: FamilyTransaction, familyId: string) {
   }).from(authEvents)
     .innerJoin(people, and(eq(people.familyId, authEvents.familyId), eq(people.id, authEvents.personId)))
     .where(and(eq(authEvents.familyId, familyId), inArray(authEvents.kind, [
-      "keyUsed", "resetUsed", "keyDisputed", "familyLockdown", "deviceSignedOut", "faceIdOff",
+      "keyUsed", "resetUsed", "keyDisputed", "keyOpenedElsewhere", "familyLockdown", "deviceSignedOut", "faceIdOff",
     ])))
     .orderBy(desc(authEvents.at)).limit(60);
   const seen = new Set<number>();
-  const out: Array<{id: string; kind: "joined" | "reset" | "secondPhone" | "paused" | "signedOut" | "faceOff"; at: Date; name?: string}> = [];
+  const out: Array<{id: string; kind: "joined" | "reset" | "secondPhone" | "keyDisputed" | "paused" | "signedOut" | "faceOff"; at: Date; name?: string}> = [];
   for (const row of rows) {
     if (row.kind === "familyLockdown") {
       // one lockdown writes a row per person: show it once
@@ -148,7 +149,8 @@ export async function familyActivity(tx: FamilyTransaction, familyId: string) {
     else if (row.kind === "resetUsed") out.push({id: row.id, kind: "reset", at: row.at});
     else if (row.kind === "deviceSignedOut") out.push({id: row.id, kind: "signedOut", at: row.at});
     else if (row.kind === "faceIdOff") out.push({id: row.id, kind: "faceOff", at: row.at});
-    else out.push({id: row.id, kind: "secondPhone", at: row.at});
+    else if (row.kind === "keyDisputed") out.push({id: row.id, kind: "keyDisputed", at: row.at});
+    else if (row.kind === "keyOpenedElsewhere") out.push({id: row.id, kind: "secondPhone", at: row.at});
   }
   return out.slice(0, 30);
 }

@@ -9,6 +9,7 @@ export const templates = [
   "plans-changed",
   "gift-day-reminder",
   "pin-reset-request",
+  "key-opened-elsewhere",
   "claimed-item-changed",
   "budget-changed",
   "list-nudge",

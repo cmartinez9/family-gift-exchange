@@ -6,6 +6,8 @@ import type {Viewer} from "./index";
 import {authEvents, passkeys, personalKeys, pinCredentials, sessionDisputes, sessions} from "./schema";
 import {revalidateViewer} from "./session";
 
+type AccountEventKind = Exclude<typeof authEvents.$inferSelect.kind, "keyOpenedElsewhere">;
+
 export async function account(tx: FamilyTransaction, viewer: Viewer) {
   const {familyId, personId} = viewer;
   const person = await activePerson(tx, familyId, personId);
@@ -13,11 +15,11 @@ export async function account(tx: FamilyTransaction, viewer: Viewer) {
     eq(people.familyId, familyId), eq(people.helperId, personId), isNull(people.removedAt),
   )).orderBy(people.displayName);
   const activity = await tx.select({
-    id: authEvents.id, kind: authEvents.kind, at: authEvents.at, deviceKind: authEvents.deviceKind,
+    id: authEvents.id, kind: sql<AccountEventKind>`${authEvents.kind}`, at: authEvents.at, deviceKind: authEvents.deviceKind,
     sessionId: authEvents.sessionId, disputed: sessionDisputes.eventId,
   }).from(authEvents).leftJoin(sessionDisputes, and(
     eq(sessionDisputes.familyId, authEvents.familyId), eq(sessionDisputes.eventId, authEvents.id),
-  )).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId)))
+  )).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), ne(authEvents.kind, "keyOpenedElsewhere")))
     .orderBy(desc(authEvents.at)).limit(50);
   return {name: person?.displayName ?? "", helpers, activity};
 }
@@ -39,8 +41,13 @@ export async function actFor(tx: FamilyTransaction, viewer: Viewer, actingAs: st
 export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Date, all: boolean) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
-  if (!await revalidateViewer(tx, viewer)) return false;
-  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false} : {revokedAt: now}).where(and(
+  const current = await revalidateViewer(tx, viewer);
+  if (!current) return false;
+  if (!all) await tx.update(sessions).set({resetNoticeEligible: false}).where(and(
+    eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, current.deviceHash),
+    eq(sessions.resetNoticeEligible, true),
+  ));
+  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false, resetNoticeEligible: false} : {revokedAt: now}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), all ? undefined : eq(sessions.id, sessionId),
   ));
   return true;
@@ -51,13 +58,13 @@ export async function signOutDevice(tx: FamilyTransaction, viewer: Viewer, targe
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
   if (!await revalidateViewer(tx, viewer) || targetId === sessionId) return null;
-  const [target] = await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+  const [target] = await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, targetId),
     isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
   )).returning({deviceHash: sessions.deviceHash, deviceKind: sessions.deviceKind});
   if (!target) return null;
   // that phone's earlier sessions would otherwise still vouch for it
-  await tx.update(sessions).set({trusted: false}).where(and(
+  await tx.update(sessions).set({trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, target.deviceHash),
     ne(sessions.id, sessionId),
   ));
@@ -109,7 +116,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId, at: authEvents.at})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
   if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown"
-    || event.kind === "deviceSignedOut" || event.kind === "faceIdOff") return false;
+    || event.kind === "deviceSignedOut" || event.kind === "faceIdOff" || event.kind === "keyOpenedElsewhere") return false;
   const person = await activePerson(tx, familyId, personId);
   const organizer = person?.role === "organizer" || person?.role === "co_organizer";
   let targetId = event.sessionId;
@@ -126,7 +133,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const disputedSessionId = targetId;
   const familySessions = disputedSessionId ? await tx.select({
     id: sessions.id, personId: sessions.personId, hash: sessions.deviceHash, passkeyId: sessions.passkeyId, createdAt: sessions.createdAt,
-    hadOrganizerAccess: sessions.hadOrganizerAccess,
+    hadOrganizerAccess: sessions.hadOrganizerAccess, lentBySessionId: sessions.lentBySessionId,
   }).from(sessions).where(eq(sessions.familyId, familyId)) : [];
   const target = familySessions.find((session) => session.id === disputedSessionId);
   const familyCredentials = target ? await tx.select({id: passkeys.id, personId: passkeys.personId, hash: passkeys.deviceHash})
@@ -150,7 +157,9 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
       const onAffectedDevice = deviceHashes.has(device);
       if (onAffectedDevice) sessionIds.add(session.id);
       if (target && session.createdAt >= target.createdAt
-        && (causalSessionIds.has(session.id) || onAffectedDevice || (session.passkeyId && credentialIds.has(session.passkeyId)))) {
+        && (causalSessionIds.has(session.id) || onAffectedDevice
+          || (session.lentBySessionId && causalSessionIds.has(session.lentBySessionId))
+          || (session.passkeyId && credentialIds.has(session.passkeyId)))) {
         sessionIds.add(session.id);
         deviceHashes.add(device);
         causalSessionIds.add(session.id);
@@ -198,7 +207,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   await tx.update(passkeys).set({revokedAt: now}).where(and(
     eq(passkeys.familyId, familyId), inArray(passkeys.id, [...credentialIds]),
   ));
-  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+  await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), inArray(sessions.id, [...sessionIds]), ne(sessions.id, sessionId),
   ));
   return true;
@@ -212,7 +221,7 @@ async function lockDownFamily(
     eq(sessions.familyId, sessionDisputes.familyId), eq(sessions.id, sessionDisputes.disputedSessionId),
   )).where(eq(sessionDisputes.familyId, familyId)).orderBy(asc(sessions.createdAt)).limit(1);
   const since = earliest && earliest.at < implicatedAt ? earliest.at : implicatedAt;
-  await tx.update(sessions).set({revokedAt: now}).where(eq(sessions.familyId, familyId));
+  await tx.update(sessions).set({revokedAt: now, resetNoticeEligible: false}).where(eq(sessions.familyId, familyId));
   await tx.update(personalKeys).set({revokedAt: now}).where(and(eq(personalKeys.familyId, familyId), isNull(personalKeys.usedAt)));
   await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(
     eq(people.familyId, familyId), eq(people.role, "co_organizer"), gte(people.coOrganizerGrantedAt, since),

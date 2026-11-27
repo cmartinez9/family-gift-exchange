@@ -10,7 +10,7 @@ import {isListReady, isSizeKind} from "./validation";
 
 export {ListError} from "./access";
 export {getListExchangeCard, setExchangeBudget} from "./budget";
-export {addListItem, editListItem, getListPhoto, moveListItem, refreshListItem, removeListItem} from "./items";
+export {addListItem, editListItem, fillLinkPreview, getListPhoto, moveListItem, refreshListItem, removeListItem} from "./items";
 export type {ListEvents} from "./list-events";
 export {saveAboutField, saveListSize, saveNoClothes} from "./profile";
 
@@ -46,7 +46,7 @@ type ItemView = ReturnType<typeof projectItem> & {claim?: ClaimMark};
 
 export async function getWishlist(viewer: ListViewer, ownerId: string) {
   return withFamily(viewer.familyId, async (tx) => {
-    await requireListActor(tx, viewer);
+    const current = await requireListActor(tx, viewer);
     const owner = await requireListPerson(tx, viewer.familyId, ownerId);
     const sizesGiven = (await tx.select({
       kind: sizes.kind, value: sizes.value, updatedAt: sizes.updatedAt,
@@ -57,8 +57,8 @@ export async function getWishlist(viewer: ListViewer, ownerId: string) {
     }).from(aboutMe).where(and(eq(aboutMe.familyId, viewer.familyId), eq(aboutMe.personId, ownerId)));
     const entries = await tx.select().from(items).where(listItemsScope(viewer.familyId, ownerId))
       .orderBy(asc(items.position), asc(items.id));
-    const showClaims = !hidesClaims(viewer, owner.id);
-    const marks = showClaims ? await listClaimMarks(tx, viewer, owner.id) : undefined;
+    const showClaims = !hidesClaims(current, owner.id);
+    const marks = showClaims ? await listClaimMarks(tx, current, owner.id) : undefined;
     return {
       owner: {id: owner.id, name: owner.displayName, noClothes: owner.noClothes},
       canEdit: owner.id === viewer.actingAs,

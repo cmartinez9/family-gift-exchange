@@ -85,9 +85,12 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     personId: pinResetRequests.personId, deviceKind: pinResetRequests.deviceKind, at: pinResetRequests.requestedAt,
   }).from(pinResetRequests).where(and(eq(pinResetRequests.familyId, familyId), isNull(pinResetRequests.answeredAt)))
     .orderBy(desc(pinResetRequests.requestedAt));
-  const activity = await tx.select({personId: authEvents.personId, kind: authEvents.kind, at: authEvents.at, deviceKind: authEvents.deviceKind})
+  const activityKinds = ["keyDisputed", "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"] as const;
+  const activity = await tx.select({
+    personId: authEvents.personId, kind: sql<typeof activityKinds[number]>`${authEvents.kind}`, at: authEvents.at, deviceKind: authEvents.deviceKind,
+  })
     .from(authEvents).where(and(eq(authEvents.familyId, familyId),
-      inArray(authEvents.kind, ["keyDisputed", "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"])))
+      inArray(authEvents.kind, activityKinds)))
     .orderBy(desc(authEvents.at)).limit(30);
   return {
     familyName: family.name, members, devices, groups, pairs, requests, sent, activity,
@@ -182,7 +185,7 @@ export async function removeMember(tx: FamilyTransaction, viewer: Viewer, person
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), isNull(personalKeys.revokedAt),
   ));
-  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, personId)));
+  await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, personId)));
   await tx.update(passkeys).set({revokedAt: now}).where(and(eq(passkeys.familyId, familyId), eq(passkeys.personId, personId)));
   return null;
 }

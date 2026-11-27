@@ -15,8 +15,16 @@ export const sessions = pgTable("sessions", {
   lastUsedAt: instant("last_used_at"),
   expiresAt: instant("expires_at").notNull(),
   revokedAt: instant("revoked_at"),
+  resetNoticeEligible: boolean("reset_notice_eligible").default(false).notNull(),
   trusted: boolean("trusted").default(true).notNull(),
   hadOrganizerAccess: boolean("had_organizer_access").default(false).notNull(),
+  /** Set when this session was opened on someone else's phone, inside their session: it only lives as long as theirs. */
+  lentBySessionId: uuid("lent_by_session_id"),
+  /**
+   * Seals borrowed-session draw access before hand-back, after Hide or confirmed absence of a person to open.
+   * A later draw must not restore access; see tests/integration/borrowed-phone.test.ts.
+   */
+  personHiddenAt: instant("person_hidden_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
   index("sessions_person_idx").on(table.familyId, table.personId),
@@ -34,6 +42,11 @@ export const sessions = pgTable("sessions", {
     name: "sessions_acting_as_fk",
     columns: [table.familyId, table.actingAs],
     foreignColumns: [people.familyId, people.id],
+  }),
+  foreignKey({
+    name: "sessions_lender_fk",
+    columns: [table.familyId, table.lentBySessionId],
+    foreignColumns: [table.familyId, table.id],
   }),
 ]);
 
@@ -147,7 +160,7 @@ export const authEvents = pgTable("auth_events", {
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
     "signIn", "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
-    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "deviceSignedOut", "faceIdOff",
+    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "deviceSignedOut", "faceIdOff", "keyOpenedElsewhere",
   ]}).notNull(),
   deviceKind: text("device_kind"),
   sessionId: uuid("session_id"),

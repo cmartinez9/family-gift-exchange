@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {createECDH, randomBytes, randomUUID} from "node:crypto";
 import {and, eq} from "drizzle-orm";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {requireIssuedKey} from "../helpers/issued-key";
@@ -13,10 +13,21 @@ import {createCodePreview} from "../../src/server/auth/code-preview";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "../../src/server/auth/schema";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {authenticatorSecret} from "../../src/server/auth/pin";
-import {organizerContacts} from "../../src/server/auth/account";
-import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
+import {endSessions} from "../../src/server/auth/security";
+import {familyActivity, organizerContacts} from "../../src/server/auth/account";
+import {listNotifications, markNotificationRead} from "../../src/server/messages/inbox";
+import {deliverPendingPushForFamily, schedulePushDelivery} from "../../src/server/messages/delivery";
+import {subscribePush} from "../../src/server/messages/subscriptions";
+import type {PushSender} from "../../src/server/messages/push";
+import {enterPin, forgotPin, noticeUsedKeyLink, previewCode, useKey} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
+vi.mock("next/navigation", () => ({redirect: () => { throw new Error("redirect"); }}));
+vi.mock("../../src/server/messages/delivery", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../src/server/messages/delivery")>(),
+  schedulePushDelivery: vi.fn(),
+}));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => cookieValues.has(name) ? {value: cookieValues.get(name)!} : undefined,
@@ -33,6 +44,7 @@ const device = (): Device => ({hash: digest(secret()), kind: "iphone", network: 
 const tx = withFamily;
 
 beforeEach(() => {
+  vi.mocked(schedulePushDelivery).mockReset();
   cookieValues.clear();
   vi.stubEnv("AUTH_SECRET", secret());
 });
@@ -73,7 +85,7 @@ async function fixture() {
     const preview = key ? createCodePreview(pepper, familyId, key, value, on.hash) : null;
     return redeemKey(t, {familyId, value, typed, preview, pin, confirmation: pin, pepper, device: on, currentViewer: null, now});
   });
-  return {familyId, pepper, organizer, rosa, ana, add, issue, redeem};
+  return {familyId, pepper, organizer, organizerCookie: session.cookie, rosa, ana, add, issue, redeem};
 }
 
 /** Every row a sign-in can touch, to prove a preview changed none of them. */
@@ -129,6 +141,321 @@ it("gives revoked, used, expired, unknown and looked-after keys the generic prev
   const other = await fixture();
   const theirs = await other.issue();
   await expect(preview(theirs.token!)).resolves.toBeNull();
+});
+
+it("records every opening, dedupes only the same opening, and limits only pushes per key per hour", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const unopened = await f.issue(f.ana);
+  const open = (token = key.token, openingId = randomUUID()) => noticeUsedKeyLink(`${f.familyId}~${token}`, openingId);
+  await expect(open(unopened.token)).resolves.toBe(false);
+  await expect(open(secret())).resolves.toBe(false);
+  await expect(noticeUsedKeyLink(`${randomUUID()}~${key.token}`, randomUUID())).resolves.toBe(false);
+
+  const redeemed = await f.redeem(key.token);
+  const session = redeemed.session!.cookie;
+  cookieValues.set("__Host-fge-session", session);
+  await expect(open()).resolves.toBe(false);
+  const notices = async () => (await authState(f.familyId)).outbox.filter(({template}) => template === "key-opened-elsewhere");
+  expect(await notices()).toEqual([]);
+
+  cookieValues.delete("__Host-fge-session");
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(new Date());
+  const first = new Date();
+  vi.stubEnv("VERCEL_ENV", "production");
+  const openingId = randomUUID();
+  await expect(open(key.token, openingId)).resolves.toBe(true);
+  const owner = (await resolve(session))!;
+  await markNotificationRead(owner, (await notices())[0].id);
+  await expect(Promise.all([open(key.token, openingId), open(key.token, openingId), open(), open()]))
+    .resolves.toEqual([true, true, true, true]);
+  await expect(previewCode(f.familyId, key.code)).resolves.toMatchObject({noticeQueued: true, key: {personId: f.rosa}});
+  expect(await notices()).toHaveLength(4);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(1);
+  expect((await notices()).filter(({status}) => status === "skipped")).toHaveLength(3);
+  expect((await listNotifications(owner)).filter(({isRead}) => !isRead)).toHaveLength(3);
+  const activity = () => tx(f.familyId, (t) => familyActivity(t, f.familyId));
+  expect((await activity()).filter(({kind}) => kind === "secondPhone"))
+    .toEqual(Array.from({length: 4}, () => ({id: expect.any(String), kind: "secondPhone", at: first})));
+
+  vi.setSystemTime(new Date(first.getTime() + 3_599_999));
+  await expect(open()).resolves.toBe(true);
+  expect(await notices()).toHaveLength(5);
+  await f.redeem(unopened.token);
+  await expect(open(unopened.token)).resolves.toBe(true);
+  expect(await notices()).toHaveLength(6);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(2);
+
+  vi.setSystemTime(new Date(first.getTime() + 3_600_000));
+  cookieValues.set("__Host-fge-session", f.organizerCookie);
+  await expect(open()).resolves.toBe(true);
+  expect(await notices()).toHaveLength(7);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(3);
+  expect((await activity()).filter(({kind}) => kind === "secondPhone")).toHaveLength(7);
+});
+
+it("notifies reset-revoked phones across successive resets until own sign-in, excluding deliberate sign-outs", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const joined = await f.redeem(key.token);
+  const owner = (await resolve(joined.session!.cookie))!;
+  const second = await tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.rosa, pin, f.pepper, device(), now));
+  const signedOut = (await resolve(second.session!.cookie))!;
+  const subscription = () => {
+    const ecdh = createECDH("prime256v1");
+    return {endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+      keys: {p256dh: ecdh.generateKeys().toString("base64url"), auth: randomBytes(16).toString("base64url")}};
+  };
+  const enabled = subscription();
+  const disabled = subscription();
+  expect(await subscribePush(owner, enabled)).toBe(true);
+  expect(await subscribePush(signedOut, disabled)).toBe(true);
+  const signedOutAt = new Date(now.getTime() + 1000);
+  await tx(f.familyId, (t) => endSessions(t, signedOut, signedOutAt, false));
+  await tx(f.familyId, async (t) => {
+    await t.insert(passkeys).values({familyId: f.familyId, personId: f.rosa, id: secret(),
+      deviceHash: secret(), publicKey: "fixture", counter: "0"});
+  });
+  const reset = await f.issue(f.rosa, "reset");
+  const firstResetAt = new Date(now.getTime() + 5000);
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(firstResetAt);
+  vi.stubEnv("VERCEL_ENV", "production");
+  let committed: ReturnType<typeof authState> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation((familyId) => { committed = authState(familyId); });
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, reset.token, false, null, randomUUID(), {}, data)).rejects.toThrow("redirect");
+  expect(schedulePushDelivery).toHaveBeenCalledExactlyOnceWith(f.familyId);
+  const state = (await committed)!;
+  expect(state.outbox).toEqual([expect.objectContaining({personId: f.rosa, template: "key-opened-elsewhere", status: "pending"})]);
+  expect(state.events).toEqual(expect.arrayContaining([expect.objectContaining({keyId: reset.id, kind: "resetUsed"})]));
+  expect(state.passkeys.every(({revokedAt}) => revokedAt !== null)).toBe(true);
+  expect(state.sessions.find(({id}) => id === signedOut.sessionId)?.revokedAt).toEqual(signedOutAt);
+  await expect(resolve(joined.session!.cookie)).resolves.toBeNull();
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  await deliverPendingPushForFamily(f.familyId, sender);
+  expect(sender.mock.calls.map(([to]) => to.endpoint)).toEqual([enabled.endpoint]);
+  expect(sender.mock.calls[0][1]).toMatchObject({title: "Family Gift Exchange", url: "/en/notifications"});
+  const recovered = (await resolve(cookieValues.get("__Host-fge-session")!))!;
+  expect((await listNotifications(recovered))[0]).toMatchObject({template: "key-opened-elsewhere", isRead: false});
+
+  cookieValues.delete("__Host-fge-session");
+  vi.setSystemTime(new Date(firstResetAt.getTime() + 1000));
+  const secondReset = await f.issue(f.rosa, "reset");
+  await expect(useKey(f.familyId, secondReset.token, false, null, randomUUID(), {}, data)).rejects.toThrow("redirect");
+  await deliverPendingPushForFamily(f.familyId, sender);
+  expect(sender.mock.calls.map(([to]) => to.endpoint)).toEqual([enabled.endpoint, enabled.endpoint]);
+  const afterSecond = await authState(f.familyId);
+  expect(afterSecond.sessions.find(({id}) => id === owner.sessionId))
+    .toMatchObject({revokedAt: firstResetAt, resetNoticeEligible: true, trusted: false});
+  expect(afterSecond.sessions.find(({id}) => id === signedOut.sessionId))
+    .toMatchObject({revokedAt: signedOutAt, resetNoticeEligible: false, trusted: false});
+  expect(afterSecond.events.filter(({kind}) => kind === "resetUsed")).toHaveLength(2);
+
+  await expect(tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.rosa, "5379", f.pepper, device(), new Date())))
+    .resolves.toHaveProperty("session");
+  cookieValues.delete("__Host-fge-session");
+  vi.setSystemTime(new Date(firstResetAt.getTime() + 2000));
+  const thirdReset = await f.issue(f.rosa, "reset");
+  await expect(useKey(f.familyId, thirdReset.token, false, null, randomUUID(), {}, data)).rejects.toThrow("redirect");
+  await deliverPendingPushForFamily(f.familyId, sender);
+  expect(sender).toHaveBeenCalledTimes(2);
+  expect((await authState(f.familyId)).sessions.find(({id}) => id === owner.sessionId)?.resetNoticeEligible).toBe(false);
+});
+
+it.each([true, false])("deduplicates reset redemption after a lost response and retry (typed: %s)", async (typed) => {
+  const f = await fixture();
+  const key = await f.issue();
+  await f.redeem(key.token);
+  const reset = await f.issue(f.rosa, "reset");
+  const preview = await previewCode(f.familyId, reset.code);
+  const openingId = preview.key!.openingId!;
+  const value = typed ? reset.code : reset.token;
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, value, typed, preview.key!.preview!, openingId, {}, data)).rejects.toThrow("redirect");
+  const before = await authState(f.familyId);
+  expect(before.outbox).toHaveLength(1);
+  expect(before.events.filter(({kind}) => kind === "keyOpenedElsewhere")).toHaveLength(1);
+  expect(before.events.filter(({kind}) => kind === "resetUsed")).toHaveLength(1);
+
+  cookieValues.delete("__Host-fge-session");
+  vi.mocked(schedulePushDelivery).mockClear();
+  data.set("pin", "6842");
+  data.set("confirmation", "6842");
+  await expect(useKey(f.familyId, value, typed, preview.key!.preview!, openingId, {}, data))
+    .resolves.toMatchObject({error: "usedKey", noticeQueued: true, openingId});
+  const after = await authState(f.familyId);
+  expect(after.outbox).toEqual(before.outbox);
+  expect(after.events).toEqual(before.events);
+  expect(after.sessions).toEqual(before.sessions);
+  expect(after.pins).toEqual(before.pins);
+  expect(schedulePushDelivery).not.toHaveBeenCalled();
+});
+
+it("stops alerts on a signed-out phone's historical sessions while preserving other phones and people", async () => {
+  const f = await fixture();
+  const phone = device();
+  const key = await f.issue();
+  const joined = await f.redeem(key.token, false, phone);
+  const owner = (await resolve(joined.session!.cookie))!;
+  const otherLogin = await tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.rosa, pin, f.pepper, device(), now));
+  const otherPhone = (await resolve(otherLogin.session!.cookie))!;
+  const anaKey = await f.issue(f.ana);
+  const anaJoined = await f.redeem(anaKey.token, false, phone);
+  const ana = (await resolve(anaJoined.session!.cookie))!;
+  const subscription = () => {
+    const ecdh = createECDH("prime256v1");
+    return {endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+      keys: {p256dh: ecdh.generateKeys().toString("base64url"), auth: randomBytes(16).toString("base64url")}};
+  };
+  const onPhone = subscription();
+  const onOtherPhone = subscription();
+  expect(await subscribePush(owner, onPhone)).toBe(true);
+  expect(await subscribePush(otherPhone, onOtherPhone)).toBe(true);
+  const anaReset = await f.issue(f.ana, "reset");
+  await f.redeem(anaReset.token);
+  const reset = await f.issue(f.rosa, "reset");
+  const replacement = await f.redeem(reset.token, false, phone);
+  const current = (await resolve(replacement.session!.cookie))!;
+  const before = await authState(f.familyId);
+  expect(before.sessions.filter(({id}) => [owner.sessionId, otherPhone.sessionId, ana.sessionId].includes(id)))
+    .toEqual(expect.arrayContaining([owner, otherPhone, ana].map(({sessionId}) =>
+      expect.objectContaining({id: sessionId, resetNoticeEligible: true}))));
+  const signedOutAt = new Date(now.getTime() + 1000);
+  await expect(tx(f.familyId, (t) => endSessions(t, current, signedOutAt, false))).resolves.toBe(true);
+  const after = await authState(f.familyId);
+  expect(after.sessions.find(({id}) => id === owner.sessionId))
+    .toMatchObject({resetNoticeEligible: false, revokedAt: now});
+  expect(after.sessions.find(({id}) => id === current.sessionId))
+    .toMatchObject({resetNoticeEligible: false, revokedAt: signedOutAt, trusted: true});
+  for (const sessionId of [otherPhone.sessionId, ana.sessionId]) {
+    expect(after.sessions.find(({id}) => id === sessionId)).toEqual(before.sessions.find(({id}) => id === sessionId));
+  }
+  await expect(resolve(replacement.session!.cookie)).resolves.toBeNull();
+  vi.stubEnv("VERCEL_ENV", "production");
+  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`, randomUUID())).resolves.toBe(true);
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  await deliverPendingPushForFamily(f.familyId, sender);
+  expect(sender.mock.calls.map(([to]) => to.endpoint)).toEqual([onOtherPhone.endpoint]);
+});
+
+it.each([true, false])("records stale-preview redemption under the lock and schedules delivery after commit (typed: %s)", async (typed) => {
+  const f = await fixture();
+  const key = await f.issue();
+  const preview = await previewCode(f.familyId, key.code);
+  expect(preview.key?.usedAt).toBeNull();
+  await f.redeem(key.token);
+  const before = await authState(f.familyId);
+  let committed: ReturnType<typeof authState> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation((familyId) => { committed = authState(familyId); });
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, typed ? key.code : key.token, typed, preview.key!.preview!, preview.key!.openingId!, {}, data))
+    .resolves.toMatchObject({error: "usedKey", usedAt: now.toISOString(), noticeQueued: true});
+  expect(schedulePushDelivery).toHaveBeenCalledExactlyOnceWith(f.familyId);
+  const after = (await committed)!;
+  expect(after.outbox).toEqual([expect.objectContaining({personId: f.rosa, template: "key-opened-elsewhere"})]);
+  expect(after.events.filter(({kind}) => kind === "keyOpenedElsewhere")).toHaveLength(1);
+  expect(after.pins).toEqual(before.pins);
+  expect(after.sessions).toEqual(before.sessions);
+});
+
+it.each([true, false])("records a used QR after expiry without redeeming it again (typed: %s)", async (typed) => {
+  const f = await fixture();
+  const key = await f.issue(f.rosa, "qr");
+  const preview = await previewCode(f.familyId, key.code);
+  await f.redeem(key.token);
+  const before = await authState(f.familyId);
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(new Date(key.expiresAt.getTime() + 1));
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, typed ? key.code : key.token, typed, preview.key!.preview!, preview.key!.openingId!, {}, data))
+    .resolves.toMatchObject({error: "usedKey", noticeQueued: true});
+  const after = await authState(f.familyId);
+  expect(after.events.filter(({kind}) => kind === "keyOpenedElsewhere")).toHaveLength(1);
+  expect(after.outbox).toHaveLength(1);
+  expect(after.pins).toEqual(before.pins);
+  expect(after.sessions).toEqual(before.sessions);
+  expect(schedulePushDelivery).toHaveBeenCalledExactlyOnceWith(f.familyId);
+});
+
+it("keeps expired unused keys and invalid code previews unavailable", async () => {
+  const f = await fixture();
+  const key = await f.issue(f.rosa, "qr");
+  const preview = await previewCode(f.familyId, key.code);
+  const used = await f.issue(f.ana, "qr");
+  await f.redeem(used.token);
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(new Date(key.expiresAt.getTime() + 1));
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, key.code, true, preview.key!.preview!, preview.key!.openingId!, {}, data))
+    .resolves.toMatchObject({error: "unavailable"});
+  await expect(useKey(f.familyId, used.code, true, preview.key!.preview!, randomUUID(), {}, data))
+    .resolves.toMatchObject({error: "previewAgain"});
+  expect((await authState(f.familyId)).outbox).toEqual([]);
+});
+
+it.each(["missed", "recorded", "typed"])("records PIN sign-in through a used key exactly once after a %s opening POST", async (mode) => {
+  const f = await fixture();
+  const key = await f.issue();
+  await f.redeem(key.token);
+  let openingId: string = randomUUID();
+  if (mode === "recorded") await noticeUsedKeyLink(`${f.familyId}~${key.token}`, openingId);
+  if (mode === "typed") openingId = (await previewCode(f.familyId, key.code)).key!.openingId!;
+  vi.mocked(schedulePushDelivery).mockClear();
+  let committed: ReturnType<typeof authState> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation((familyId) => { committed = authState(familyId); });
+  const data = new FormData();
+  data.set("pin", pin);
+  await expect(enterPin(f.familyId, f.rosa, {}, data, {
+    value: mode === "typed" ? key.code : key.token, typed: mode === "typed", openingId,
+  })).rejects.toThrow("redirect");
+  const state = await (committed ?? authState(f.familyId));
+  expect(state.outbox).toHaveLength(1);
+  expect(state.events.filter(({kind}) => kind === "keyOpenedElsewhere")).toHaveLength(1);
+  expect(schedulePushDelivery).toHaveBeenCalledTimes(mode === "missed" ? 1 : 0);
+  const member = (await resolve(cookieValues.get("__Host-fge-session")!))!;
+  expect(member.personId).toBe(f.rosa);
+  await expect(listNotifications(member)).resolves.toHaveLength(1);
+});
+
+it("refuses key sign-in when the key belongs to someone else", async () => {
+  const f = await fixture();
+  const rosa = await f.issue();
+  const ana = await f.issue(f.ana);
+  await f.redeem(rosa.token);
+  await f.redeem(ana.token);
+  const data = new FormData();
+  data.set("pin", pin);
+  await expect(enterPin(f.familyId, f.rosa, {}, data, {value: ana.token, typed: false, openingId: randomUUID()}))
+    .resolves.toEqual({error: "unavailable"});
+  expect((await authState(f.familyId)).outbox).toEqual([]);
+  expect(cookieValues.has("__Host-fge-session")).toBe(false);
+});
+
+it("lets only the owner read the private used-key inbox", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const used = await f.redeem(key.token);
+  const owner = (await resolve(used.session!.cookie))!;
+  await expect(tx(f.familyId, (t) => saveMember(t, f.organizer, f.rosa,
+    {name: "Rosa", language: "es", helperId: null, householdId: null}))).resolves.toBeNull();
+  await expect(previewCode(f.familyId, key.code)).resolves.toMatchObject({noticeQueued: true});
+  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`, randomUUID())).resolves.toBe(true);
+  const message = expect.objectContaining({title: "Tu llave se abrió en otro dispositivo", body: "¿Fuiste tú?", language: "es"});
+  await expect(listNotifications(owner)).resolves.toEqual([message, message]);
+  await expect(listNotifications(f.organizer)).resolves.toEqual([]);
+  await expect(listNotifications({...f.organizer, actingAs: f.rosa})).resolves.toEqual([]);
 });
 
 it("asks the organizers for help from an unopened key, and the request ends when the key is opened", async () => {

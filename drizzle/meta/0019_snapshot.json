@@ -1,5 +1,5 @@
 {
-  "id": "17739f0b-1959-4d6e-83b5-44b44e110d72",
+  "id": "f9d150b8-fa2c-4932-8503-322499cdc64e",
   "prevId": "563c94a1-b4a1-4f7e-bcdc-9b54fc8575ab",
   "version": "7",
   "dialect": "postgresql",
@@ -3029,6 +3029,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reset_notice_eligible": {
+          "name": "reset_notice_eligible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "trusted": {
           "name": "trusted",
           "type": "boolean",
@@ -3133,105 +3140,6 @@
           "columns": [
             "family_id",
             "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.list_nudges": {
-      "name": "list_nudges",
-      "schema": "",
-      "columns": {
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exchange_id": {
-          "name": "exchange_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "person_id": {
-          "name": "person_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "nudge_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "day": {
-          "name": "day",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "list_nudges_family_id_families_id_fk": {
-          "name": "list_nudges_family_id_families_id_fk",
-          "tableFrom": "list_nudges",
-          "tableTo": "families",
-          "columnsFrom": [
-            "family_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "list_nudges_exchange_fk": {
-          "name": "list_nudges_exchange_fk",
-          "tableFrom": "list_nudges",
-          "tableTo": "exchanges",
-          "columnsFrom": [
-            "family_id",
-            "exchange_id"
-          ],
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "list_nudges_person_fk": {
-          "name": "list_nudges_person_fk",
-          "tableFrom": "list_nudges",
-          "tableTo": "people",
-          "columnsFrom": [
-            "family_id",
-            "person_id"
-          ],
-          "columnsTo": [
-            "family_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "list_nudges_family_id_exchange_id_person_id_kind_day_pk": {
-          "name": "list_nudges_family_id_exchange_id_person_id_kind_day_pk",
-          "columns": [
-            "family_id",
-            "exchange_id",
-            "person_id",
-            "kind",
-            "day"
           ]
         }
       },
@@ -3455,14 +3363,6 @@
         "organizer",
         "co_organizer",
         "member"
-      ]
-    },
-    "public.nudge_kind": {
-      "name": "nudge_kind",
-      "schema": "public",
-      "values": [
-        "organizer",
-        "viewed"
       ]
     }
   },

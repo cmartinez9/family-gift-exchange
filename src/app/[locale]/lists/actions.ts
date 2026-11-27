@@ -2,8 +2,10 @@
 
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
+import {after} from "next/server";
 import {getLocale} from "next-intl/server";
 import {requireViewer} from "@/server/auth";
+import {clearStaleBorrowedSession} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {
   addListItem, editListItem, ListError, moveListItem, refreshListItem, removeListItem, saveAboutField,
@@ -40,7 +42,8 @@ function dataImage(bytes: Buffer | undefined) {
 }
 
 export async function previewItemLink(ownerId: string, input: string): Promise<PreviewState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
+  await clearStaleBorrowedSession(viewer);
   try {
     await withFamily(viewer.familyId, (tx) => requireListEditor(tx, viewer, ownerId));
     const preview = await resolveLinkPreview(input);
@@ -66,7 +69,8 @@ export async function saveItem(
     if (!itemKinds.includes(kind)) throw new ListError("invalid-item");
     const link = kind === "link" ? stringField(form, "link") : undefined;
     const draft = link ? readLinkDraft(viewer, link, stringField(form, "draft")) : undefined;
-    const services = draft ? {resolve: async () => draft} : undefined;
+    // Without a preview read ahead of time, a new link saves at once and its picture follows (4.4).
+    const services = draft ? {resolve: async () => draft} : {later: after};
     const price = stringField(form, "price");
     const input = {
       title: stringField(form, "title"), note: stringField(form, "note"),
@@ -171,7 +175,8 @@ export async function acknowledgeChange(actingAs: string, itemId: string, versio
 export async function saveProfileField(
   ownerId: string, field: string, value: string, group: "size" | "about" | "noClothes",
 ): Promise<FormState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
+  await clearStaleBorrowedSession(viewer);
   try {
     if (group === "size") await saveListSize(viewer, ownerId, field, value);
     else if (group === "noClothes" && (value === "true" || value === "false")) {

@@ -1,6 +1,6 @@
 {
-  "id": "11a6fadc-4ce5-4741-a4d9-5e2662c17225",
-  "prevId": "afbf4ddb-9e49-45fd-8799-6d819c8ec1c0",
+  "id": "fea80268-0661-400c-ba8b-8143c22ca514",
+  "prevId": "163c1b35-db23-42ed-a601-f2322151e7c2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -436,12 +436,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "person_nudged_on": {
-          "name": "person_nudged_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
         },
         "disputed_reveal_repaired_at": {
           "name": "disputed_reveal_repaired_at",
@@ -3035,6 +3029,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reset_notice_eligible": {
+          "name": "reset_notice_eligible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "trusted": {
           "name": "trusted",
           "type": "boolean",
@@ -3048,6 +3049,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "lent_by_session_id": {
+          "name": "lent_by_session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "person_hidden_at": {
+          "name": "person_hidden_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -3124,6 +3137,21 @@
           "columnsFrom": [
             "family_id",
             "acting_as"
+          ],
+          "columnsTo": [
+            "family_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "sessions_lender_fk": {
+          "name": "sessions_lender_fk",
+          "tableFrom": "sessions",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "family_id",
+            "lent_by_session_id"
           ],
           "columnsTo": [
             "family_id",

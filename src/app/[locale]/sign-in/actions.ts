@@ -2,26 +2,29 @@
 
 import {randomUUID} from "node:crypto";
 import {getLocale} from "next-intl/server";
-import {redirect} from "next/navigation";
+import {redirect, RedirectType} from "next/navigation";
 import {withFamily} from "@/server/db/client";
 import {notify} from "@/server/messages";
+import {schedulePushDelivery} from "@/server/messages/delivery";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
-  allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
+  allowCodeTry, describeKey, disputeUsedKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
   redeemKey, requestPinReset, signInWithPin,
+  type KeyOpening,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
-import {appOrigin, currentDeviceKind, requestDevice, setSession} from "@/server/auth/request";
+import {appOrigin, currentDeviceKind, requestDevice, setBorrowedSession, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {createCodePreview} from "@/server/auth/code-preview";
+import {recordUsedKeyOpening} from "@/server/auth/used-key-notice";
 import {pinAttemptState} from "@/server/auth/account";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {
   authenticationFinish, authenticationStart, changePinAfterFaceId, registrationFinish, registrationStart,
 } from "@/server/auth/webauthn";
 
-export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number};
+export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number; usedAt?: string; noticeQueued?: boolean; openingId?: string};
 
 function field(data: FormData, key: string) {
   const value = data.get(key);
@@ -72,13 +75,14 @@ export async function openFamily(_: AuthResult, data: FormData): Promise<AuthRes
   redirect(`/${locale}/sign-in?family=${familyId}`);
 }
 
-export async function enterPin(familyId: string, personId: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+export async function enterPin(familyId: string, personId: string, _: AuthResult, data: FormData, opening?: KeyOpening): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || !uuidPattern.test(personId)) return {error: "unavailable"};
   const viewer = await getViewer();
   if (viewer) return {error: "otherPerson"};
   const pin = field(data, "pin");
   const device = await requestDevice();
-  const result = await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, authenticatorSecret(), device, new Date()));
+  const result = await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, authenticatorSecret(), device, new Date(), opening));
+  if (result.queued) schedulePushDelivery(familyId);
   if (!result.session) {
     const error = result.error ?? "unavailable";
     if (error !== "invalidPin" && error !== "pinLocked") return {error};
@@ -107,40 +111,88 @@ export async function reportUsedKey(familyId: string, value: string, typed: bool
   return withFamily(familyId, (tx) => disputeUsedKey(tx, familyId, value, typed, authenticatorSecret(), device, new Date()));
 }
 
+export async function noticeUsedKeyLink(raw: string, openingId: string): Promise<boolean> {
+  const link = typeof raw === "string" && parseLinkKey(raw);
+  if (!link || typeof openingId !== "string" || !uuidPattern.test(openingId)) return false;
+  const {familyId, token} = link;
+  const viewer = await getViewer();
+  const notice = await withFamily(familyId, async (tx) => {
+    const key = await lookupKey(tx, familyId, "", token);
+    if (!key?.usedAt || !await lockFamily(tx, familyId)) return null;
+    return recordUsedKeyOpening(tx, key, viewer, new Date(), openingId);
+  });
+  if (notice?.queued) schedulePushDelivery(familyId);
+  return Boolean(notice);
+}
+
 export type CodeResult = AuthResult & {
-  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string};
+  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string; openingId?: string};
 };
 
 export async function previewCode(familyId: string, code: string): Promise<CodeResult> {
   if (!uuidPattern.test(familyId) || typeof code !== "string" || !keyCodePattern.test(code)) return {error: "unavailable"};
   const device = await requestDevice();
   const viewer = await getViewer();
-  return withFamily(familyId, async (tx) => {
-    if (!await lockFamily(tx, familyId)) return {error: "unavailable"};
+  const {result, queued} = await withFamily<{result: CodeResult; queued?: boolean}>(familyId, async (tx) => {
+    if (!await lockFamily(tx, familyId)) return {result: {error: "unavailable"}};
     const now = new Date();
-    if (!await allowCodeTry(tx, familyId, device, now)) return {error: "tryLater"};
-    const key = await inspectKey(tx, familyId, code, now, authenticatorSecret());
-    if (!key || (!key.available && !key.usedAt)) return {error: "unavailable"};
-    if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) return {error: "otherPerson"};
-    return {key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
-      preview: createCodePreview(authenticatorSecret(), familyId, key, code, device.hash)}};
+    if (!await allowCodeTry(tx, familyId, device, now)) return {result: {error: "tryLater"}};
+    const pepper = authenticatorSecret();
+    const match = await lookupKey(tx, familyId, pepper, code, true);
+    if (!match) return {result: {error: "unavailable"}};
+    const openingId = randomUUID();
+    const notice = await recordUsedKeyOpening(tx, match, viewer, now, openingId);
+    const key = await describeKey(tx, match, now);
+    if (!key || (!key.available && !key.usedAt)) return {result: {error: "unavailable"}, queued: notice?.queued};
+    if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) {
+      return {result: {error: "otherPerson"}, queued: notice?.queued};
+    }
+    return {
+      queued: notice?.queued,
+      result: {noticeQueued: Boolean(notice), key: {...key, openingId, usedAt: key.usedAt?.toISOString() ?? null,
+        preview: createCodePreview(pepper, familyId, key, code, device.hash)}},
+    };
   });
+  if (queued) schedulePushDelivery(familyId);
+  return result;
 }
 
-export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, _: AuthResult, data: FormData): Promise<AuthResult> {
-  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean") return {error: "unavailable"};
+export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, openingId: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean"
+    || typeof openingId !== "string" || !uuidPattern.test(openingId)) return {error: "unavailable"};
   const currentViewer = await getViewer();
   const device = await requestDevice();
   // a first key starts onboarding; a reset key only replaces the PIN
   const kind = await withFamily(familyId, async (tx) => (await lookupKey(tx, familyId, authenticatorSecret(), value, typed))?.kind);
   const result = await withFamily(familyId, (tx) => redeemKey(tx, {
-    familyId, value, typed, preview, device, currentViewer,
+    familyId, value, typed, preview, device, currentViewer, openingId,
+    pin: field(data, "pin"), confirmation: field(data, "confirmation"),
+    pepper: authenticatorSecret(), now: new Date(),
+  }));
+  if (result.queued) schedulePushDelivery(familyId);
+  if (!result.session) return {error: result.error ?? "unavailable", usedAt: result.usedAt, noticeQueued: result.noticeQueued, openingId: result.openingId};
+  await setSession(familyId, result.session.cookie);
+  redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
+}
+
+/**
+ * A relative opens their own first key on this signed-in phone (9.2): their PIN signs them in beside the
+ * phone's owner, who stays signed in. Then they open their person (9.3), and the step replaces the key in
+ * the history, so Back never leads to it.
+ */
+export async function lendKey(familyId: string, value: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+  if (!uuidPattern.test(familyId) || typeof value !== "string") return {error: "unavailable"};
+  const owner = await getViewer();
+  if (!owner || owner.borrowed) return {error: "otherPerson"};
+  const device = await requestDevice();
+  const result = await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value, typed: false, device, currentViewer: owner, lend: true,
     pin: field(data, "pin"), confirmation: field(data, "confirmation"),
     pepper: authenticatorSecret(), now: new Date(),
   }));
   if (!result.session) return {error: result.error ?? "unavailable"};
-  await setSession(familyId, result.session.cookie);
-  redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
+  await setBorrowedSession(result.session.cookie);
+  redirect(`/${await getLocale()}/welcome/borrowed`, RedirectType.replace);
 }
 
 export async function beginFaceId(enroll: boolean) {
@@ -160,15 +212,16 @@ export async function finishFaceIdEnrollment(response: RegistrationResponseJSON)
   }
 }
 
-export async function finishFaceIdSignIn(response: AuthenticationResponseJSON) {
+export async function finishFaceIdSignIn(response: AuthenticationResponseJSON, opening?: KeyOpening) {
   const viewer = await getViewer();
   let authenticated;
   try {
-    authenticated = await authenticationFinish(await requestDevice(), response, viewer);
+    authenticated = await authenticationFinish(await requestDevice(), response, viewer, opening);
   } catch {
     return false;
   }
   if (!authenticated) return false;
+  if (authenticated.queued) schedulePushDelivery(authenticated.familyId);
   await setSession(authenticated.familyId, authenticated.session.cookie);
   return true;
 }

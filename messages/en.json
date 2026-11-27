@@ -384,6 +384,8 @@
     "fromStore": "From {store}",
     "tookOff": "Took off {title}",
     "added": "Added to your list",
+    "pictureComing": "Getting the picture from {store}",
+    "pictureComingSub": "Saved. The picture is on its way.",
     "editNotice": "If someone is already getting this, they’ll be told what changed. You won’t see who, or whether anyone is.",
     "starOn": "Yes",
     "starOff": "No",
@@ -431,6 +433,10 @@
       "pin-reset-request": {
         "title": "PIN reset requested",
         "body": "{name} asked for a PIN reset."
+      },
+      "key-opened-elsewhere": {
+        "title": "Your key was opened on another device",
+        "body": "Was that you?"
       },
       "claimed-item-changed": {
         "title": "A gift idea changed",
@@ -1033,6 +1039,7 @@
     "other": {
       "title": "This key is {name}'s",
       "lead": "This phone is signed in as {current}, so it can't open {name}'s key. Nothing was changed.",
+      "usedLead": "This phone is signed in as {current} and can't sign in as {name}.",
       "signedInAs": "Signed in as {current}",
       "onDevice": "On this {device}",
       "note": "Helping {name}? Send the key back, or let {name} open it on their own phone.",
@@ -1246,7 +1253,8 @@
       "reset": "Someone's PIN was reset",
       "resetSub": "{date} · with a new key from {organizer}",
       "secondPhone": "A key was opened on a second phone",
-      "secondPhoneSub": "{date} · it was reported",
+      "secondPhoneSub": "{date} · its owner was told",
+      "keyDisputedSub": "{date} · it was reported",
       "paused": "The exchange was paused for safety",
       "none": "Nothing has happened yet.",
       "signedOut": "A phone was signed out",
@@ -1297,5 +1305,26 @@
     "wrapLead": "{name} is closed. Thank you for taking part!",
     "wrapList": "Your list stays. Add to it any time, for birthdays too.",
     "wrapSealed": "The draw stays sealed for good. Nobody can open it."
+  },
+  "borrowed": {
+    "title": "On a borrowed phone",
+    "handPin": "Only {name} makes the PIN and opens {name}'s person. Look away for those.",
+    "handHide": "{name} hides the person again before handing the phone back.",
+    "handFace": "No Face ID here: it's your phone, not {name}'s.",
+    "hide": "Hide {person}",
+    "handBackLine": "Then hand the phone back to {owner}.",
+    "backTitle": "Hand this phone back to",
+    "hidden": "{name}'s person is hidden again. Nobody holding this phone can see who it is.",
+    "nothingShown": "{name}'s PIN is made. There's no person to open yet, so nothing was shown.",
+    "nextHelp": "Next, {owner} can help with {name}'s sizes and list.",
+    "ownerHas": "{owner} has the phone",
+    "allDone": "All {total} steps done, with {owner}'s help",
+    "doneTitle": "{name}'s all set",
+    "doneLead": "This is your phone, so it forgets {name} now. {name}'s list and person stay safe.",
+    "nextTime": "Next time, on {name}'s own phone: open the same key, or ask {organizer} for a new one.",
+    "signOut": "Sign {name} out of this phone",
+    "hideFailed": "Couldn't hide it. Check the connection and try again.",
+    "signOutFailed": "Couldn't sign {name} out. Check the connection and try again.",
+    "revealFailed": "Couldn't open the person. Check the connection and try again."
   }
 }

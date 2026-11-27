@@ -137,7 +137,8 @@ for (const exit of ["navigation", "Done", "home"] as const) {
 
       if (exit === "navigation") await helping.getByRole("link", {name: "Later", exact: true}).click();
       else if (exit === "Done") await helping.getByRole("button", {name: "Done", exact: true}).click();
-      else await helping.getByRole("link", {name: "Back to Rosa's Home", exact: true}).click();
+      // Marta's first key offers to help her on this phone (9.1); going back leaves it alone
+      else await helping.getByRole("button", {name: "Go back", exact: true}).click();
       await expect(helping).toHaveURL(exit === "home" ? /\/en$/ : /\/en\/sign-in$/);
       await expect(helping.getByRole("button", {name: en.auth.signInFaceId, exact: true})).toBeVisible();
       await expect(helping.getByRole("region", {name: "Helping mode"})).toHaveCount(0);
@@ -404,6 +405,8 @@ async function markClosingGift(page: Page, ownerId: string) {
   await page.goto(`/en/lists/${ownerId}`);
   await page.getByRole("button", {name: en.lists.claim, exact: true}).click();
   await expect(page.getByText(en.lists.mine, {exact: true})).toBeVisible();
+  // The claimed label is optimistic; wait for the save before leaving the page.
+  await expect(page.getByRole("button", {name: en.lists.undoClaim, exact: true})).toBeEnabled();
   await page.goto("/en/lists/getting");
   for (const name of [en.lists.bought, en.lists.wrapped]) {
     const tick = page.getByRole("checkbox", {name, exact: true});

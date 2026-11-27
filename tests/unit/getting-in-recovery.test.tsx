@@ -1,22 +1,28 @@
 // @vitest-environment jsdom
-import {act, Component, type ReactNode} from "react";
+import {act, Component, StrictMode, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
-import {CodeEntry, KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
+import es from "../../messages/es.json";
+import {CodeEntry, KeyAlreadyOpened, KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
 import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
+import {dismissToast, ToastHost} from "../../src/components/ui/toast";
 
 const actions = vi.hoisted(() => ({
   previewCode: vi.fn(), useKey: vi.fn(), beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(),
   finishFaceIdSignIn: vi.fn(), forgotPin: vi.fn(), reportUsedKey: vi.fn(), enterPin: vi.fn(), openFamily: vi.fn(),
+  noticeUsedKeyLink: vi.fn(),
 }));
 const lists = vi.hoisted(() => ({previewItemLink: vi.fn(), saveProfileField: vi.fn(), saveItem: vi.fn()}));
+const previews = vi.hoisted(() => vi.fn());
 const welcome = vi.hoisted(() => ({addFirstThing: vi.fn()}));
 const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn()}));
+const passkeyBrowser = vi.hoisted(() => ({startAuthentication: vi.fn(), startRegistration: vi.fn()}));
+vi.mock("@simplewebauthn/browser", () => passkeyBrowser);
 vi.mock("../../src/app/[locale]/sign-in/actions", () => actions);
 vi.mock("../../src/app/[locale]/lists/actions", () => lists);
 vi.mock("../../src/app/[locale]/welcome/actions", () => welcome);
@@ -30,7 +36,10 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  actions.noticeUsedKeyLink.mockReset().mockResolvedValue(false);
+  previews.mockReset();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("fetch", vi.fn(async () => ({json: () => previews()})));
   vi.stubGlobal("matchMedia", () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
   vi.stubGlobal("URL", class extends URL {
     static createObjectURL = vi.fn(() => "blob:photo");
@@ -44,18 +53,104 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
+  await act(async () => { dismissToast(); root.unmount(); });
   container.remove();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-async function render(node: ReactNode) {
+async function render(node: ReactNode, locale: "en" | "es" = "en") {
   await act(async () => root.render(
-    <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
+    <NextIntlClientProvider locale={locale} messages={locale === "es" ? es : en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
   ));
 }
+
+it("shows the Spanish used-key promise only after the server confirms the notice", async () => {
+  const result = Promise.withResolvers<boolean>();
+  actions.noticeUsedKeyLink.mockReturnValue(result.promise);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />, "es");
+  const told = es.getIn.used.told.replace("{name}", "Rosa");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith("family~token", expect.any(String));
+  expect(container.textContent).not.toContain(told);
+  await act(async () => result.resolve(true));
+  expect(container.textContent).toContain(told);
+});
+
+it("keeps PIN entry available if the used-key notice fails", async () => {
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  expect(container.textContent).not.toContain("Rosa's phone will be told.");
+  expect(button("4").disabled).toBe(false);
+});
+
+it("reuses an opening identity when React repeats the notice effect", async () => {
+  actions.noticeUsedKeyLink.mockResolvedValue(true);
+  await render(<StrictMode><KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" /></StrictMode>);
+  const calls = actions.noticeUsedKeyLink.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  expect(new Set(calls.map(([, openingId]) => openingId)).size).toBe(1);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+});
+
+it("keeps the opening identity and notice lifecycle through a wrong PIN and recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("1357");
+  await advance(260);
+  await type("4");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed: false, openingId});
+  expect(button("2").disabled).toBe(false);
+});
+
+it("carries a failed opening POST's identity through the lock screen to Face ID recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+  actions.beginFaceId.mockResolvedValue({challenge: "challenge"});
+  const response = {id: "credential", response: {userHandle: "owner"}};
+  passkeyBrowser.startAuthentication.mockResolvedValue(response);
+  actions.finishFaceIdSignIn.mockResolvedValue(true);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("4268");
+  await advance(260);
+  await click(en.getIn.locked.face);
+  expect(actions.finishFaceIdSignIn).toHaveBeenCalledExactlyOnceWith(response, {value: "token", typed: false, openingId});
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(router.replace).toHaveBeenCalledExactlyOnceWith("/account?face=1");
+});
+
+it.each([true, false])("switches a stale welcome to PIN entry without recording the opening twice (typed: %s)", async (typed) => {
+  vi.useFakeTimers();
+  const openingId = crypto.randomUUID();
+  actions.useKey.mockResolvedValue({error: "usedKey", usedAt: "2030-12-24", noticeQueued: true, openingId});
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<KeyWelcome familyId="family" value="token" typed={typed}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: null, available: true, preview: "preview", openingId}}
+    sender={null} organizer="Ana" />);
+  await click(en.getIn.hello.yes);
+  await type("4268");
+  await advance(260);
+  await type("4268");
+  await advance(260);
+  expect(actions.useKey).toHaveBeenCalledOnce();
+  expect(container.textContent).toContain(en.getIn.used.title);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+  await type("4268");
+  await advance(260);
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed, openingId});
+  expect(actions.noticeUsedKeyLink).not.toHaveBeenCalled();
+});
 
 function button(label: string) {
   const found = [...container.querySelectorAll("button")].find((node) => node.textContent === label || node.getAttribute("aria-label") === label);
@@ -267,6 +362,12 @@ it.each(["returning", "used-key"])("counts down a %s lock and restores PIN entry
   await type("4268");
   await advance(260);
   expect(actions.enterPin).toHaveBeenCalledTimes(2);
+  if (entry === "used-key") {
+    expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+    const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+    expect(actions.enterPin.mock.calls.map((call) => call[4]))
+      .toEqual(Array.from({length: 2}, () => ({value: "key", typed: false, openingId})));
+  }
 });
 
 it.each([
@@ -457,14 +558,15 @@ it.each([
 
 async function editField(selector: string, value: string) {
   await act(async () => {
-    const field = container.querySelector<HTMLInputElement>(selector)!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    const field = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+    const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(field, value);
     field.dispatchEvent(new Event("input", {bubbles: true}));
   });
 }
 
 async function editLink(value: string) {
-  await editField('input[name="link"]', value);
+  await editField('[name="link"]', value);
 }
 
 const recoveryFlows = [
@@ -550,10 +652,72 @@ it("ignores a code-preview transport failure after the entered code changes", as
 
 const preview: PreviewState = {card: {url: "https://shop.example/gift", title: "A sweater", store: "Shop", icon: "shop", price: null}};
 
+it.each([
+  "https://shop.example/gift",
+  "Look at this mug https://shop.example.com/p/123",
+  "A sweater\nhttps://shop.example/gift\nSize M",
+  "shop.example:443/gift",
+  "https://[2606:4700:4700::1111]/gift",
+].flatMap((link) => ["before", "during"].map((timing) => ({link, timing}))))("saves onboarding link $link $timing its preview loads", async ({link, timing}) => {
+  vi.useFakeTimers();
+  const response = Promise.withResolvers<PreviewState>();
+  const saved = Promise.withResolvers<{added: boolean; pictureComing: boolean}>();
+  previews.mockReturnValueOnce(response.promise);
+  welcome.addFirstThing.mockReturnValueOnce(saved.promise);
+  await render(<><AddStep ownerId="person" /><ToastHost undoLabel="Undo" /></>);
+  await click(en.getIn.add.paste);
+  expect(button(en.getIn.paste.first).disabled).toBe(true);
+  await editLink(link);
+  expect(button(en.getIn.add.add).disabled).toBe(false);
+  if (timing === "during") {
+    await advance(500);
+    expect(fetch).toHaveBeenCalledWith("/en/lists/person/link-preview", expect.objectContaining({
+      method: "POST", body: JSON.stringify({link}),
+    }));
+  }
+
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
+  expect(welcome.addFirstThing).toHaveBeenCalledOnce();
+  const form = welcome.addFirstThing.mock.calls[0][2] as FormData;
+  expect(form.get("link")).toBe(link);
+  expect(form.get("kind")).toBe("link");
+  expect(button(en.getIn.add.add).disabled).toBe(true);
+  if (timing === "during") {
+    expect(vi.mocked(fetch).mock.calls[0][1]?.signal?.aborted).toBe(true);
+  } else {
+    await advance(500);
+    expect(fetch).not.toHaveBeenCalled();
+  }
+  expect(lists.previewItemLink).not.toHaveBeenCalled();
+
+  await act(async () => saved.resolve({added: true, pictureComing: true}));
+  expect(container.querySelector(".fge-toast")?.textContent).toBe(en.lists.pictureComingSub);
+  expect(router.push).toHaveBeenCalledExactlyOnceWith("/welcome/done");
+  if (timing === "during") {
+    await act(async () => response.resolve(preview));
+    expect(container.querySelector("h2")).toBeNull();
+  }
+});
+
+it.each([
+  "", "https://", "not a link", "ftp://shop.example/gift", "https://user:pass@shop.example/gift",
+  "http://localhost/gift", "http://10.0.0.1/gift", "http://[::1]/gift",
+])(
+  "keeps Add disabled for an invalid onboarding link %s", async (link) => {
+    vi.useFakeTimers();
+    await render(<AddStep ownerId="person" />);
+    await click(en.getIn.add.paste);
+    await editLink(link);
+    await advance(500);
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
+
 it("shows a rejected link preview as a failure and recovers after the link is edited", async () => {
   vi.useFakeTimers();
   const result = Promise.withResolvers<PreviewState>();
-  lists.previewItemLink.mockReturnValueOnce(result.promise).mockResolvedValue(preview);
+  previews.mockReturnValueOnce(result.promise).mockResolvedValue(preview);
   await render(<AddStep ownerId="person" />);
   await click(en.getIn.add.paste);
   await editLink("https://shop.example/first");
@@ -562,7 +726,7 @@ it("shows a rejected link preview as a failure and recovers after the link is ed
   await act(async () => result.reject(new Error("offline")));
   expect(container.querySelector('[aria-busy="true"]')).toBeNull();
   expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.getIn.paste.failed);
-  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
   await editLink("https://shop.example/second");
   await advance(500);
   expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -572,7 +736,7 @@ it("shows a rejected link preview as a failure and recovers after the link is ed
 it("ignores a stale preview rejection after a newer link has loaded", async () => {
   vi.useFakeTimers();
   const first = Promise.withResolvers<PreviewState>();
-  lists.previewItemLink.mockReturnValueOnce(first.promise).mockResolvedValue(preview);
+  previews.mockReturnValueOnce(first.promise).mockResolvedValue(preview);
   await render(<AddStep ownerId="person" />);
   await click(en.getIn.add.paste);
   await editLink("https://old.example/gift");
@@ -602,7 +766,7 @@ it.each(["returned", "transport"])("preserves a written title after a %s save fa
 it.each(["returned", "transport"])("preserves the link note and preference when retrying a %s save failure", async (failure) => {
   vi.useFakeTimers();
   if (failure === "transport") welcome.addFirstThing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-  lists.previewItemLink.mockResolvedValue(preview);
+  previews.mockResolvedValue(preview);
   await render(<AddStep ownerId="person" />);
   await click(en.getIn.add.paste);
   await editLink("https://shop.example/gift");
@@ -621,6 +785,31 @@ it.each(["returned", "transport"])("preserves the link note and preference when 
     ["person", "https://shop.example/gift", "Blue, size M", "on"],
     ["person", "https://shop.example/gift", "Blue, size M", "on"],
   ]);
+});
+
+it.each(["before", "during"])("submits the note when saving %s a replacement preview loads", async (timing) => {
+  vi.useFakeTimers();
+  const response = Promise.withResolvers<PreviewState>();
+  previews.mockResolvedValueOnce(preview).mockReturnValueOnce(response.promise);
+  await render(<AddStep ownerId="person" />);
+  await click(en.getIn.add.paste);
+  await editLink("https://shop.example/gift");
+  await advance(500);
+  await editField('input[name="note"]', "Blue, size M");
+  await click(en.getIn.paste.want);
+  await editLink("https://shop.example/replacement");
+  expect(container.querySelector('input[name="note"]')).toBeNull();
+  if (timing === "during") await advance(500);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { container.querySelector("form")!.requestSubmit(); });
+    const form = welcome.addFirstThing.mock.calls[attempt][2] as FormData;
+    expect(form.get("link")).toBe("https://shop.example/replacement");
+    expect(form.getAll("note")).toEqual(["Blue, size M"]);
+    expect(form.get("starred")).toBe("on");
+  }
+  await act(async () => response.resolve(preview));
+  expect(container.querySelector('input[name="note"]')).toBeNull();
 });
 
 async function selectPhoto(file: File) {
@@ -642,7 +831,7 @@ it.each(["words", "photo", "link"])("preserves framework redirects when submitti
   const caught = vi.fn();
   await render(<NavigationBoundary onError={caught}><AddStep ownerId="person" /></NavigationBoundary>);
   if (mode === "link") {
-    lists.previewItemLink.mockResolvedValue(preview);
+    previews.mockResolvedValue(preview);
     await click(en.getIn.add.paste);
     await editLink("https://shop.example/gift");
     await advance(500);

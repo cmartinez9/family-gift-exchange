@@ -384,6 +384,8 @@
     "fromStore": "De {store}",
     "tookOff": "Quitaste {title}",
     "added": "Agregado a tu lista",
+    "pictureComing": "Trayendo la foto de {store}",
+    "pictureComingSub": "Guardado. La foto ya viene en camino.",
     "editNotice": "Si alguien ya va a regalarlo, le contaremos qué cambió. No verás quién, ni si alguien lo va a regalar.",
     "starOn": "Sí",
     "starOff": "No",
@@ -431,6 +433,10 @@
       "pin-reset-request": {
         "title": "Solicitud para restablecer el PIN",
         "body": "{name} pidió restablecer su PIN."
+      },
+      "key-opened-elsewhere": {
+        "title": "Tu llave se abrió en otro dispositivo",
+        "body": "¿Fuiste tú?"
       },
       "claimed-item-changed": {
         "title": "Cambió una idea de regalo",
@@ -1033,6 +1039,7 @@
     "other": {
       "title": "Esta llave es de {name}",
       "lead": "Este teléfono tiene la sesión de {current}, así que no puede abrir la llave de {name}. No se cambió nada.",
+      "usedLead": "Este teléfono tiene la sesión de {current} y no puede iniciar sesión como {name}.",
       "signedInAs": "Sesión de {current}",
       "onDevice": "En este {device}",
       "note": "¿Ayudas a {name}? Devuélvele la llave o deja que la abra en su propio teléfono.",
@@ -1246,7 +1253,8 @@
       "reset": "Se restableció el PIN de alguien",
       "resetSub": "{date} · con una llave nueva de {organizer}",
       "secondPhone": "Una llave se abrió en un segundo teléfono",
-      "secondPhoneSub": "{date} · se reportó",
+      "secondPhoneSub": "{date} · se le avisó a su dueño",
+      "keyDisputedSub": "{date} · se reportó",
       "paused": "El intercambio se pausó por seguridad",
       "none": "Todavía no ha pasado nada.",
       "signedOut": "Se cerró la sesión en un teléfono",
@@ -1297,5 +1305,26 @@
     "wrapLead": "{name} terminó. ¡Gracias por participar!",
     "wrapList": "Tu lista se queda. Agrégale cosas cuando quieras, también para cumpleaños.",
     "wrapSealed": "El sorteo queda sellado para siempre. Nadie puede abrirlo."
+  },
+  "borrowed": {
+    "title": "En un teléfono prestado",
+    "handPin": "Solo {name} crea el PIN y abre su persona. No mires en esos momentos.",
+    "handHide": "{name} vuelve a ocultar a su persona antes de devolverte el teléfono.",
+    "handFace": "Aquí no hay Face ID: es tu teléfono, no el de {name}.",
+    "hide": "Ocultar a {person}",
+    "handBackLine": "Después, devuélvele el teléfono a {owner}.",
+    "backTitle": "Devuélvele este teléfono a",
+    "hidden": "La persona de {name} está oculta otra vez. Quien tenga este teléfono no puede ver quién es.",
+    "nothingShown": "{name} ya tiene su PIN. Todavía no hay persona que abrir, así que no se mostró nada.",
+    "nextHelp": "Ahora {owner} puede ayudar con las tallas y la lista de {name}.",
+    "ownerHas": "{owner} ya tiene el teléfono",
+    "allDone": "Los {total} pasos, listos, con ayuda de {owner}",
+    "doneTitle": "Todo listo para {name}",
+    "doneLead": "Este es tu teléfono, así que ahora se olvida de {name}. La lista y la persona de {name} siguen a salvo.",
+    "nextTime": "La próxima vez, en el teléfono de {name}: abrir la misma llave o pedirle una nueva a {organizer}.",
+    "signOut": "Cerrar la sesión de {name} en este teléfono",
+    "hideFailed": "No se pudo ocultar. Revisa la conexión y vuelve a intentarlo.",
+    "signOutFailed": "No se pudo cerrar la sesión de {name}. Revisa la conexión y vuelve a intentarlo.",
+    "revealFailed": "No se pudo abrir a la persona. Revisa la conexión y vuelve a intentarlo."
   }
 }
