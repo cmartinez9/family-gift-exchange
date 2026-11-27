@@ -1,5 +1,5 @@
 import {getFormatter, getLocale, getTranslations} from "next-intl/server";
-import {notFound, redirect} from "next/navigation";
+import {notFound} from "next/navigation";
 import type {ReactNode} from "react";
 import {Avatar} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
@@ -83,12 +83,10 @@ export default async function FamilyPage() {
   const viewer = await requireViewer();
   const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
   if (!board) notFound();
-  // details never saved: the exchange (step 1) comes first. A brand-new family starts there; once
-  // anyone else is in the family, it stays manageable here with the way back to step 1.
+  // details never saved: the main action is the exchange (step 1); the family stays manageable here
   const unnamed = board.exchangeId
     ? (await listExchanges(viewer)).find(({id}) => id === board.exchangeId)?.status === "setup"
     : false;
-  if (unnamed && board.members.length <= 1) redirect(`/${await getLocale()}/exchanges/${board.exchangeId}/manage`);
   const [t, draw, ui, format, chat, inbox, lists, unread] = await Promise.all([
     getTranslations("auth"), getTranslations("draw"), getTranslations("ui"), getFormatter(),
     getTranslations("notify.groupChat"), getTranslations("notify.inbox"), getTranslations("lists"), getUnreadCount(viewer),

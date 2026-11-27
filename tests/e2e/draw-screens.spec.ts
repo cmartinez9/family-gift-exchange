@@ -107,6 +107,8 @@ test("setup: the exchange, who's in, who lives where, and the draw", async ({bro
   await page.getByLabel("Type the PIN again").fill("4268");
   await page.getByRole("button", {name: "Create my family"}).click();
   await page.getByRole("link", {name: "Not now"}).click();
+  // an unnamed exchange's main action is its first setup step
+  await page.getByRole("link", {name: "Start with the exchange"}).click();
   await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
   const session = (await context.cookies()).find(({name}) => name === "__Host-fge-session")!;
   state.familyId = session.value.split(".")[0];

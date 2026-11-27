@@ -29,6 +29,8 @@ async function create(page: Page) {
   await page.getByLabel("Type the PIN again").fill("4268");
   await page.getByRole("button", {name: "Create my family"}).click();
   await page.getByRole("link", {name: "Not now"}).click();
+  // an unnamed exchange's main action is its first setup step
+  await page.getByRole("link", {name: "Start with the exchange"}).click();
   await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
   const familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
   return {familyId, manage: page.url(), exchangeId: page.url().match(/exchanges\/([^/]+)/)![1]};
@@ -135,6 +137,7 @@ test("unfinished onboarding returns to step one, practice keeps its return path,
   const family = await create(page);
   try {
     await page.goto("/en/family");
+    await page.getByRole("link", {name: "Start with the exchange"}).click();
     await expect(page).toHaveURL(family.manage);
     await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
     await capture(page, info, "unfinished-onboarding-step-one");
@@ -441,8 +444,9 @@ test("a failed reveal can retry and an already-open recipient updates after thei
     ]);
     const op = await owner.newPage();
     await op.goto(`/en/lists/${person.id}/items/new?kind=note`);
-    await op.getByLabel("Item name", {exact: true}).fill("Blue winter scarf");
-    await op.getByRole("button", {name: "Save item", exact: true}).click();
+    await op.waitForLoadState("networkidle");
+    await op.getByLabel(en.lists.title, {exact: true}).fill("Blue winter scarf");
+    await op.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
     await expect(op.getByRole("article", {name: "Blue winter scarf"})).toBeVisible();
     const refreshed = page.waitForResponse((response) => response.request().headers()["rsc"] === "1");
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));

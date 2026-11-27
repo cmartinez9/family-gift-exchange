@@ -17,6 +17,7 @@ test(`holding, releasing and resuming reveals the complete name ${recipient}`, a
     await page.getByLabel("Type the PIN again").fill("4268");
     await page.getByRole("button", {name: "Create my family"}).click();
     await page.getByRole("link", {name: "Not now"}).click();
+    await page.getByRole("link", {name: "Start with the exchange"}).click();
     await expect(page.getByRole("heading", {name: "What should we call it?"})).toBeVisible();
     familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
     await page.goto("/en/exchanges/practice");
