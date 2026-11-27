@@ -18,11 +18,7 @@ import {OrganizerHelpProvider} from "../../sign-in/ask-for-help";
 import {screenTitle} from "../../sign-in/title";
 import {linkPreview} from "./link-preview";
 
-/**
- * The tab title, and the link preview a chat app shows when the key is pasted (1.1): "Rosa's own key",
- * "Martinez family · Christmas 2026" and the stitched name. It says nothing more, and a key that can't be
- * opened gets the generic preview. Building it only reads, so fetching the link leaves the key untouched.
- */
+/** Chat metadata must use linkPreview's read-only projection rather than the sign-in actions. */
 export async function generateMetadata({params}: {params: Promise<{locale: string; key: string}>}): Promise<Metadata> {
   const {locale, key} = await params;
   const t = await getTranslations("getIn.preview");

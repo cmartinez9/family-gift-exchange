@@ -31,7 +31,6 @@ export async function pinAttemptState(tx: FamilyTransaction, familyId: string, p
   return {triesLeft: Math.max(0, MAX_TRIES - row.failedInWindow), minutes: 0};
 }
 
-/** The organizer's first name: the person every "ask for help" line names. */
 export async function organizerName(tx: FamilyTransaction, familyId: string) {
   const [organizer] = await tx.select({name: people.displayName}).from(people).where(and(
     eq(people.familyId, familyId), eq(people.role, "organizer"), isNull(people.removedAt),

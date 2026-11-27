@@ -60,7 +60,7 @@ function knit({bitmap, cell, colors}: Piece, left: number, top: number) {
   return [...byColor].map(([fill, d]) => `<path fill="${fill}" d="${d.join("")}"/>`).join("");
 }
 
-/** The picture as SVG, centred on the tile. Only stitches: no words, so it needs no font and no translation. */
+/** Render stitches as SVG paths so the image needs no fonts, text shaping or translation. */
 export function previewSvg(name: string | null) {
   const pieces = previewPieces(name);
   const sizes = pieces.map(({bitmap, cell}) => bitmapSize(bitmap, cell));

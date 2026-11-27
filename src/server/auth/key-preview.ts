@@ -18,7 +18,7 @@ export async function keyPreview(tx: FamilyTransaction, familyId: string, token:
   return {name: entry.name, familyName: entry.familyName, year: await seasonYear(tx, familyId, now)};
 }
 
-/** The season's year: the current exchange's gift day, or this year when it has none yet. */
+/** Select the active exchange, otherwise the latest closed one; use its gift year or the current UTC year. */
 async function seasonYear(tx: FamilyTransaction, familyId: string, now: Date) {
   const [exchange] = await tx.select({giftDay: exchanges.giftDay}).from(exchanges)
     .where(eq(exchanges.familyId, familyId))

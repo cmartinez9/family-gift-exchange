@@ -305,8 +305,8 @@ export async function signInWithPin(
 }
 
 /**
- * Forgot my PIN: ask the organizers for a new key, at most three times a day per person. The same request is
- * the "Ask the organizer for help" link.
+ * Shared boundary for forgot-PIN and sign-in help. Invited members may need help before they have credentials.
+ * Require another eligible organizer so the caller can truthfully confirm that someone was notified.
  */
 export async function requestPinReset(
   tx: FamilyTransaction, familyId: string, personId: string, device: Pick<Device, "kind">, now: Date,
