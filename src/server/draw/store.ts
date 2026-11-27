@@ -188,10 +188,15 @@ export async function loadRecipient(
     ) AS sealed
   `);
   if (!assignment?.sealed) throw new DrawError("notFound");
-  return decrypt.open(purpose, {
+  const recipientId = decrypt.open(purpose, {
     field: "assignment", familyId: viewer.familyId, exchangeId: exchange.id,
     giverId: viewer.actingAs, version: exchange.version,
   }, assignment.sealed);
+  await tx.insert(drawOpenings).values({
+    familyId: viewer.familyId, exchangeId: exchange.id, giverId: viewer.actingAs,
+    version: exchange.version, viewerId: viewer.personId, sessionId: viewer.sessionId,
+  }).onConflictDoNothing();
+  return recipientId;
 }
 
 function questionScope(familyId: string, exchangeId: string) {
@@ -256,6 +261,9 @@ export async function writeRepair(
   await publishDraw(events, tx, {
     kind: "reassigned", familyId, exchangeId: exchange.id, version: summary.version,
   }, destinations);
+  await publishDraw(events, tx, {
+    kind: "participationCancelled", familyId, exchangeId: exchange.id, version: summary.version,
+  }, [...previous.keys()].filter((giver) => !next.has(giver)));
   return {...summary, changedGivers: destinations.filter((giver) => previous.has(giver)).length};
 }
 

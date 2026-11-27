@@ -40,8 +40,6 @@ export async function setExchangeBudget(
     if (exchange.status === "closed") throw new ListError("closed");
     if (exchange.budgetAmount === budgetAmount) return;
     await tx.update(exchanges).set({budgetAmount}).where(scope);
-    if (exchange.status === "drawn" || exchange.status === "locked") {
-      await events.budgetChanged(tx, {familyId: viewer.familyId, exchangeId});
-    }
+    await events.budgetChanged(tx, {familyId: viewer.familyId, exchangeId});
   });
 }

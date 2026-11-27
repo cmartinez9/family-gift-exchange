@@ -2,7 +2,7 @@ import type {FamilyTransaction} from "../db/database";
 import {drawEvents, listEvents} from "../messages/events";
 
 export type DrawEvent = {
-  kind: "drawn" | "redrawn" | "reassigned" | "budgetChanged";
+  kind: "drawn" | "redrawn" | "reassigned" | "budgetChanged" | "detailsChanged" | "participationCancelled";
   familyId: string;
   exchangeId: string;
   version: number;
@@ -21,10 +21,15 @@ const notificationPublisher: DrawEvents = {
       case "drawn":
         return drawEvents.namesDrawn({...event, personIds: destinations}, tx);
       case "redrawn":
+        return drawEvents.redrawn({...event, personIds: destinations}, tx);
       case "reassigned":
         return drawEvents.plansChanged({...event, personIds: destinations}, tx);
       case "budgetChanged":
         return listEvents.budgetChanged(event, tx);
+      case "detailsChanged":
+        return drawEvents.detailsChanged({...event, personIds: destinations}, tx);
+      case "participationCancelled":
+        return drawEvents.participationCancelled({...event, personIds: destinations}, tx);
     }
   },
 };

@@ -49,7 +49,7 @@ export function repairDraw(
       privacy.fullRedraw ? [] : view.questionGivers.map((id) => next.has(id) && next.get(id) === previous.get(id)),
       oneLoop,
     ]))});
-    return false;
+    return privacy.fullRedraw === true;
   }
 
   function choosePrivateRepair(): Pairs | null {
@@ -101,6 +101,20 @@ export function repairDraw(
       used.delete(recipient);
     }
     return false;
+  }
+
+  if (privacy?.fullRedraw && views.length) {
+    for (let attempt = 1; attempt <= 1024; attempt++) {
+      next.clear();
+      used.clear();
+      for (let index = 0; index < options.length; index++) options[index] = shuffled(options[index]);
+      if (!search(0, people.length)) break;
+      if (attempt % 32 === 0) {
+        const selected = choosePrivateRepair();
+        if (selected) return selected;
+      }
+    }
+    return choosePrivateRepair();
   }
 
   for (let count = privacy?.fullRedraw ? people.length : required.size; count <= people.length; count++) {

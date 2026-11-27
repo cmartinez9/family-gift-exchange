@@ -265,6 +265,49 @@ it("identifies when no per-organizer private repair exists in a tiny family", ()
   expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], seenGivers: [], questionGivers: [], fullRedraw: true})).toBeNull();
 });
 
+it("bounds a private full redraw for sixteen people with two organizers", () => {
+  const ids = Array.from({length: 16}, (_, index) => String(index));
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, index) => [id, ids[(index + 1) % ids.length]]));
+  const observers = [ids[0], ids[8]];
+  let state = 1125;
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(<T>(values: Iterable<T>): T[] => {
+    const result = [...values];
+    for (let index = result.length - 1; index > 0; index--) {
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      const other = (state >>> 0) % (index + 1);
+      [result[index], result[other]] = [result[other], result[index]];
+    }
+    return result;
+  });
+  const started = performance.now();
+  let visits = 0;
+  try {
+    const next = repairDraw(drawRules(people, []), previous, [ids[1]], () => {
+      if (++visits > 100_000 || performance.now() - started > 1500) throw new Error("Redraw search exceeded its budget");
+    }, {observers, seenGivers: [], questionGivers: [], fullRedraw: true});
+    expect(next).not.toBeNull();
+    expect(validate(people, [], next!)).toBe(true);
+    expect(next!.get(ids[1])).not.toBe(previous.get(ids[1]));
+    for (const observer of observers) {
+      const alternatives: Pairs[] = [];
+      for (const second of ids.filter((id) => id !== ids[1] && id !== observer)) {
+        for (const third of ids.filter((id) => id !== ids[1] && id !== second && id !== observer)) {
+          const other = new Map(next).set(ids[1], next!.get(second)!)
+            .set(second, next!.get(third)!).set(third, next!.get(ids[1])!);
+          if (validate(people, [], other) && modelOneLoop(other) === modelOneLoop(next!)
+            && other.get(ids[1]) !== previous.get(ids[1])) alternatives.push(other);
+        }
+      }
+      expect(new Set(alternatives.map((pairs) => pairs.get(ids[1]))).size).toBeGreaterThan(1);
+    }
+  } finally {
+    shuffle.mockRestore();
+  }
+});
+
 it("keeps B ambiguous after conditioning on the opened count with only B D E seen", () => {
   const ids = ["A", "B", "C", "D", "E", "F"];
   const people = ids.map((id) => ({id, householdId: null, helperId: null}));

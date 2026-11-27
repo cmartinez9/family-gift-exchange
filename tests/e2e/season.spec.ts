@@ -36,19 +36,22 @@ for (const language of ["en", "es"] as const) {
     const captured = new Set<string>();
     let familyId: string | undefined;
 
-    async function notices(stage: string, template?: TrialNotice, destinations: string[] = []) {
+    async function notices(stage: string, template?: TrialNotice, destinations: string[] = [], cancelled: string[] = []) {
       const rows = await runForFamily(db, familyId!, (tx) => tx.select({
         id: outbox.id, person: people.displayName, language: outbox.language,
         template: outbox.template, requesterName: outbox.requesterName, status: outbox.status,
       }).from(outbox).innerJoin(people, and(eq(outbox.familyId, people.familyId), eq(outbox.personId, people.id))));
       const fresh = rows.filter(({id}) => !captured.has(id));
-      expect(fresh.map(({person}) => person).sort()).toEqual([...destinations].sort());
+      expect(fresh.map(({person}) => person).sort()).toEqual([...destinations, ...cancelled].sort());
       for (const row of fresh) {
-        expect(row).toMatchObject({template, language, requesterName: null, status: "captured"});
+        expect(row).toMatchObject({
+          template: cancelled.includes(row.person) ? "participation-cancelled" : template,
+          language, requesterName: null, status: "captured",
+        });
         captured.add(row.id);
       }
-      await info.attach(stage, {contentType: "application/json", body: JSON.stringify(fresh.map(({person}) => ({
-        person, language, template, ...(template && notify.templates[template]),
+      await info.attach(stage, {contentType: "application/json", body: JSON.stringify(fresh.map(({person, template: sentTemplate}) => ({
+        person, language, template: sentTemplate, ...notify.templates[sentTemplate as keyof typeof notify.templates],
       })), null, 2)});
     }
 
@@ -261,7 +264,7 @@ for (const language of ["en", "es"] as const) {
       await summary(page, draw.participation).click();
       await page.getByRole("button", {name: draw.dropout.replace("{name}", recipient)}).click();
       await expect(page.getByRole("button", {name: draw.join.replace("{name}", recipient)})).toBeVisible();
-      await notices("dropout repair", "plans-changed", [giver]);
+      await notices("dropout repair", "plans-changed", [giver], [recipient]);
       await privateNotice("plans-changed");
       await giverPage.goto(path("/lists"));
       await expect(giverPage.getByRole("region", {name: givingTo})).toHaveCount(0);

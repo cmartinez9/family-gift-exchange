@@ -21,26 +21,26 @@ async function record(
   schedulePushDelivery(familyId);
 }
 
-export async function exchangeRecipients(tx: FamilyTransaction, event: ExchangeEvent) {
+export async function exchangeRecipients(tx: FamilyTransaction, event: ExchangeEvent, status: "in" | "out" = "in") {
   return tx.select({personId: people.id, language: people.language})
     .from(participants)
     .innerJoin(people, and(eq(people.familyId, participants.familyId), eq(people.id, participants.personId)))
     .where(and(
       eq(participants.familyId, event.familyId),
       eq(participants.exchangeId, event.exchangeId),
-      eq(participants.status, "in"),
+      eq(participants.status, status),
       isNull(people.removedAt),
     ));
 }
 
 function notifyExchange(
   event: ExchangeEvent,
-  template: "names-drawn" | "budget-changed" | "plans-changed",
+  template: "names-drawn" | "budget-changed" | "plans-changed" | "draw-redrawn" | "exchange-details-changed" | "participation-cancelled",
   tx?: FamilyTransaction,
   personIds?: readonly string[],
 ) {
   return record(event.familyId, tx, async (transaction) => {
-    const recipients = await exchangeRecipients(transaction, event);
+    const recipients = await exchangeRecipients(transaction, event, template === "participation-cancelled" ? "out" : "in");
     const optedIn = personIds ? recipients.filter((recipient) => personIds.includes(recipient.personId)) : recipients;
     await enqueueMessages(transaction, optedIn.map((recipient): Message => ({
       ...recipient, familyId: event.familyId, template,
@@ -53,6 +53,12 @@ export const drawEvents = {
     notifyExchange(event, "names-drawn", tx, event.personIds),
   plansChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
     notifyExchange(event, "plans-changed", tx, event.personIds),
+  redrawn: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "draw-redrawn", tx, event.personIds),
+  detailsChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "exchange-details-changed", tx, event.personIds),
+  participationCancelled: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "participation-cancelled", tx, event.personIds),
   questionAnswered: (event: PersonEvent, tx: FamilyTransaction) => notifyPerson(event, "question-answered", tx),
 };
 

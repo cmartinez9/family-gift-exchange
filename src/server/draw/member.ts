@@ -62,10 +62,6 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
       .from(people).where(and(eq(people.familyId, familyId), eq(people.id, recipientId)));
     if (!recipient) throw new DrawError("notFound");
 
-    await tx.insert(drawOpenings).values({
-      familyId, exchangeId: exchange.id, giverId: viewer.actingAs,
-      version: exchange.version, viewerId: viewer.personId, sessionId: viewer.sessionId,
-    }).onConflictDoNothing();
     await tx.update(participants).set({seenVersion: exchange.version}).where(and(
       participantScope(familyId, exchange.id), eq(participants.personId, viewer.actingAs),
     ));
@@ -76,7 +72,6 @@ export async function revealMyPerson(viewer: DrawViewer, id: string, expectedVer
   });
 }
 
-/** Read the current member's match without creating reveal evidence. */
 export async function myPerson(viewer: DrawViewer, id: string) {
   try {
     return await auditedDraw(viewer, async (tx, decrypt) => {

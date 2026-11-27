@@ -164,14 +164,9 @@ export async function addListItem(viewer: ListViewer, ownerId: string, input: Ad
 async function notifyClaimChange(tx: FamilyTransaction, item: Item, events: ListEvents, change: "edited" | "deleted") {
   const personId = await getClaimDestination(tx, item.familyId, item.id);
   if (!personId) return;
-  try {
-    await tx.transaction((savepoint) => events.claimedItemChanged(savepoint, {
-      familyId: item.familyId, personId, itemId: item.id, title: item.title, change,
-    }));
-  } catch {
-    // A queue error must not reveal whether there was a claim to the editor.
-    console.warn("Could not enqueue a wishlist edit notification");
-  }
+  await events.claimedItemChanged(tx, {
+    familyId: item.familyId, personId, itemId: item.id, title: item.title, change,
+  });
 }
 
 async function saveChanges(tx: FamilyTransaction, item: Item, changes: ItemValues, events: ListEvents) {
