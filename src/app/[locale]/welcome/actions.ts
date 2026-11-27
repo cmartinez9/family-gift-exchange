@@ -21,7 +21,7 @@ function text(form: FormData, name: string) {
  * signed), or a photo. It stays on onboarding instead of opening the list, so All set comes next.
  */
 export async function addFirstThing(ownerId: string, _: FirstThingState, form: FormData): Promise<FirstThingState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   const kind = text(form, "kind");
   let pictureComing = false;
   try {

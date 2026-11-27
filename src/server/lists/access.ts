@@ -6,7 +6,7 @@ import {revalidateViewer} from "../auth/session";
 import type {FamilyTransaction} from "../db/database";
 import {people} from "../db/schema";
 
-export type ListViewer = Pick<Viewer, "familyId" | "personId" | "actingAs" | "sessionId">;
+export type ListViewer = Pick<Viewer, "familyId" | "personId" | "actingAs" | "sessionId" | "borrowed">;
 
 export class ListError extends Error {
   constructor(readonly code:
@@ -57,7 +57,8 @@ export async function requireListEditor(
   return owner;
 }
 
-export function hidesClaims(viewer: Pick<ListViewer, "personId" | "actingAs">, ownerId: string) {
+export function hidesClaims(viewer: Pick<ListViewer, "personId" | "actingAs" | "borrowed">, ownerId: string) {
   const owner = ownerId.toLowerCase();
-  return owner === viewer.personId.toLowerCase() || owner === viewer.actingAs.toLowerCase();
+  return owner === viewer.personId.toLowerCase() || owner === viewer.actingAs.toLowerCase()
+    || owner === viewer.borrowed?.lenderPersonId.toLowerCase();
 }

@@ -48,6 +48,7 @@ async function sessionIdentity(tx: FamilyTransaction, familyId: string, id: stri
     actingAs: target.id,
     helperId: target.helperId,
     lentBy: sessions.lentBySessionId,
+    lenderPersonId: lender.personId,
     personHiddenAt: sessions.personHiddenAt,
   }).from(sessions)
     .innerJoin(people, and(eq(people.familyId, sessions.familyId), eq(people.id, sessions.personId)))
@@ -68,7 +69,9 @@ function viewerIdentity(row: NonNullable<Awaited<ReturnType<typeof sessionIdenti
     sessionId: id,
     isOrganizer: row.role === "organizer" || row.role === "co_organizer",
     actingAs: row.helperId === row.personId && row.actingAs ? row.actingAs : row.personId,
-    ...(row.lentBy ? {borrowed: {lenderSessionId: row.lentBy, hidden: row.personHiddenAt !== null}} : {}),
+    ...(row.lentBy && row.lenderPersonId ? {borrowed: {
+      lenderSessionId: row.lentBy, lenderPersonId: row.lenderPersonId, hidden: row.personHiddenAt !== null,
+    }} : {}),
   };
 }
 

@@ -5,11 +5,24 @@ import {NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import {HelpingKey} from "../../src/app/[locale]/sign-in/helping";
+import BorrowedPhonePage from "../../src/app/[locale]/welcome/borrowed/page";
+import {BorrowedPerson} from "../../src/app/[locale]/welcome/borrowed/person";
 import {SizesStep} from "../../src/app/[locale]/welcome/steps";
 import {BorrowedAllSet, HandBack} from "../../src/app/[locale]/welcome/borrowed/hand-back";
 
 const borrowed = vi.hoisted(() => ({returnPhone: vi.fn(), hideOnBorrowedPhone: vi.fn(), revealOnBorrowedPhone: vi.fn()}));
-const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn()}));
+const drawState = vi.hoisted(() => ({version: 1}));
+vi.mock("@/server/auth", () => ({requireViewer: async () => ({familyId: "family", personId: "rosa", borrowed: {hidden: false}})}));
+vi.mock("@/server/auth/access", () => ({activePerson: async () => ({displayName: "Rosa"})}));
+vi.mock("@/server/auth/borrowed", () => ({phoneOwnerName: async () => "Ana"}));
+vi.mock("@/server/db/client", () => ({withFamily: (_family: string, action: () => unknown) => action()}));
+vi.mock("@/server/draw", () => ({
+  DrawError: class extends Error {},
+  listExchanges: async () => [{id: "christmas", status: "drawn"}],
+  memberDrawStatus: async () => ({status: "ready", exchange: {id: "christmas", version: drawState.version}}),
+}));
+vi.mock("next-intl/server", () => ({getLocale: async () => "en", getTranslations: vi.fn()}));
+const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn(), refresh: vi.fn()}));
 vi.mock("../../src/app/[locale]/welcome/borrowed/actions", () => borrowed);
 vi.mock("../../src/app/[locale]/sign-in/actions", () => ({}));
 vi.mock("../../src/app/[locale]/lists/actions", () => ({saveProfileField: vi.fn(), previewItemLink: vi.fn()}));
@@ -24,9 +37,13 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  drawState.version = 1;
+  borrowed.hideOnBorrowedPhone.mockResolvedValue({hidden: true});
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: true, addEventListener() {}, removeEventListener() {}}));
+  Element.prototype.getAnimations ??= () => [];
+  Element.prototype.animate ??= () => ({cancel() {}, finished: Promise.resolve(), onfinish: null}) as unknown as Animation;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -62,7 +79,7 @@ it("tells the person handed the phone what only they do, and that it is not thei
 });
 
 it("hands the phone back with nothing of the person on screen, then goes on to the sizes in place", async () => {
-  await render(<HandBack name="Rosa" owner="Ana" shown />);
+  await render(<HandBack name="Rosa" owner="Ana" shown sealed />);
   expect(container.querySelector("h1")?.textContent).toBe("Hand this phone back to Ana");
   expect(container.querySelector("[role=status]")?.textContent)
     .toBe("Rosa's person is hidden again. Nobody holding this phone can see who it is.");
@@ -71,7 +88,7 @@ it("hands the phone back with nothing of the person on screen, then goes on to t
   expect(router.replace).toHaveBeenCalledWith("/welcome/sizes");
   expect(router.push).not.toHaveBeenCalled();
 
-  await render(<HandBack name="Rosa" owner="Ana" shown={false} />);
+  await render(<HandBack name="Rosa" owner="Ana" shown={false} sealed={false} />);
   expect(container.querySelector("[role=status]")?.textContent)
     .toBe("Rosa's PIN is made. There's no person to open yet, so nothing was shown.");
 });
@@ -82,6 +99,50 @@ it("keeps every onboarding step out of the history on a borrowed phone", async (
   expect(router.replace).toHaveBeenCalledWith("/welcome/list");
   expect(router.push).not.toHaveBeenCalled();
   expect(container.querySelector('a[href="/welcome/list"]')?.hasAttribute("data-replace")).toBe(true);
+});
+
+it("waits for sealing before handing back a phone with no drawn person", async () => {
+  const sealed = Promise.withResolvers<{hidden: boolean}>();
+  borrowed.hideOnBorrowedPhone.mockReturnValueOnce(sealed.promise);
+  await render(<BorrowedPerson name="Rosa" owner="Ana" exchange={null} hidden={false} />);
+  expect(borrowed.hideOnBorrowedPhone).toHaveBeenCalledOnce();
+  expect(container.textContent).not.toContain("Hand this phone back");
+  expect(container.querySelector("button")).toBeNull();
+  await act(async () => sealed.resolve({hidden: false}));
+  expect(container.textContent).not.toContain("Hand this phone back");
+  expect(container.querySelector("[role=alert]")?.textContent).toContain(en.borrowed.hideFailed);
+  await click(en.draw.person.tryAgain);
+  expect(container.querySelector("h1")?.textContent).toBe("Hand this phone back to Ana");
+});
+
+it("refreshes a changed draw and opens the new version on retry", async () => {
+  borrowed.revealOnBorrowedPhone.mockResolvedValueOnce({error: "drawChanged"}).mockResolvedValueOnce({name: "Beto"});
+  await render(await BorrowedPhonePage());
+  await click(en.draw.person.revealTap);
+  expect(router.refresh).toHaveBeenCalledOnce();
+  drawState.version = 2;
+  await render(await BorrowedPhonePage());
+  await click(en.draw.person.revealTap);
+  expect(borrowed.revealOnBorrowedPhone).toHaveBeenLastCalledWith("christmas", 2);
+  expect(container.textContent).toContain("Hide Beto");
+});
+
+it("clears the displayed person once an expired borrowed session is safely closed", async () => {
+  borrowed.revealOnBorrowedPhone.mockResolvedValue({name: "Beto"});
+  await render(<BorrowedPerson name="Rosa" owner="Ana" exchange={{id: "christmas", version: 1}} hidden={false} />);
+  await click(en.draw.person.revealTap);
+  await click("Hide Beto");
+  expect(container.textContent).not.toContain("Beto");
+  expect(container.querySelector("h1")?.textContent).toBe("Hand this phone back to Ana");
+});
+
+it("keeps More sizes in the borrowed onboarding flow", async () => {
+  await render(<SizesStep ownerId="rosa" initial={{noClothes: false, sizes: {}}} profileHref="/welcome/sizes/more" replace />);
+  const links = [...container.querySelectorAll("a")];
+  const more = links.find((link) => link.textContent === en.getIn.sizes.more);
+  expect(more?.getAttribute("href")).toBe("/welcome/sizes/more");
+  expect(more?.hasAttribute("data-replace")).toBe(true);
+  expect(links.every((link) => link.getAttribute("href")?.startsWith("/welcome/"))).toBe(true);
 });
 
 it("signs the relative out of the borrowed phone, and says so when that fails", async () => {

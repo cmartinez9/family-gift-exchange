@@ -229,7 +229,33 @@ test("with no person drawn yet, Rosa only makes her PIN and hands the phone stra
     await handOver(page, await f.keyFor("Rosa"), "en");
     await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toBeVisible();
     await expect(page.getByText("Rosa's PIN is made. There's no person to open yet, so nothing was shown.")).toBeVisible();
+    const [session] = await f.sessionsOf("Rosa");
+    expect(session.personHiddenAt).not.toBeNull();
     await shot(page, "f9-9_4-hand-back-no-person");
+  } finally {
+    await f.close();
+  }
+});
+
+test("More sizes cannot lead a borrowed session into My list, Family, or the lender's list", async ({browser}) => {
+  const f = await family(browser);
+  try {
+    const {page} = await f.signedIn("Ana");
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await handOver(page, await f.keyFor("Rosa"), "en");
+    await page.getByRole("button", {name: en.draw.person.revealTap}).click();
+    await page.getByRole("button", {name: "Hide Beto"}).click();
+    await page.getByRole("button", {name: "Ana has the phone"}).click();
+    await page.getByRole("link", {name: en.getIn.sizes.more}).click();
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes\/more$/);
+    await expect(page.getByRole("link", {name: en.lists.myList, exact: true})).toHaveCount(0);
+    await expect(page.getByRole("link", {name: en.ui.tabs.family, exact: true})).toHaveCount(0);
+    for (const path of ["lists", "family", `lists/${f.ids.Ana}`, `lists/${f.ids.Rosa}`, "account"]) {
+      await page.goto(`/en/${path}`);
+      await expect(page).toHaveURL(/\/en\/welcome\/done$/);
+      await expect(page.getByRole("button", {name: "Sign Rosa out of this phone"})).toBeVisible();
+      await expect(page.locator("body")).not.toContainText("Beto");
+    }
   } finally {
     await f.close();
   }

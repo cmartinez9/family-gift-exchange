@@ -9,8 +9,8 @@ export async function generateMetadata() {
 }
 
 export default async function WelcomeSizesPage() {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   const initial = await withFamily(viewer.familyId, (tx) => mySizes(tx, viewer.familyId, viewer.actingAs));
-  return <SizesStep ownerId={viewer.actingAs} initial={initial} profileHref={`/lists/${viewer.actingAs}/profile`}
+  return <SizesStep ownerId={viewer.actingAs} initial={initial} profileHref={viewer.borrowed ? "/welcome/sizes/more" : `/lists/${viewer.actingAs}/profile`}
     replace={Boolean(viewer.borrowed)} />;
 }

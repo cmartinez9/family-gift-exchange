@@ -1,9 +1,10 @@
 "use client";
 
-import {useEffect, useState, useTransition} from "react";
+import {useCallback, useEffect, useState, useTransition} from "react";
 import {useLocale, useTranslations} from "next-intl";
 import {useRouter} from "@/i18n/navigation";
 import {Button} from "@/components/ui/button";
+import {ErrorBlock} from "@/components/ui/blocks";
 import {Card} from "@/components/ui/card";
 import {Icon} from "@/components/ui/icon";
 import {StitchedText} from "@/components/ui/knit/stitched-text";
@@ -13,7 +14,7 @@ import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {StepBar} from "@/components/ui/step-bar";
 import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
-import {returnPhone} from "./actions";
+import {hideOnBorrowedPhone, returnPhone} from "./actions";
 
 /**
  * A page the browser kept in its back-forward cache is never shown again as it was: Back after handing the
@@ -44,10 +45,35 @@ function Note({icon, children}: {icon: "lock" | "phone"; children: string}) {
  * holding the phone knows whom to hand it to, and the owner goes on with the sizes and the list.
  * `shown` is false when there was no person to open, so nothing was ever on the screen.
  */
-export function HandBack({name, owner, shown}: {name: string; owner: string; shown: boolean}) {
+export function HandBack({name, owner, shown, sealed}: {name: string; owner: string; shown: boolean; sealed: boolean}) {
   const t = useTranslations("borrowed");
+  const draw = useTranslations("draw");
   const router = useRouter();
+  const [closed, setClosed] = useState(sealed);
+  const [failed, setFailed] = useState(false);
+  const [pending, start] = useTransition();
+  const seal = useCallback(() => start(async () => {
+    setFailed(false);
+    try {
+      if ((await hideOnBorrowedPhone()).hidden) setClosed(true);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    }
+  }), []);
+  useEffect(() => {
+    if (!closed) seal();
+  }, [closed, seal]);
   useForgetOnRestore();
+  if (!closed) return (
+    <Screen label={t("title")}>
+      <WelcomeSteps step={2} />
+      {failed && <div className="flex flex-col gap-3 px-edge pt-10">
+        <ErrorBlock title={t("hideFailed")} />
+        <Button disabled={pending} onClick={seal}>{draw("person.tryAgain")}</Button>
+      </div>}
+    </Screen>
+  );
   return (
     <Screen actions={<Button onClick={() => {
       haptic("light");

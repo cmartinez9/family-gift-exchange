@@ -7,6 +7,6 @@ export async function generateMetadata() {
 }
 
 export default async function WelcomeListPage() {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   return <AddStep ownerId={viewer.actingAs} replace={Boolean(viewer.borrowed)} />;
 }

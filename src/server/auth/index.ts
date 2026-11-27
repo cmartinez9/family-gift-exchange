@@ -15,7 +15,7 @@ export type Viewer = {
    * Set when this person signed in on someone else's phone, inside that owner's session: `hidden` once they
    * hid their person, after which the session has no sealed draw access.
    */
-  borrowed?: {lenderSessionId: string; hidden: boolean};
+  borrowed?: {lenderSessionId: string; lenderPersonId: string; hidden: boolean};
 };
 
 /**
@@ -41,10 +41,15 @@ export async function getViewer(): Promise<Viewer | null> {
   });
 }
 
-export async function requireViewer(): Promise<Viewer> {
+export async function requireViewer({borrowed}: {borrowed?: "reveal" | "help"} = {}): Promise<Viewer> {
   const viewer = await getViewer();
-  if (viewer) return viewer;
   const locale = await getLocale();
+  if (viewer) {
+    if (viewer.borrowed && (!borrowed || (borrowed === "help" && !viewer.borrowed.hidden))) {
+      redirect(`/${locale}/welcome/${viewer.borrowed.hidden ? "done" : "borrowed"}`);
+    }
+    return viewer;
+  }
   redirect(`/${locale}/sign-in`);
 }
 

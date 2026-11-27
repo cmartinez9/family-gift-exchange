@@ -30,7 +30,7 @@ async function personToOpen(viewer: Viewer) {
  * it, and hands the phone back. Only a session opened on someone else's phone comes here.
  */
 export default async function BorrowedPhonePage() {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "reveal"});
   const locale = await getLocale();
   if (!viewer.borrowed) redirect(`/${locale}`);
   const {name, owner} = await withFamily(viewer.familyId, async (tx) => ({
@@ -38,5 +38,6 @@ export default async function BorrowedPhonePage() {
     owner: await phoneOwnerName(tx, viewer) ?? "",
   }));
   const exchange = viewer.borrowed.hidden ? null : await personToOpen(viewer);
-  return <BorrowedPerson name={name} owner={owner} exchange={exchange} hidden={viewer.borrowed.hidden} />;
+  return <BorrowedPerson key={`${exchange?.id}.${exchange?.version}.${viewer.borrowed.hidden}`}
+    name={name} owner={owner} exchange={exchange} hidden={viewer.borrowed.hidden} />;
 }

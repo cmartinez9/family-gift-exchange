@@ -31,7 +31,7 @@ export async function generateMetadata() {
 
 /** All set (2.10): the step bar knits up, ALL SET! knits in, and what you did is ticked. */
 export default async function WelcomeDonePage() {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   if (viewer.borrowed) {
     // on someone else's phone (9.5): the owner signs the relative out of it
     const names = await withFamily(viewer.familyId, async (tx) => ({

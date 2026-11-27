@@ -2,6 +2,7 @@
 
 import {useRef, useState, useTransition} from "react";
 import {useTranslations} from "next-intl";
+import {useRouter} from "@/i18n/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button} from "@/components/ui/button";
 import {DURATION, EASE} from "@/components/ui/motion/easing";
@@ -26,6 +27,7 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
 }) {
   const t = useTranslations("borrowed");
   const draw = useTranslations("draw");
+  const router = useRouter();
   const [view, setView] = useState<"person" | "back">(exchange && !hidden ? "person" : "back");
   const [person, setPerson] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -37,7 +39,8 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
   const pine = useRef<HTMLDivElement>(null);
   useForgetOnRestore();
 
-  if (view === "back") return <HandBack name={name} owner={owner} shown={hidden || Boolean(exchange)} />;
+  if (view === "back") return <HandBack name={name} owner={owner} shown={hidden || Boolean(exchange)}
+    sealed={hidden || Boolean(exchange)} />;
 
   /** The hold has started: only now is the person opened, and the name knits in as soon as it arrives. */
   function open() {
@@ -47,6 +50,7 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
     revealOnBorrowedPhone(exchange.id, exchange.version).then((result) => {
       if (result.name) setPerson(result.name);
       else {
+        if (result.error === "drawChanged") router.refresh();
         asked.current = false;
         setFailed(true);
       }

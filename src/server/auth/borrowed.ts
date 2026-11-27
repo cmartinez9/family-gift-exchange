@@ -23,7 +23,8 @@ const borrowedSession = (viewer: Viewer) => and(
 export async function hideBorrowedPerson(tx: FamilyTransaction, viewer: Viewer, now: Date) {
   await lockFamily(tx, viewer.familyId);
   const current = await revalidateViewer(tx, viewer);
-  if (!current?.borrowed) return false;
+  if (!current) return Boolean(viewer.borrowed);
+  if (!current.borrowed) return false;
   if (current.borrowed.hidden) return true;
   const [hidden] = await tx.update(sessions).set({personHiddenAt: now}).where(borrowedSession(viewer))
     .returning({id: sessions.id});

@@ -41,7 +41,7 @@ function dataImage(bytes: Buffer | undefined) {
 }
 
 export async function previewItemLink(ownerId: string, input: string): Promise<PreviewState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   try {
     await withFamily(viewer.familyId, (tx) => requireListEditor(tx, viewer, ownerId));
     const preview = await resolveLinkPreview(input);
@@ -173,7 +173,7 @@ export async function acknowledgeChange(actingAs: string, itemId: string, versio
 export async function saveProfileField(
   ownerId: string, field: string, value: string, group: "size" | "about" | "noClothes",
 ): Promise<FormState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   try {
     if (group === "size") await saveListSize(viewer, ownerId, field, value);
     else if (group === "noClothes" && (value === "true" || value === "false")) {

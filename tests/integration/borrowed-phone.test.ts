@@ -4,14 +4,16 @@ import {afterAll, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families, people} from "../../src/server/db/schema";
 import {
-  createExchange, DrawError, listOwnQuestions, memberDrawStatus, revealMyPerson, runDraw, setParticipants, type DrawViewer,
+  createExchange, DrawError, repairDisputedReveals, listOwnQuestions, memberDrawStatus, revealMyPerson, runDraw, setParticipants, type DrawViewer,
 } from "../../src/server/draw";
-import {issueKey, lendSeconds, redeemKey, signInDevice, type Device} from "../../src/server/auth/access";
+import {issueKey, lendSeconds, redeemKey, signInDevice, signInWithPin, type Device} from "../../src/server/auth/access";
 import {peopleOnDevice} from "../../src/server/auth/account";
 import {hideBorrowedPerson, phoneOwnerName, returnBorrowedPhone} from "../../src/server/auth/borrowed";
-import {sessions} from "../../src/server/auth/schema";
-import {endSessions} from "../../src/server/auth/security";
+import {pinCredentials, sessions} from "../../src/server/auth/schema";
+import {disputeSession, endSessions, listSessionDisputes} from "../../src/server/auth/security";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
+import {addListItem, getWishlist} from "../../src/server/lists";
+import {claimItem, getGettingList} from "../../src/server/lists/claims";
 import {requireIssuedKey} from "../helpers/issued-key";
 
 // The phone's cookies, as getViewer reads them.
@@ -181,6 +183,7 @@ it("keeps a borrowed session inside its owner's, and hands the phone back on sig
   await tx(second.familyId, (t) => t.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
     .where(and(eq(sessions.familyId, second.familyId), eq(sessions.id, leo.sessionId))));
   expect(await resolve(leoCookie)).toBeNull();
+  await expect(tx(second.familyId, (t) => hideBorrowedPerson(t, leo, new Date()))).resolves.toBe(true);
   const betoCookie = (await second.lend(await second.key("Beto"), second.ana)).session!.cookie;
   expect((await resolve(betoCookie))?.personId).toBe(second.ids.Beto);
   await tx(second.familyId, (t) => endSessions(t, second.ana, new Date(), false));
@@ -202,7 +205,7 @@ it("lets the relative open only their own person, and nobody once it is hidden",
   // "Hide Beto": from now on this session cannot see the person, or ask them anything
   await expect(tx(f.familyId, (t) => hideBorrowedPerson(t, f.ana, new Date()))).resolves.toBe(false);
   await expect(tx(f.familyId, (t) => hideBorrowedPerson(t, rosa, new Date()))).resolves.toBe(true);
-  expect((await resolve(rosaCookie))?.borrowed).toEqual({lenderSessionId: f.ana.sessionId, hidden: true});
+  expect((await resolve(rosaCookie))?.borrowed).toEqual({lenderSessionId: f.ana.sessionId, lenderPersonId: f.ids.Ana, hidden: true});
   expect(await refused(revealMyPerson(rosa, f.exchangeId, 1))).toBe("forbidden");
   expect(await refused(memberDrawStatus(rosa, f.exchangeId))).toBe("forbidden");
   expect(await refused(listOwnQuestions(rosa, f.exchangeId))).toBe("forbidden");
@@ -213,4 +216,71 @@ it("lets the relative open only their own person, and nobody once it is hidden",
   const own = await tx(f.familyId, (t) => signInDevice(t, f.familyId, f.ids.Rosa, phone(), new Date()));
   const rosaOwnPhone = (await resolve(own.cookie))!;
   await expect(revealMyPerson(rosaOwnPhone, f.exchangeId, 1)).resolves.toMatchObject({person: opened.person});
+});
+
+
+it("keeps a no-draw hand-back sealed when the organizer draws later", async () => {
+  const f = await fixture({draw: false});
+  const cookie = (await f.lend(await f.key("Rosa"), f.ana)).session!.cookie;
+  const rosa = (await resolve(cookie))!;
+  await expect(tx(f.familyId, (t) => hideBorrowedPerson(t, rosa, new Date()))).resolves.toBe(true);
+  const exchange = await createExchange(f.organizer, {
+    name: "Christmas", giftDay: "2026-12-24", giftTime: "19:00", place: "Ana's", budgetAmount: "50",
+    listDeadline: "2026-12-10", drawDay: "2026-12-01",
+  });
+  await setParticipants(f.organizer, exchange.id, Object.values(f.ids));
+  await runDraw(f.organizer, exchange.id, {expectedVersion: 0});
+  expect(await refused(revealMyPerson(rosa, exchange.id, 1))).toBe("forbidden");
+  expect(await refused(memberDrawStatus((await resolve(cookie))!, exchange.id))).toBe("forbidden");
+});
+
+it("includes borrowed children when disputing a compromised lender", async () => {
+  const f = await fixture();
+  const key = await f.key("Rosa");
+  const stolenPhone = phone();
+  const stolenSession = await tx(f.familyId, (t) => signInDevice(t, f.familyId, f.ids.Ana, stolenPhone, new Date()));
+  const stolen = (await resolve(stolenSession.cookie))!;
+  const rosaCookie = (await f.lend(key, stolen, stolenPhone)).session!.cookie;
+  const rosa = (await resolve(rosaCookie))!;
+  const exposed = await revealMyPerson(rosa, f.exchangeId, 1);
+  await expect(tx(f.familyId, (t) => disputeSession(t, f.ana, stolen.sessionId, new Date()))).resolves.toBe(true);
+  expect(await resolve(rosaCookie)).toBeNull();
+  expect(await resolve(f.anaSession.cookie)).toEqual(f.ana);
+  expect(await tx(f.familyId, (t) => listSessionDisputes(t, f.familyId, f.ids.Rosa)))
+    .toEqual([{sessionId: rosa.sessionId, at: expect.any(Date)}]);
+  const [credential] = await tx(f.familyId, (t) => t.select().from(pinCredentials)
+    .where(and(eq(pinCredentials.familyId, f.familyId), eq(pinCredentials.personId, f.ids.Rosa))));
+  expect(credential.newDevicesLocked).toBe(true);
+  await expect(tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.ids.Rosa, pin, pepper, phone(), new Date())))
+    .resolves.toEqual({error: "newDevicesLocked"});
+  await repairDisputedReveals(f.ana);
+  const own = await tx(f.familyId, (t) => signInDevice(t, f.familyId, f.ids.Rosa, phone(), new Date()));
+  const rosaOwnPhone = (await resolve(own.cookie))!;
+  expect(await memberDrawStatus(rosaOwnPhone, f.exchangeId)).toMatchObject({exchange: {version: 2}, seen: false});
+  expect((await revealMyPerson(rosaOwnPhone, f.exchangeId, 2)).person.id).not.toBe(exposed.person.id);
+});
+
+it("hides claims on both the borrower's and lender's lists after hand-back", async () => {
+  const f = await fixture({draw: false});
+  const cookie = (await f.lend(await f.key("Rosa"), f.ana)).session!.cookie;
+  const rosa = (await resolve(cookie))!;
+  const betoSession = await tx(f.familyId, (t) => signInDevice(t, f.familyId, f.ids.Beto, phone(), new Date()));
+  const beto = (await resolve(betoSession.cookie))!;
+  const anaItem = await addListItem(f.ana, f.ids.Ana, {kind: "note", title: "Ana's gift"});
+  const rosaItem = await addListItem(rosa, f.ids.Rosa, {kind: "note", title: "Rosa's gift"});
+  const betoItem = await addListItem(beto, f.ids.Beto, {kind: "note", title: "Beto's gift"});
+  await claimItem(f.organizer, anaItem.id);
+  await claimItem(f.organizer, rosaItem.id);
+  await claimItem(f.organizer, betoItem.id);
+  await tx(f.familyId, (t) => hideBorrowedPerson(t, rosa, new Date()));
+  const withoutMetadata = {familyId: rosa.familyId, personId: rosa.personId, actingAs: rosa.actingAs, sessionId: rosa.sessionId};
+  for (const owner of [f.ids.Ana, f.ids.Rosa]) {
+    const list = await getWishlist(withoutMetadata, owner);
+    expect(list.canClaim).toBe(false);
+    expect(list.items).toHaveLength(1);
+    expect(list.items[0]).not.toHaveProperty("claim");
+  }
+  expect((await getWishlist(withoutMetadata, f.ids.Beto)).items[0].claim).toBe("someone");
+  await expect(claimItem(withoutMetadata, anaItem.id)).rejects.toMatchObject({code: "forbidden"});
+  await expect(getGettingList(withoutMetadata)).resolves.toEqual([]);
 });

@@ -1,5 +1,5 @@
 import {hasLocale} from "next-intl";
-import {notFound} from "next/navigation";
+import {notFound, redirect} from "next/navigation";
 import {getTranslations} from "next-intl/server";
 import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Link} from "@/i18n/navigation";
@@ -24,6 +24,7 @@ async function getPageLocale(params: HomeProps["params"]): Promise<Locale> {
 export default async function HomePage({params}: HomeProps) {
   const locale = await getPageLocale(params);
   const viewer = await getViewer();
+  if (viewer?.borrowed) redirect(`/${locale}/welcome/${viewer.borrowed.hidden ? "done" : "borrowed"}`);
   if (viewer) return <HomeScreen viewer={viewer} />;
   const t = await getTranslations({locale, namespace: "home"});
 

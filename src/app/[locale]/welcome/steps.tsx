@@ -158,7 +158,7 @@ export function SizesStep({ownerId, initial, profileHref, replace = false}: {
             </div>
             <div className="flex flex-col gap-2">
               <GroupHead id="bottoms" title={t("bottoms")}
-                right={<TextLink href={profileHref} transition="push" className="min-h-12 px-0 text-ink">{t("waistLength")}</TextLink>} />
+                right={<TextLink href={profileHref} replace={replace} transition={replace ? undefined : "push"} className="min-h-12 px-0 text-ink">{t("waistLength")}</TextLink>} />
               <ChoiceChips round legend={t("bottoms")} legendClassName="sr-only" name="bottoms" value={sizes.bottoms ?? null}
                 options={LETTER_SIZES.map(([value, label]) => ({value, label}))} onChange={(value) => save("bottoms", value)} />
             </div>
@@ -184,7 +184,7 @@ export function SizesStep({ownerId, initial, profileHref, replace = false}: {
             </div>
           </Card>
         )}
-        {!noClothes && <TextLink href={profileHref} transition="push" className="self-center text-center">{t("more")}</TextLink>}
+        {!noClothes && <TextLink href={profileHref} replace={replace} transition={replace ? undefined : "push"} className="self-center text-center">{t("more")}</TextLink>}
       </div>
       <Sheet open={systemOpen} onClose={() => setSystemOpen(false)} title={t("systemTitle")} closeLabel={ui("close")}>
         <ChoiceChips legend={t("systemTitle")} legendClassName="sr-only" name="shoeSystem" value={system ?? null}

@@ -11,7 +11,7 @@ export type BorrowedReveal = {name?: string; error?: "unavailable" | "drawChange
 
 /** Opening your own person on someone else's phone (9.3): the same reveal as on your own, and only there. */
 export async function revealOnBorrowedPhone(exchangeId: string, version: number): Promise<BorrowedReveal> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "reveal"});
   if (!viewer.borrowed || typeof exchangeId !== "string" || !Number.isInteger(version)) return {error: "unavailable"};
   try {
     const {person} = await revealMyPerson(viewer, exchangeId, version);
@@ -24,8 +24,8 @@ export async function revealOnBorrowedPhone(exchangeId: string, version: number)
 
 /** "Hide Beto": nobody holding the phone after this can open the person again. */
 export async function hideOnBorrowedPhone(): Promise<{hidden: boolean}> {
-  const viewer = await requireViewer();
-  if (!viewer.borrowed) return {hidden: false};
+  const viewer = await getViewer();
+  if (!viewer?.borrowed) return {hidden: true};
   return {hidden: await withFamily(viewer.familyId, (tx) => hideBorrowedPerson(tx, viewer, new Date()))};
 }
 
