@@ -8,7 +8,7 @@ import {Sheet} from "@/components/ui/sheet";
 import type {FormState} from "./actions";
 
 export type CloseSeasonLabels = {
-  open: string; title: string; close: string; lists: string; sealed: string; questions: string; confirm: string; notYet: string;
+  open: string; title: string; close: string; lists: string; sealed: string; marks: string; confirm: string; notYet: string;
 };
 
 function Fact({icon, children}: {icon: IconName; children: ReactNode}) {
@@ -34,7 +34,7 @@ export function CloseSeasonSheet({labels, action}: {
         <ul className="flex flex-col gap-3.5 pb-1">
           <Fact icon="list">{labels.lists}</Fact>
           <Fact icon="lock">{labels.sealed}</Fact>
-          <Fact icon="message">{labels.questions}</Fact>
+          <Fact icon="gift">{labels.marks}</Fact>
         </ul>
         <form action={submit} className="flex flex-col gap-2">
           {state.error && <ErrorBlock title={state.error} />}

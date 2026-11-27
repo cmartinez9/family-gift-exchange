@@ -134,6 +134,7 @@ it("captures every event in both recipient languages and confines sensitive even
 
 it("notifies only ordinary claimers of edits and removals with generic localized inbox and push content", async () => {
   vi.stubEnv("VERCEL_ENV", "production");
+  await withFamily(familyId, (tx) => tx.update(exchanges).set({status: "setup"}).where(eq(exchanges.id, exchangeId)));
   const expectedContent = [
     {title: "A gift idea changed", body: "An item you’re getting changed. Check your list of gifts you’re getting."},
     {title: "Cambió una idea de regalo", body: "Cambió uno de los regalos que vas a comprar. Revisa tu lista de regalos que vas a dar."},

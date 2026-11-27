@@ -11,7 +11,7 @@ export async function CloseSeason({exchangeId, name}: {exchangeId: string; name:
   return (
     <CloseSeasonSheet action={closeSeason.bind(null, exchangeId)} labels={{
       open: draw("close"), title: t("closeTitle", {name}), close: ui("close"), lists: t("closeLists"),
-      sealed: t("closeSealed"), questions: t("closeQuestions"), confirm: t("closeConfirm", {name}), notYet: t("notYet"),
+      sealed: t("closeSealed"), marks: t("closeMarks"), confirm: t("closeConfirm", {name}), notYet: t("notYet"),
     }} />
   );
 }
