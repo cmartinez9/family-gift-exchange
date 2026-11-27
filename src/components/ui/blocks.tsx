@@ -1,5 +1,6 @@
 import type {ReactNode} from "react";
-import {Card} from "./card";
+import {Card, stackRow, stackWords} from "./card";
+import {cn} from "./cn";
 import {Icon} from "./icon";
 import {KnitMotif} from "./knit/knit-motif";
 import {LoadingPicture} from "./item-card";
@@ -30,9 +31,9 @@ export function EmptyBlock({title, children, actions, motif = true, titleAs: Tit
 export function LoadingBlock({title, children}: {title: ReactNode; children?: ReactNode}) {
   return (
     <Card size="item" aria-busy="true" data-block="loading">
-      <div className="flex items-center gap-3.5">
+      <div className={cn("flex items-center gap-3.5", stackRow)}>
         <LoadingPicture />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5" role="status">
+        <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", stackWords)} role="status">
           <p className="text-item-title">{title}</p>
           {children && <p className="text-body text-muted-ink">{children}</p>}
         </div>

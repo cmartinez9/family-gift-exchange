@@ -9,7 +9,7 @@ import {AppLink} from "./navigation";
  */
 export function CornerLabel({lines, className}: {lines: readonly string[]; className?: string}) {
   return (
-    <p className={cn("flex flex-col text-label uppercase whitespace-nowrap", className)}>
+    <p className={cn("flex flex-col text-label uppercase whitespace-nowrap max-[299px]:whitespace-normal", className)}>
       {lines.map((line) => <span key={line}>{line}</span>)}
     </p>
   );

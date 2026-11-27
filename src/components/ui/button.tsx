@@ -31,7 +31,7 @@ const VARIANT: Readonly<Record<ButtonVariant, string>> = {
   smallSoft: "min-h-12 self-start px-[18px] max-[299px]:px-3 max-[299px]:py-2.5 max-[299px]:rounded-[24px] max-[299px]:flex-col max-[299px]:gap-1 gap-2 bg-[var(--track)] text-ink text-body-strong "
     + "disabled:text-[var(--fg-muted)]",
   danger: "min-h-14 w-full px-6 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[28px] max-[299px]:flex-col max-[299px]:gap-1 bg-danger text-snow-white text-body-strong",
-  soft: "min-h-[52px] w-full px-3 bg-[var(--track)] text-ink text-body-strong",
+  soft: "min-h-[52px] w-full px-3 max-[299px]:px-2 max-[299px]:py-3 max-[299px]:rounded-[26px] max-[299px]:flex-col max-[299px]:gap-1 bg-[var(--track)] text-ink text-body-strong",
 };
 
 const ICON_SIZE: Readonly<Record<ButtonVariant, number>> = {ground: 22, outline: 22, card: 22, small: 20, smallSoft: 20, danger: 22, soft: 22};

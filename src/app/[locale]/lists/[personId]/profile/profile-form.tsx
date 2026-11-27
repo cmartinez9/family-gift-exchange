@@ -183,11 +183,11 @@ export function ProfileForm({ownerId, initialSizes, initialAbout, initialNoCloth
                   </span>
                 </label>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 max-[299px]:flex-wrap max-[299px]:justify-between">
                 {shoes && <IconButton icon="minus" label={t("shoeSmaller")} onClick={() => step(-1)} />}
                 <input id={`${ids}-shoes`} list={`${ids}-shoe-list`} value={sizes.shoes ? sizeLabel(sizes.shoes) : ""} maxLength={40}
                   inputMode={shoeSystem === "us-kids" || shoeSystem === "other" ? "text" : "decimal"} autoComplete="off"
-                  className={cn("h-12 min-w-0 flex-1 rounded-pill border-0 px-4 text-center text-body-strong",
+                  className={cn("h-12 min-w-0 flex-1 rounded-pill border-0 px-4 text-center text-body-strong max-[299px]:order-first max-[299px]:basis-full",
                     "focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-ink",
                     sizes.shoes ? "bg-ink text-snow-white" : "bg-[var(--track)] text-ink")}
                   onChange={(event) => setSize("shoes", event.currentTarget.value.replace("½", ".5"), false)}

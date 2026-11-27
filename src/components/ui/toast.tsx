@@ -2,6 +2,7 @@
 
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from "react";
 import {cn} from "./cn";
+import {stackRow, stackWords} from "./card";
 import {Icon, type IconName} from "./icon";
 import {DURATION} from "./motion/easing";
 
@@ -85,18 +86,18 @@ export function ToastHost({undoLabel}: {undoLabel: string}) {
 
   const top = shown?.placement === "top";
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4" style={top ? {top: "calc(52px + var(--safe-top))"} : {bottom}}
+    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4 max-[299px]:px-3" style={top ? {top: "calc(52px + var(--safe-top))"} : {bottom}}
       data-toast-host="">
       <div role="status" aria-live="polite" aria-atomic="true">
         <div data-show={visible} data-placement={top ? "top" : "bottom"}
-          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white")}
+          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white max-[299px]:p-3", stackRow)}
           inert={!visible}>
           {shown && <>
             <Icon name={shown.icon ?? "check"} size={22} strokeWidth={2.6} className="text-gold" />
-            <p className="flex-1 text-body font-semibold">{shown.message}</p>
+            <p className={cn("flex-1 text-body font-semibold", stackWords)}>{shown.message}</p>
             {shown.undo && (
               <button type="button"
-                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4"
+                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4 max-[299px]:px-2"
                 onClick={() => {
                   const undo = shown.undo;
                   dismissToast(shown.id);
