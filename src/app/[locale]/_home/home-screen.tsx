@@ -1,7 +1,8 @@
 import {getFormatter, getTranslations} from "next-intl/server";
 import {Avatar, YouButton} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
-import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, ListRow, Rows, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Countdown} from "@/components/ui/countdown";
 import {FairIsleBand} from "@/components/ui/knit/knit-svg";
 import {KnitIn} from "@/components/ui/motion/knit-in";
@@ -82,9 +83,9 @@ export async function HomeScreen({viewer}: {viewer: Viewer}) {
         ) : unread[0] ? (
           // a notice that needs you is the next step; the inbox reads it
           <AppLink href="/notifications" transition="push" className="fge-press block rounded-card">
-            <Card tone="next" as="span" className="flex-row items-center gap-3.5 py-5 pr-4 pl-4">
+            <Card tone="next" as="span" className={cn("flex-row items-center gap-3.5 py-5 pr-4 pl-4", stackRow)}>
               <IconDisc icon="message" />
-              <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                 <span className="text-card-title" lang={unread[0].language}>{unread[0].title}</span>
                 <span className="text-body text-gold-ink">{t("tapToRead")}</span>
               </span>

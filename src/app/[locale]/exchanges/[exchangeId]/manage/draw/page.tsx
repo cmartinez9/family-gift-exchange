@@ -1,6 +1,7 @@
 import {getTranslations} from "next-intl/server";
 import {ButtonLink, TextLink} from "@/components/ui/button";
-import {Card, IconDisc, Rows} from "@/components/ui/card";
+import {Card, IconDisc, Rows, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {Tick} from "@/components/ui/inputs";
 import {KnitMotif} from "@/components/ui/knit/knit-motif";
@@ -82,9 +83,9 @@ export default async function DrawPage({params}: {params: Promise<{exchangeId: s
           <PageTitle title={t("ready")} lead={t("setup.readyLead")} />
           <KnitIn className="flex flex-col gap-3 px-edge pt-6 pb-6">
             <Card className="flex flex-col gap-2">
-              <div className="flex items-center gap-3.5 pb-1">
+              <div className={cn("flex items-center gap-3.5 pb-1", stackRow)}>
                 <IconDisc icon="family" />
-                <div className="flex min-w-0 flex-col">
+                <div className={cn("flex min-w-0 flex-col", stackWords)}>
                   <p className="text-card-title">{t("setup.peopleInHouses", {people: taking.length, houses})}</p>
                   <p className="text-body text-muted-ink">{t("setup.listsGrow")}</p>
                 </div>

@@ -66,7 +66,9 @@ export function ChecklistTick({
   return (
     // two to a row; one to a row when the text is too large for two
     <div className="flex min-w-0 grow basis-[8.5rem] flex-col gap-1">
+      {/* at the largest text size the tick sits over its word, so the word keeps the pill's width */}
       <label className={cn("fge-press relative flex min-h-[52px] cursor-pointer items-center gap-3 rounded-pill bg-[var(--track)] py-2 pr-4 pl-2.5 text-body-strong",
+        "max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-1.5 max-[299px]:rounded-[24px] max-[299px]:py-2.5 max-[299px]:pr-3 max-[299px]:pl-3",
         "has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-3 has-[:focus-visible]:outline-[var(--focus)]")}>
         <input
           type="checkbox" checked={current} disabled={pending} className="absolute inset-0 cursor-pointer rounded-pill opacity-0"

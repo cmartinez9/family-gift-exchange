@@ -242,6 +242,23 @@
     }
   }
 
+  /*
+   * The largest text size (the phone under 300 CSS pixels wide, as at 200% in Safari). Words grow and
+   * the frame gives way, as in 13.5: the edge tightens (and cards their sides, in card.tsx) so the column
+   * stays wide enough for whole words, and the title and sheet title grow less than the sentences under them, as Dynamic
+   * Type's own headings do, so a long Spanish word in a title ("Intercambios") still fits a line. Every
+   * sentence keeps 18px.
+   */
+  @media (max-width: 299px) {
+    :root {
+      --spacing-edge: 12px;
+      --text-title: 24px;
+      --text-title--line-height: 29px;
+      --text-sheet-title: 22px;
+      --text-sheet-title--line-height: 27px;
+    }
+  }
+
   /* focus and scrolling keep things clear of the floating tab bar */
   html:has([data-screen="tab"]) {
     scroll-padding-bottom: calc(var(--space-tab-bar-clearance) + var(--safe-bottom));

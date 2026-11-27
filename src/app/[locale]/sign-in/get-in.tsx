@@ -41,14 +41,17 @@ export function fitCell(text: string, cell: number) {
   return Math.min(cell, Math.floor((COLUMN / columns) * 10) / 10);
 }
 
+/** At the largest text size the column is narrower than the fitted cell allows: the stitches scale down with it. */
+const GREETING_FIT = "block max-[299px]:max-w-full max-[299px]:[&>svg]:h-auto max-[299px]:[&>svg]:max-w-full";
+
 /** A greeting knitted in, one stitch at a time: "HI" over "ROSA!". `heading` makes it the screen's title. */
 export function Greeting({top, bottom, heading = false}: {top: string; bottom: string; heading?: boolean}) {
   const Tag = heading ? "h1" : "div";
   return (
-    <Tag className="flex flex-col items-center gap-4 pt-6" data-greeting="">
-      <StitchedText as="span" className="block" text={top} cell={fitCell(top, STITCH_CELL.greeting)} knit stepMs={7} />
+    <Tag className="flex flex-col items-center gap-4 pt-6 max-[299px]:px-edge" data-greeting="">
+      <StitchedText as="span" className={GREETING_FIT} text={top} cell={fitCell(top, STITCH_CELL.greeting)} knit stepMs={7} />
       <span className="sr-only"> </span>
-      <StitchedText as="span" className="block" text={bottom} cell={fitCell(bottom, STITCH_CELL.greeting)} knit stepMs={5} delayMs={180} />
+      <StitchedText as="span" className={GREETING_FIT} text={bottom} cell={fitCell(bottom, STITCH_CELL.greeting)} knit stepMs={5} delayMs={180} />
     </Tag>
   );
 }

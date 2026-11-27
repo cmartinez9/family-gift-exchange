@@ -3,7 +3,8 @@ import {notFound} from "next/navigation";
 import type {ReactNode} from "react";
 import {Avatar} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
-import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, ListRow, Rows, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {TextField} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
@@ -69,9 +70,9 @@ function RowEditor({label, children}: {label: string; children: ReactNode}) {
 function OpenRow({summary, icon, children}: {summary: string; icon: Parameters<typeof IconDisc>[0]["icon"]; children: ReactNode}) {
   return (
     <details className="group">
-      <summary className="fge-press flex min-h-16 cursor-pointer list-none items-center gap-3.5 py-2 [&::-webkit-details-marker]:hidden">
+      <summary className={cn("fge-press flex min-h-16 cursor-pointer list-none items-center gap-3.5 py-2 [&::-webkit-details-marker]:hidden", stackRow)}>
         <IconDisc icon={icon} />
-        <span className="min-w-0 flex-1 text-row-title">{summary}</span>
+        <span className={cn("min-w-0 flex-1 text-row-title", stackWords)}>{summary}</span>
         <Icon name="chevron" size={22} className="text-muted-ink transition-transform duration-200 group-open:rotate-90" />
       </summary>
       <div className="flex flex-col gap-3 pt-1 pb-4">{children}</div>
@@ -107,9 +108,9 @@ export default async function FamilyPage() {
     const request = board.requests.find(({personId}) => personId === id);
     return (
       <li key={id} className="relative">
-        <div className="flex min-h-16 items-center gap-3.5 py-2 pr-14">
+        <div className={cn("flex min-h-16 items-center gap-3.5 py-2 pr-14 max-[299px]:pr-0", stackRow)}>
           <Avatar name={name} size={44} />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
             <h2 className="text-row-title break-words">{name}</h2>
             {helperId ? (
               <p className="text-body font-semibold text-gold-ink">

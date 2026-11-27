@@ -4,7 +4,8 @@ import {useFormatter, useTranslations} from "next-intl";
 import {useActionState, useEffect, useId, useRef, useState, useTransition, type ReactNode} from "react";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton, TextLink} from "@/components/ui/button";
-import {Card, IconDisc, OnlyYou, Track, Chevron} from "@/components/ui/card";
+import {Card, IconDisc, OnlyYou, Track, Chevron, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Chip} from "@/components/ui/chip";
 import {Icon} from "@/components/ui/icon";
 import {TextArea} from "@/components/ui/inputs";
@@ -174,9 +175,9 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
         ))}
         {incoming.length > 0 && (
           <AppLink href={answerHref} transition="push" className="fge-press block rounded-card">
-            <Card as="span" className="flex flex-row items-center gap-3.5 py-4">
+            <Card as="span" className={cn("flex flex-row items-center gap-3.5 py-4", stackRow)}>
               <IconDisc icon="message" />
-              <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                 <span className="text-card-title">{t("person.incomingCard")}</span>
                 <span className="text-body text-muted-ink">{t("person.incomingCount", {count: incoming.length})}</span>
                 <span className="text-body break-words text-muted-ink">“{incoming[0]}”</span>

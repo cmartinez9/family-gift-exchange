@@ -93,13 +93,13 @@ const FIELD = "w-full min-w-0 rounded-[14px] bg-transparent py-1 text-body-stron
 
 function DetailRow({icon, label, htmlFor, children}: {icon: IconName; label: string; htmlFor: string; children: ReactNode}) {
   return (
-    <div className="flex min-h-[72px] items-center gap-3.5 py-2">
-      <Icon name={icon} size={22} strokeWidth={2.3} className="text-pine" />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <label htmlFor={htmlFor} className="text-body text-muted-ink">{label}</label>
-        {children}
-      </div>
-      <Icon name="chevron" size={22} className="text-muted-ink" />
+    // At the largest text size the icon and chevron step aside, so the label and the field have the row's
+    // whole width and keep their words whole.
+    <div className="grid min-h-[72px] grid-cols-[22px_minmax(0,1fr)_22px] items-center gap-x-3.5 py-2 max-[299px]:grid-cols-1">
+      <Icon name={icon} size={22} strokeWidth={2.3} className="row-span-2 text-pine max-[299px]:hidden" />
+      <label htmlFor={htmlFor} className="text-body text-muted-ink">{label}</label>
+      <div className="col-start-2 row-start-2 flex min-w-0 flex-col max-[299px]:col-start-1">{children}</div>
+      <Icon name="chevron" size={22} className="col-start-3 row-span-2 row-start-1 text-muted-ink max-[299px]:hidden" />
     </div>
   );
 }
@@ -162,12 +162,11 @@ export async function ExchangeFacts({details}: {details: ExchangeDetails}) {
     <Card flush className="px-5 py-1">
       <Rows as="ul">
         {rows.map(({icon, label, value}) => (
-          <li key={label} className="flex min-h-16 items-center gap-3.5 py-2">
-            <Icon name={icon} size={22} strokeWidth={2.3} className="text-pine" />
-            <div className="flex min-w-0 flex-col">
-              <span className="text-body text-muted-ink">{label}</span>
-              <span className="text-body-strong break-words">{value}</span>
-            </div>
+          // at the largest text size the icon steps aside, so the label and value have the row's whole width
+          <li key={label} className="grid min-h-16 grid-cols-[22px_minmax(0,1fr)] content-center items-center gap-x-3.5 py-2 max-[299px]:grid-cols-1">
+            <Icon name={icon} size={22} strokeWidth={2.3} className="row-span-2 text-pine max-[299px]:hidden" />
+            <span className="text-body text-muted-ink">{label}</span>
+            <span className="col-start-2 text-body-strong break-words max-[299px]:col-start-1">{value}</span>
           </li>
         ))}
       </Rows>

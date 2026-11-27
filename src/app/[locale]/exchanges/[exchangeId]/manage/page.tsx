@@ -103,11 +103,12 @@ async function Hub({state, viewer, check}: {state: OrganizerState; viewer: Viewe
       {state.exchange.disputedRevealRepairedAt && <div className="px-edge pt-3"><Card><p role="status" className="text-body">{t("disputedRevealRepaired")}</p></Card></div>}
 
       <section aria-label={t("season.readyLists")} className="px-edge pt-6">
-        <ul className="grid grid-cols-3 gap-x-2 gap-y-4">
+        {/* at the largest text size the snowflakes flow, as many to a line as their names allow */}
+        <ul className="grid grid-cols-3 gap-x-2 gap-y-4 max-[299px]:flex max-[299px]:flex-wrap max-[299px]:justify-center max-[299px]:gap-x-5">
           {taking.map(({id: personId, displayName}) => {
             const lit = ready.get(personId);
             return (
-              <li key={personId} className="flex flex-col items-center gap-1.5 text-center" data-ready={lit ? "true" : "false"}>
+              <li key={personId} className="flex flex-col items-center gap-1.5 text-center max-[299px]:max-w-full max-[299px]:shrink-0" data-ready={lit ? "true" : "false"}>
                 <Snowflake cell={4.6} className={lit ? undefined : "opacity-40"} />
                 <span className="max-w-full text-body font-bold break-words">{displayName}</span>
                 <span className="sr-only">{lit ? t("season.listReady") : t("season.listNotReady")}</span>

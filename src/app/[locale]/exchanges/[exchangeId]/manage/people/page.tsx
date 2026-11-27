@@ -1,7 +1,8 @@
 import {getFormatter, getTranslations} from "next-intl/server";
 import {Avatar} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {BackRow, PageTitle} from "@/components/ui/page-header";
@@ -85,9 +86,9 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
               const ready = Boolean(byId.get(personId)?.ready);
               const you = personId === viewer.personId;
               return (
-                <li key={personId} className="flex min-h-16 flex-wrap items-center gap-x-3.5 gap-y-2 py-2">
+                <li key={personId} className={cn("flex min-h-16 flex-wrap items-center gap-x-3.5 gap-y-2 py-2", stackRow)}>
                   <Avatar name={displayName} size={44} className="@max-[16rem]:hidden" />
-                  <span className="flex min-w-0 flex-1 basis-24 flex-col">
+                  <span className={cn("flex min-w-0 flex-1 basis-24 flex-col", stackWords)}>
                     <span className="text-row-title break-words">{displayName}</span>
                     <span className="text-body text-muted-ink">{you ? `${t("setup.youCap")} · ${status(personId)}` : status(personId)}</span>
                   </span>

@@ -6,7 +6,8 @@ import {useFormatter, useTranslations} from "next-intl";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton} from "@/components/ui/button";
-import {Card, IconDisc} from "@/components/ui/card";
+import {Card, IconDisc, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {STITCH_CELL, StitchedText} from "@/components/ui/knit/stitched-text";
 import {haptic} from "@/components/ui/motion/haptic";
@@ -183,9 +184,9 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
               const status = person.joined ? t("status.joined") : isSent ? t("status.sent") : k("notSentYet");
               return (
                 <li key={person.id} id={`member-${person.id}`} className="flex flex-col">
-                  <div className="flex min-h-16 items-center gap-3.5 py-2">
+                  <div className={cn("flex min-h-16 items-center gap-3.5 py-2", stackRow)}>
                     <Avatar name={person.name} size={44} />
-                    <div className="flex min-w-0 flex-1 flex-col">
+                    <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                       <h2 className="text-row-title break-words">{person.name}</h2>
                       <p className="text-body text-muted-ink">{status}</p>
                       {person.requestedAt && <p className="text-body font-semibold text-gold-ink">
@@ -209,7 +210,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
                     )}
                   </div>
                   {isSent && !person.joined && !prepared[person.id]?.key && (
-                    <TextButton className="-mt-2 self-start px-0 pl-[58px] text-muted-ink" disabled={pending}
+                    <TextButton className="-mt-2 self-start px-0 pl-[58px] text-muted-ink max-[299px]:mt-0 max-[299px]:pl-0" disabled={pending}
                       onClick={() => prepare(person, "share")}>{k("sendAgain")}</TextButton>
                   )}
                   {!person.joined && (prepared[person.id]?.error ? <Feedback state={prepared[person.id]} /> : panel(person))}
@@ -235,9 +236,9 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
               );
             })}
             {helped.map(({id, name, helper}) => (
-              <li key={id} className="flex min-h-16 items-center gap-3.5 py-2">
+              <li key={id} className={cn("flex min-h-16 items-center gap-3.5 py-2", stackRow)}>
                 <Avatar name={name} size={44} />
-                <div className="flex min-w-0 flex-1 flex-col">
+                <div className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
                   <p className="text-row-title break-words">{name}</p>
                   <p className="flex items-center gap-1.5 text-body text-muted-ink"><Icon name="phone" size={18} />{k("noPhoneHelps", {name: helper})}</p>
                 </div>

@@ -151,7 +151,8 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
                         haptic("soft");
                         open(item.id);
                       }}>
-                      <span aria-hidden="true" className="hyphens-auto">{item.title}</span>
+                      {/* at the largest text size the title has the card's width, so whole words wrap without hyphens */}
+                      <span aria-hidden="true" className="hyphens-auto max-[299px]:hyphens-manual">{item.title}</span>
                     </Link>
                   )}
                   store={item.store ?? undefined}

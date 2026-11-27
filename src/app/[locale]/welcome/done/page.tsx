@@ -1,6 +1,7 @@
 import {getTranslations} from "next-intl/server";
 import {ButtonLink} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {Screen} from "@/components/ui/screen";
@@ -17,9 +18,9 @@ import {welcomeAssignment} from "../assignment";
 
 function Row({done, title, sub}: {done: boolean; title: string; sub?: string}) {
   return (
-    <li className="flex min-h-14 items-center gap-3.5 py-2">
+    <li className={cn("flex min-h-14 items-center gap-3.5 py-2", stackRow)}>
       <Tick done={done} />
-      <span className="flex min-w-0 flex-col">
+      <span className={cn("flex min-w-0 flex-col", stackWords)}>
         <span className="text-row-title">{title}</span>
         {sub && <span className="text-body text-muted-ink">{sub}</span>}
       </span>

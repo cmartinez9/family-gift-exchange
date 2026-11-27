@@ -139,8 +139,9 @@ export function Sheet({open, onClose, title, closeLabel, children, className}: {
         <div data-grabber="" className="flex cursor-grab justify-center pt-2 pb-1">
           <span className="h-[5px] w-10 rounded-[3px] bg-ink/22" />
         </div>
-        <div className="flex items-start justify-between gap-3 px-edge pt-3">
-          <h2 id={titleId} className="flex-1 pt-1.5 text-sheet-title">{title}</h2>
+        {/* at the largest text size the title drops under the close disc and takes the sheet's width */}
+        <div className="flex items-start justify-between gap-3 px-edge pt-3 max-[299px]:flex-wrap max-[299px]:justify-end max-[299px]:gap-y-1">
+          <h2 id={titleId} className="flex-1 pt-1.5 text-sheet-title max-[299px]:order-last max-[299px]:basis-full max-[299px]:pt-0">{title}</h2>
           <IconButton icon="close" label={closeLabel} tone="track" onClick={() => requestClose()} data-sheet-close="" />
         </div>
         <div className="fge-sheet-content flex flex-col gap-3.5 overflow-y-auto px-edge pt-3.5 pb-[calc(34px+var(--safe-bottom))]">

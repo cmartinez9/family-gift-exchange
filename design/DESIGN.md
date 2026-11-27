@@ -460,7 +460,12 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
 - Every hold has a visible tap path, and the hold works from the keyboard.
 - Every ceremony has "Skip the animation" and a reduced-motion version.
 - State is always in words as well as colour.
-- At the largest text size, stack tab icons over labels and keep cards' colour meaning.
+- At the largest text size (200% in Safari: the phone under 300 CSS pixels wide), stack tab icons over labels and keep cards' colour meaning. The frame gives way so words never break inside themselves and nothing runs off the screen:
+  - The edge and card sides tighten to 12px. Titles step down to 24px and sheet titles to 22px, as Dynamic Type's headings grow less than its body; every sentence keeps 18px.
+  - A row's words take the row's whole width under its leading picture and trailing control (`stackRow` and `stackWords` in `src/components/ui/card.tsx`). A tick list drops the avatar; a fact or field row drops its icon and chevron.
+  - A button's icon stacks over its label, and its corners soften so two or three lines stay inside the shape. Ticks sit over their word. A field's action (Add) moves under the field.
+  - A sheet's title drops under the close disc; a stitched greeting scales down with the column.
+  - Only a word longer than any line (a long Spanish word in a title, a link) may break. `tests/e2e/largest-text.spec.ts` checks every main screen in both languages.
 - Focus: a 3px yarn-white ring, 3px offset (ink on light cards and inside sheets).
 
 ## Do's and Don'ts

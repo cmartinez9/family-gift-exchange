@@ -6,7 +6,7 @@ import {unstable_rethrow} from "next/navigation";
 import {useRouter} from "@/i18n/navigation";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, IconButton, TextButton, TextLink} from "@/components/ui/button";
-import {Card, Chevron, IconDisc, Rows} from "@/components/ui/card";
+import {Card, Chevron, IconDisc, Rows, stackRow, stackWords} from "@/components/ui/card";
 import {Chip, ChoiceChips} from "@/components/ui/chip";
 import {cn} from "@/components/ui/cn";
 import {Heart, Icon} from "@/components/ui/icon";
@@ -36,7 +36,7 @@ type ShoeSystem = typeof SHOE_SYSTEMS[number];
 /** A heading row inside the sizes card: the group's name, and an optional link on the right. */
 function GroupHead({title, id, right}: {title: string; id: string; right?: ReactNode}) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
       <p id={id} className="text-body font-extrabold">{title}</p>
       {right}
     </div>
@@ -134,7 +134,8 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
       <PageTitle title={t("title")} lead={t("lead")} />
       <div className="flex flex-col gap-3 px-edge pt-4">
         <Card className="rounded-item px-[18px] py-3.5">
-          <div className="flex items-center gap-3">
+          {/* at the largest text size the switch moves under its words */}
+          <div className="flex items-center gap-3 max-[299px]:flex-col max-[299px]:items-start">
             <div className="flex min-w-0 flex-1 flex-col">
               <p className="text-card-title">{t("noClothes")}</p>
               <p className="text-body text-muted-ink">{t("noClothesSub")}</p>
@@ -176,9 +177,10 @@ export function SizesStep({ownerId, initial, profileHref, personOpened = false, 
                     latest.current.set("shoes", ++request.current);
                     show("shoes", event.target.value, "size");
                   }} onBlur={(event) => save("shoes", event.currentTarget.value)} />
-              ) : <div className="flex items-center gap-2.5">
+              ) : <div className="flex items-center gap-2.5 max-[299px]:flex-wrap max-[299px]:justify-between">
                 <IconButton icon="minus" label={t("smaller")} disabled={changingSystem} onClick={() => step(-1)} />
-                <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title",
+                {/* at the largest text size the size has the whole width, over smaller and bigger */}
+                <p aria-live="polite" className={cn("flex h-12 flex-1 items-center justify-center rounded-pill text-card-title max-[299px]:order-first max-[299px]:basis-full",
                   shoe ? "bg-ink text-snow-white" : "bg-[var(--track)] text-muted-ink")}>
                   {shoe ? shoeLabel(shoe) : t("pickOne")}
                 </p>
@@ -317,16 +319,16 @@ export function AddStep({ownerId, personOpened = false, replace = false, borrowe
             {error}
             <Card flush className="rounded-item px-[18px] py-1">
               <Rows>
-                <button type="button" className="fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left"
+                <button type="button" className={cn("fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left max-[299px]:py-2", stackRow)}
                   onClick={() => setMode("paste")}>
                   <IconDisc icon="link" />
-                  <span className="flex-1 text-row-title">{t("paste")}</span>
+                  <span className={cn("flex-1 text-row-title", stackWords)}>{t("paste")}</span>
                   <Chevron />
                 </button>
-                <button type="button" className="fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left"
+                <button type="button" className={cn("fge-press flex min-h-16 w-full cursor-pointer items-center gap-3.5 text-left max-[299px]:py-2", stackRow)}
                   onClick={() => camera.current?.click()}>
                   <IconDisc icon="camera" />
-                  <span className="flex-1 text-row-title">{t("photo")}</span>
+                  <span className={cn("flex-1 text-row-title", stackWords)}>{t("photo")}</span>
                   <Chevron />
                 </button>
               </Rows>

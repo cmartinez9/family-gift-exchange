@@ -15,6 +15,12 @@ const PADDING = {
   item: {info: "p-4", next: "p-4", mine: "p-4", taken: "p-4"},
 } as const;
 
+/**
+ * At the largest text size a card gives its words the width: 12px in from its sides.
+ * A flush card keeps its own padding unless it sets its sides.
+ */
+const LARGEST = {card: "max-[299px]:px-3", item: "max-[299px]:px-3"} as const;
+
 type CardProps<T extends ElementType> = {
   tone?: CardTone;
   /** "item" is a gift on a list: 28px corners and 16px padding. */
@@ -29,7 +35,8 @@ type CardProps<T extends ElementType> = {
 export function Card<T extends ElementType = "div">({tone = "info", size = "card", flush = false, as, className, children, ...rest}: CardProps<T>) {
   const Tag: ElementType = as ?? "div";
   return (
-    <Tag data-tone={tone} data-size={size} className={cn("fge-card", !flush && PADDING[size][tone], className)} {...rest}>
+    <Tag data-tone={tone} data-size={size} className={cn("fge-card", !flush && PADDING[size][tone], className,
+      (!flush || /(^|\s)p[xl]-/.test(className ?? "")) && LARGEST[size])} {...rest}>
       {children}
     </Tag>
   );
@@ -56,8 +63,18 @@ export function Rows({as: Tag = "div", className, children}: {as?: "div" | "ul" 
 }
 
 /**
+ * At the largest text size a row of a leading picture, words and a trailing control can't share one
+ * line without breaking words a letter at a time. Put `stackRow` on the row and `stackWords` on the
+ * words: the picture and the control stay on the first line, at either end, and the words take the
+ * whole width under them.
+ */
+export const stackRow = "max-[299px]:flex-wrap max-[299px]:justify-between max-[299px]:gap-y-1.5";
+export const stackWords = "max-[299px]:order-last max-[299px]:basis-full";
+
+/**
  * A row in a grouped card: a fixed 48px leading slot, a title and a line under it, and a trailing slot.
- * Pass `as="li"` inside a list.
+ * Pass `as="li"` inside a list. At the largest text size the words take the row's whole width under the
+ * leading and trailing slots, rather than squeezing between them a letter at a time.
  */
 export function ListRow({lead, title, sub, trail, as: Tag = "div", className}: {
   lead?: ReactNode; title: ReactNode; sub?: ReactNode; trail?: ReactNode;
@@ -65,9 +82,9 @@ export function ListRow({lead, title, sub, trail, as: Tag = "div", className}: {
   as?: "div" | "li" | "span"; className?: string;
 }) {
   return (
-    <Tag className={cn("flex min-h-16 items-center gap-3.5 py-2", className)}>
+    <Tag className={cn("flex min-h-16 items-center gap-3.5 py-2 max-[299px]:py-3", stackRow, className)}>
       {lead && <span className="flex w-12 shrink-0 justify-center">{lead}</span>}
-      <span className="flex min-w-0 flex-1 flex-col">
+      <span className={cn("flex min-w-0 flex-1 flex-col", stackWords)}>
         <span className="text-row-title">{title}</span>
         {sub && <span className="text-body text-[var(--fg-muted)]">{sub}</span>}
       </span>
