@@ -218,3 +218,30 @@ it("excludes removed, unknown and helper-managed members from named help", async
   expect(await tx(f.familyId, (t) => t.select().from(pinResetRequests))).toEqual([]);
   expect(await tx(f.familyId, (t) => t.select().from(outbox).where(eq(outbox.template, "pin-reset-request")))).toEqual([]);
 });
+
+it("does not record a sole organizer's request or claim to notify anyone", async () => {
+  const f = await fixture();
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.organizer, null));
+  const before = await authState(f.familyId);
+  await expect(forgotPin(f.familyId, f.organizer.personId)).resolves.toEqual({error: "organizerRecovery"});
+  expect(await authState(f.familyId)).toEqual(before);
+  expect((await tx(f.familyId, (t) => signInFamily(t, f.familyId)))?.organizers)
+    .toEqual([{personId: f.organizer.personId, name: "Christian", language: "en"}]);
+});
+
+it("notifies the co-organizer for an organizer's recovery request, with the same daily limit", async () => {
+  const f = await fixture();
+  for (let request = 0; request < 3; request++) {
+    await expect(forgotPin(f.familyId, f.organizer.personId)).resolves.toEqual({success: "resetRequested"});
+  }
+  await expect(forgotPin(f.familyId, f.organizer.personId)).resolves.toEqual({error: "tryLater"});
+  const after = await authState(f.familyId);
+  expect(after.requests).toHaveLength(3);
+  expect(after.requests.every(({personId}) => personId === f.organizer.personId)).toBe(true);
+  const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
+  expect(notices).toHaveLength(3);
+  expect(notices.every(({personId, requesterName}) => personId === f.ana && requesterName === "Christian")).toBe(true);
+  await tx(f.familyId, (t) => changeCoOrganizer(t, f.organizer, null));
+  await expect(forgotPin(f.familyId, f.organizer.personId)).resolves.toEqual({error: "organizerRecovery"});
+  expect((await authState(f.familyId)).requests).toEqual(after.requests);
+});

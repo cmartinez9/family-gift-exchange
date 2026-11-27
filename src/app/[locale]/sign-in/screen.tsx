@@ -10,13 +10,13 @@ import {AppLink} from "@/components/ui/navigation";
 import {BackRow, PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {getViewer} from "@/server/auth";
-import {organizerName, peopleOnDevice} from "@/server/auth/account";
+import {peopleOnDevice} from "@/server/auth/account";
 import {signInFamily} from "@/server/auth/families";
 import {currentDeviceHash, rememberedFamily} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
 import {Bullet, CodeEntry, FaceIdLink, FaceIdTile, FindFamily, Greeting, SignInWithPin} from "./get-in";
-import {AskForHelp} from "./ask-for-help";
+import {AskForHelp, OrganizerHelpProvider} from "./ask-for-help";
 import {RefreshSession} from "./controls";
 import {linkClass} from "./styles";
 
@@ -31,7 +31,7 @@ async function loadFamily(search: Search) {
     if (!family) return null;
     return {
       ...family,
-      organizer: await organizerName(tx, familyId) ?? "",
+      organizer: family.organizers[0]?.name ?? "",
       known: device ? await peopleOnDevice(tx, familyId, device) : [],
     };
   });
@@ -41,9 +41,9 @@ async function loadFamily(search: Search) {
 function familyHelp(family: NonNullable<Awaited<ReturnType<typeof loadFamily>>>, personId?: string) {
   const matches = family.helpNames.filter(({id}) => personId ? id === personId : family.known.includes(id));
   const person = matches.length === 1 ? matches[0] : null;
-  return <AskForHelp organizer={family.organizer} asker={person
+  return <OrganizerHelpProvider organizers={family.organizers}><AskForHelp organizer={family.organizer} asker={person
     ? {familyId: family.familyId, personId: person.id}
-    : {familyId: family.familyId, names: family.helpNames}} />;
+    : {familyId: family.familyId, names: family.helpNames}} /></OrganizerHelpProvider>;
 }
 
 export async function SignInHelp({familyId, personId}: {familyId?: string; personId?: string}) {
@@ -99,7 +99,10 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
   if (search.safety === "1") return <Paused familyId={family?.familyId ?? null} organizer={family?.organizer ?? ""}
     help={family ? familyHelp(family, search.person) : null} />;
   if (!family) return <FindFamily />;
+  return <OrganizerHelpProvider organizers={family.organizers}><FamilySignIn family={family} search={search} /></OrganizerHelpProvider>;
+}
 
+async function FamilySignIn({family, search}: {family: NonNullable<Awaited<ReturnType<typeof loadFamily>>>; search: Search}) {
   const {familyId, names, helpNames, organizer, known} = family;
   const familyUrl = `/sign-in?family=${familyId}`;
   if (search.join === "1") return <CodeEntry familyId={familyId} backHref={familyUrl} sender={null} organizer={organizer} names={helpNames} />;

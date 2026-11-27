@@ -7,6 +7,7 @@ import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinReset
 import {createSession, digest, revalidateViewer, secret, seasonSeconds, uuidPattern} from "./session";
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
 import {validCodePreview} from "./code-preview";
+import {organizerContacts} from "./account";
 
 export type DeviceKind = "iphone" | "ipad" | "android" | "computer" | "other";
 export type Device = {hash: string; kind: DeviceKind; network: string | null};
@@ -313,6 +314,10 @@ export async function requestPinReset(
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
   const person = await activePerson(tx, familyId, personId);
   if (!person || person.helperId) return {error: "unavailable"} as const;
+  const contacts = await organizerContacts(tx, familyId);
+  if (!contacts.some((contact) => contact.personId !== personId)) {
+    return {error: person.role === "organizer" || person.role === "co_organizer" ? "organizerRecovery" : "unavailable"} as const;
+  }
   const [recent] = await tx.select({total: count()}).from(pinResetRequests).where(and(
     eq(pinResetRequests.familyId, familyId), eq(pinResetRequests.personId, personId),
     gt(pinResetRequests.requestedAt, new Date(now.getTime() - day)),

@@ -475,3 +475,36 @@ for (const screen of ["welcome", "PIN", "helper"] as const) {
     }
   });
 }
+
+test("organizer recovery gives guidance when alone and notifies an available co-organizer", async ({page}) => {
+  const f = await seed();
+  try {
+    await inFamily(f.familyId, async (t) => {
+      const viewer = (await findViewer(t, parseSession(f.organizer)!))!;
+      await changeCoOrganizer(t, viewer, null);
+    });
+    for (const locale of ["en", "es"] as const) {
+      const words = locale === "en" ? en : es;
+      await page.goto(`/${locale}/sign-in?family=${f.familyId}&person=${f.organizerId}`);
+      await expect(page.getByText(words.auth.feedback.organizerRecovery, {exact: true})).toBeVisible();
+      await expect(page.getByRole("button", {name: /Ask .* for help|Pedirle ayuda/})).toHaveCount(0);
+      await page.getByRole("button", {name: words.getIn.enter.forgot, exact: true}).click();
+      await expect(page.getByText(words.auth.feedback.organizerRecovery, {exact: true})).toBeVisible();
+      await expect(page.getByRole("button", {name: /Ask .* for a new key|Pedirle/})).toHaveCount(0);
+    }
+    expect((await keyState(f.familyId)).requests).toEqual([]);
+    await inFamily(f.familyId, async (t) => {
+      const viewer = (await findViewer(t, parseSession(f.organizer)!))!;
+      await changeCoOrganizer(t, viewer, f.ids.Ana);
+    });
+    await page.goto(`/en/sign-in?family=${f.familyId}&person=${f.organizerId}`);
+    await page.getByRole("button", {name: "Ask Ana for help", exact: true}).click();
+    await expect(page.getByRole("status")).toHaveText("Ana has been asked. Watch your chat.");
+    const after = await keyState(f.familyId);
+    expect(after.requests).toEqual([expect.objectContaining({personId: f.organizerId})]);
+    expect(after.outbox.filter(({template}) => template === "pin-reset-request"))
+      .toEqual([expect.objectContaining({personId: f.ids.Ana, requesterName: "Christian Martinez"})]);
+  } finally {
+    await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
+  }
+});

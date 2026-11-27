@@ -8,12 +8,13 @@ import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {getViewer} from "@/server/auth";
 import {activePerson, inspectKey, parseLinkKey} from "@/server/auth/access";
-import {keySender, organizerName} from "@/server/auth/account";
+import {keySender, organizerContacts} from "@/server/auth/account";
 import {PREVIEW_SIZE, previewPieces} from "@/server/auth/key-preview-svg";
 import {appOrigin, currentDeviceKind} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {KeyAlreadyOpened, KeyWelcome} from "../../sign-in/get-in";
 import {SignInHelp} from "../../sign-in/screen";
+import {OrganizerHelpProvider} from "../../sign-in/ask-for-help";
 import {screenTitle} from "../../sign-in/title";
 import {linkPreview} from "./link-preview";
 
@@ -53,7 +54,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   const found = key && await withFamily(key.familyId, async (tx) => {
     const entry = await inspectKey(tx, key.familyId, key.token, new Date());
     if (!entry) return null;
-    return {entry, sender: await keySender(tx, key.familyId, entry.id), organizer: await organizerName(tx, key.familyId)};
+    return {entry, sender: await keySender(tx, key.familyId, entry.id), organizers: await organizerContacts(tx, key.familyId)};
   });
   const viewer = await getViewer();
 
@@ -70,7 +71,8 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     );
   }
 
-  const {entry, sender, organizer} = found;
+  const {entry, sender, organizers} = found;
+  const organizer = organizers[0]?.name ?? "";
   const help = <SignInHelp familyId={key.familyId} personId={entry.personId} />;
   const other = viewer && (viewer.familyId !== key.familyId || viewer.personId !== entry.personId);
   if (other) {
@@ -114,7 +116,9 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     );
   }
   if (entry.usedAt) {
-    return <KeyAlreadyOpened familyId={key.familyId} value={key.token} typed={false} entry={view} organizer={organizer ?? ""} />;
+    return <OrganizerHelpProvider organizers={organizers}>
+      <KeyAlreadyOpened familyId={key.familyId} value={key.token} typed={false} entry={view} organizer={organizer} />
+    </OrganizerHelpProvider>;
   }
   if (!entry.available) {
     return (
@@ -130,7 +134,9 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   }
   const otherLocale = locale === "es" ? "en" : "es";
   return (
-    <KeyWelcome familyId={key.familyId} value={key.token} typed={false} entry={view} sender={sender} organizer={organizer ?? ""}
-      otherLanguage={{href: `/key/${raw}`, locale: otherLocale}} />
+    <OrganizerHelpProvider organizers={organizers}>
+      <KeyWelcome familyId={key.familyId} value={key.token} typed={false} entry={view} sender={sender} organizer={organizer}
+        otherLanguage={{href: `/key/${raw}`, locale: otherLocale}} />
+    </OrganizerHelpProvider>
   );
 }

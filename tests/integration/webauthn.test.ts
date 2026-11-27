@@ -327,6 +327,12 @@ it("keeps enrollment linked to its authorizing session when only the device cook
 
 it("surfaces reset throttling after the previous requests have been answered", async () => {
   const {familyId, viewer} = await fixture(true);
+  await withFamily(familyId, async (tx) => {
+    await saveMember(tx, viewer, null, {name: "Co-organizer", language: "en", helperId: null, householdId: null});
+    const [coOrganizer] = await tx.select({id: people.id}).from(people)
+      .where(and(eq(people.familyId, familyId), eq(people.displayName, "Co-organizer")));
+    await changeCoOrganizer(tx, viewer, coOrganizer.id);
+  });
   for (let i = 0; i < 3; i++) {
     await expect(forgotPin(familyId, viewer.personId)).resolves.toEqual({success: "resetRequested"});
   }

@@ -5,7 +5,7 @@ import {createTranslator, NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import es from "../../messages/es.json";
-import {AskForHelp, firstName} from "../../src/app/[locale]/sign-in/ask-for-help";
+import {AskForHelp, firstName, OrganizerHelpProvider} from "../../src/app/[locale]/sign-in/ask-for-help";
 import {KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {SignInFlow, SignInHelp, SignInScreen} from "../../src/app/[locale]/sign-in/screen";
 import KeyPage from "../../src/app/[locale]/key/[key]/page";
@@ -16,7 +16,7 @@ const actions = vi.hoisted(() => ({
   beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(), finishFaceIdSignIn: vi.fn(), reportUsedKey: vi.fn(), openFamily: vi.fn(),
 }));
 const server = vi.hoisted(() => ({
-  getViewer: vi.fn(), requireViewer: vi.fn(), organizerName: vi.fn(), peopleOnDevice: vi.fn(), signInFamily: vi.fn(),
+  getViewer: vi.fn(), requireViewer: vi.fn(), organizerContacts: vi.fn(), peopleOnDevice: vi.fn(), signInFamily: vi.fn(),
   rememberedFamily: vi.fn(), currentDeviceHash: vi.fn(), currentDeviceKind: vi.fn(),
   inspectKey: vi.fn(), activePerson: vi.fn(), keySender: vi.fn(),
 }));
@@ -26,7 +26,7 @@ vi.mock("@/server/auth/access", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../src/server/auth/access")>(), inspectKey: server.inspectKey, activePerson: server.activePerson,
 }));
 vi.mock("@/server/auth/account", () => ({
-  organizerName: server.organizerName, peopleOnDevice: server.peopleOnDevice, keySender: server.keySender,
+  organizerContacts: server.organizerContacts, peopleOnDevice: server.peopleOnDevice, keySender: server.keySender,
 }));
 vi.mock("@/server/auth/families", () => ({signInFamily: server.signInFamily}));
 vi.mock("@/server/auth/request", () => ({
@@ -59,10 +59,10 @@ beforeEach(() => {
   server.inspectKey.mockResolvedValue(null);
   server.activePerson.mockResolvedValue({displayName: "Ana"});
   server.keySender.mockResolvedValue("Christian");
-  server.organizerName.mockResolvedValue("Christian Martinez");
+  server.organizerContacts.mockResolvedValue(familyOrganizers);
   server.peopleOnDevice.mockResolvedValue(["rosa"]);
   const names = [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}];
-  server.signInFamily.mockResolvedValue({name: "Martinez", names, helpNames: names});
+  server.signInFamily.mockResolvedValue({name: "Martinez", names, helpNames: names, organizers: familyOrganizers});
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -72,6 +72,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 async function render(node: ReactNode, locale: "en" | "es" = "en") {
@@ -106,6 +107,7 @@ const personAsker = {familyId: "family", personId: "rosa"};
 const routeFamilyId = "11111111-1111-4111-8111-111111111111";
 const routeKey = `${routeFamilyId}~${"x".repeat(43)}`;
 const keyEntry = {id: "key", personId: "rosa", name: "Rosa", familyName: "Martinez", available: true, usedAt: null};
+const familyOrganizers = [{personId: "christian", name: "Christian Martinez"}];
 
 function prepareSheet() {
   const sheet = container.querySelector<HTMLDialogElement>("dialog")!;
@@ -375,7 +377,7 @@ it.each(["sign-in", "paused", "key"] as const)("does not invent a help recipient
 
 it.each(["joined", "invited"] as const)("targets the inspected %s key owner instead of the remembered person", async (membership) => {
   const helpNames = [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}];
-  server.signInFamily.mockResolvedValue({name: "Martinez", helpNames,
+  server.signInFamily.mockResolvedValue({name: "Martinez", helpNames, organizers: familyOrganizers,
     names: membership === "joined" ? helpNames : helpNames.filter(({id}) => id === "ana")});
   server.peopleOnDevice.mockResolvedValue(["ana"]);
   server.inspectKey.mockResolvedValue({...keyEntry, available: false});
@@ -400,7 +402,7 @@ it("asks for a name when an explicit target is unavailable, without silently sub
 });
 
 it.each(["home", "picker", "code", "paused"] as const)("includes first-time members in %s help without offering PIN sign-in", async (screen) => {
-  server.signInFamily.mockResolvedValue({name: "Martinez", names: [{id: "ana", name: "Ana"}],
+  server.signInFamily.mockResolvedValue({name: "Martinez", names: [{id: "ana", name: "Ana"}], organizers: familyOrganizers,
     helpNames: [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}]});
   server.peopleOnDevice.mockResolvedValue([]);
   actions.forgotPin.mockResolvedValue({success: "resetRequested"});
@@ -416,4 +418,77 @@ it.each(["home", "picker", "code", "paused"] as const)("includes first-time memb
   await chooseName("Rosa");
   expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(screen === "home" ? "family" : routeFamilyId, "rosa");
   expect(actions.enterPin).not.toHaveBeenCalled();
+});
+
+for (const locale of ["en", "es"] as const) {
+  it.each(["home", "welcome", "pin", "key", "used", "face"] as const)(`shows sole-organizer recovery on %s in ${locale}`, async (screen) => {
+    const names = [{id: "christian", name: "Christian Martinez"}];
+    server.signInFamily.mockResolvedValue({name: "Martinez", names, helpNames: names, organizers: familyOrganizers});
+    server.peopleOnDevice.mockResolvedValue(["christian"]);
+    server.requireViewer.mockResolvedValue({familyId: routeFamilyId, personId: "christian", isOrganizer: true});
+    server.inspectKey.mockResolvedValue({...keyEntry, personId: "christian", name: "Christian Martinez",
+      available: screen !== "used", usedAt: screen === "used" ? new Date("2026-01-01") : null});
+    const node = screen === "home" ? await SignInScreen({})
+      : screen === "face" ? await FaceIdPage({searchParams: Promise.resolve({})})
+        : screen === "key" || screen === "used" ? await KeyPage({params: Promise.resolve({key: routeKey})})
+          : await SignInFlow({search: {family: routeFamilyId, ...(screen === "pin" ? {person: "christian"} : {})}});
+    await render(node, locale);
+    expect(container.textContent).toContain((locale === "en" ? en : es).auth.feedback.organizerRecovery);
+    expect([...container.querySelectorAll("button")].some((button) => /^(Ask |Pedirle ayuda)/.test(button.textContent ?? ""))).toBe(false);
+    if (screen === "pin" || screen === "used") {
+      if (screen === "used") prepareSheet();
+      await tap((locale === "en" ? en : es).getIn.enter.forgot);
+      expect(container.textContent).toContain((locale === "en" ? en : es).auth.feedback.organizerRecovery);
+      expect([...container.querySelectorAll("button")].some((button) => /^(Ask |Pedirle)/.test(button.textContent ?? ""))).toBe(false);
+    }
+    expect(actions.forgotPin).not.toHaveBeenCalled();
+  });
+}
+
+it("shows recovery after choosing the sole organizer without sending a request", async () => {
+  await render(<OrganizerHelpProvider organizers={familyOrganizers}>
+    <AskForHelp organizer="Christian Martinez" asker={{familyId: "family", names: [{id: "christian", name: "Christian Martinez"}]}} />
+  </OrganizerHelpProvider>);
+  prepareSheet();
+  await tap("Ask Christian for help");
+  await chooseName("Christian Martinez");
+  expect(container.textContent).toContain(en.auth.feedback.organizerRecovery);
+  expect(link("Ask Christian for help")).toBeUndefined();
+  expect(actions.forgotPin).not.toHaveBeenCalled();
+});
+
+it.each(["en", "es"] as const)("asks the co-organizer by name in %s", async (locale) => {
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(<OrganizerHelpProvider organizers={[...familyOrganizers, {personId: "ana", name: "Ana Martinez"}]}>
+    <AskForHelp organizer="Christian Martinez" asker={{familyId: "family", personId: "christian"}} />
+  </OrganizerHelpProvider>, locale);
+  await tap(locale === "en" ? "Ask Ana for help" : "Pedirle ayuda a Ana");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "christian");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(locale === "en"
+    ? "Ana has been asked. Watch your chat." : "Ya le avisamos a Ana. Revisa tu chat.");
+});
+
+it("switches stale recipient information to recovery instead of claiming success", async () => {
+  actions.forgotPin.mockResolvedValue({error: "organizerRecovery"});
+  await render(<OrganizerHelpProvider organizers={[...familyOrganizers, {personId: "ana", name: "Ana"}]}>
+    <AskForHelp organizer="Christian" asker={{familyId: "family", personId: "christian"}} />
+  </OrganizerHelpProvider>);
+  await tap("Ask Ana for help");
+  expect(container.textContent).toContain(en.auth.feedback.organizerRecovery);
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(link("Ask Ana for help")).toBeUndefined();
+});
+
+it("keeps sole-organizer recovery truthful after PIN lockout", async () => {
+  vi.useFakeTimers();
+  actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+  await render(<OrganizerHelpProvider organizers={familyOrganizers}>
+    <SignInWithPin familyId="family" personId="christian" name="Christian" organizer="Christian" backHref="/sign-in" />
+  </OrganizerHelpProvider>);
+  for (const digit of "4268") await tap(digit);
+  await act(async () => { vi.advanceTimersByTime(260); });
+  expect(container.querySelector("h1")?.textContent).toBe(en.getIn.locked.title);
+  expect(container.textContent).toContain(en.auth.feedback.organizerRecovery);
+  expect([...container.querySelectorAll("button")].some((button) => button.textContent?.startsWith("Ask "))).toBe(false);
+  expect(actions.forgotPin).not.toHaveBeenCalled();
 });

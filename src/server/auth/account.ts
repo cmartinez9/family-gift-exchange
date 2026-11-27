@@ -11,6 +11,13 @@ import {authEvents, passkeys, personalKeys, pinCredentials, sessions} from "./sc
 
 const MAX_TRIES = 5;
 
+export async function organizerContacts(tx: FamilyTransaction, familyId: string) {
+  return tx.select({personId: people.id, name: people.displayName, language: people.language}).from(people).where(and(
+    eq(people.familyId, familyId), inArray(people.role, ["organizer", "co_organizer"]),
+    isNull(people.removedAt), isNull(people.helperId),
+  )).orderBy(desc(people.role), people.id);
+}
+
 /** What a PIN screen may say after a refusal: tries left before the 15-minute rest, or minutes left in it. */
 export async function pinAttemptState(tx: FamilyTransaction, familyId: string, personId: string, now: Date) {
   const [row] = await tx.select({

@@ -169,6 +169,7 @@
       "otherPerson": "Ya hay una sesión abierta en este dispositivo. Cambia de persona para continuar.",
       "usedKey": "Esta llave ya se usó. Inicia sesión con tu PIN o pídele una llave nueva al organizador.",
       "resetRequested": "Ya le avisamos al organizador. Te enviará una llave nueva por mensaje privado.",
+      "organizerRecovery": "Tú organizas el intercambio. Usa Face ID o tu PIN, o pídele un enlace de recuperación a quien administra la app.",
       "saved": "Guardado.",
       "sent": "Marcada como enviada.",
       "reported": "Registramos el aviso. Cerramos la sesión de cualquier otro dispositivo vinculado a esta actividad.",

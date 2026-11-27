@@ -7,6 +7,7 @@ import type {Viewer} from "./index";
 import {activePerson, isManager, lockFamily, signInDevice, type Device} from "./access";
 import {hashPin, keyedHash} from "./pin";
 import {equalDigests} from "./session";
+import {organizerContacts} from "./account";
 import {authEvents, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
 
 export function permitCreation(configured: string | undefined, entered: string, pepper: string) {
@@ -54,6 +55,7 @@ export async function signInFamily(tx: FamilyTransaction, familyId: string) {
     name: family.name,
     names: members.filter(({credentialId}) => credentialId !== null).map(({id, name, needsNewKey}) => ({id, name, needsNewKey})),
     helpNames: members.map(({id, name}) => ({id, name})),
+    organizers: await organizerContacts(tx, familyId),
   };
 }
 

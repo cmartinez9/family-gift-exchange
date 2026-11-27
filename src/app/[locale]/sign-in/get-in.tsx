@@ -27,7 +27,7 @@ import {
 import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
-import {AskForHelp} from "./ask-for-help";
+import {AskForHelp, OrganizerRecovery, useHelpContact} from "./ask-for-help";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -260,6 +260,9 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
   const [resetRequested, setResetRequested] = useState(false);
   const [keyReported, setKeyReported] = useState(false);
   const [pending, start] = useTransition();
+  const recipient = useHelpContact(organizer)(entry.personId);
+  const helper = recipient || organizer;
+  const recovery = recipient === null || result.error === "organizerRecovery";
 
   if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
     onRetry={() => setLocked(null)} />;
@@ -274,15 +277,17 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>}
         footer={<AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
-        <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
-          const response = await tryAuthAction(() => forgotPin(familyId, entry.personId));
-          setResult(response);
-          if (response.success) {
-            setResetRequested(true);
-            setOpen(false);
-          }
-        })}>{forgot("ask", {organizer})}</Button>
-        <p className="text-body text-muted-ink">{t("askSub", {organizer})}</p>
+        {recovery ? <OrganizerRecovery /> : <>
+          <Button variant="card" disabled={pending || resetRequested} onClick={() => start(async () => {
+            const response = await tryAuthAction(() => forgotPin(familyId, entry.personId));
+            setResult(response);
+            if (response.success) {
+              setResetRequested(true);
+              setOpen(false);
+            }
+          })}>{forgot("ask", {organizer: helper})}</Button>
+          <p className="text-body text-muted-ink">{t("askSub", {organizer: helper})}</p>
+        </>}
         <Button variant="soft" disabled={pending || keyReported} onClick={() => start(async () => {
           const response = await tryAuthAction(() => reportUsedKey(familyId, value, typed));
           setResult(response);
@@ -292,7 +297,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
           }
         })}>{t("never")}</Button>
         <p className="text-body text-muted-ink">{t("neverSub", {organizer})}</p>
-        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+        {result.error && result.error !== "organizerRecovery" && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
       </Sheet>
     </Screen>
   );
@@ -357,7 +362,17 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
   const router = useRouter();
   const [result, setResult] = useState<AuthResult & {at?: Date}>({});
   const [pending, start] = useTransition();
+  const recipient = useHelpContact(organizer)(personId);
+  const helper = recipient || organizer;
   const asked = Boolean(result.success);
+  if (recipient === null || result.error === "organizerRecovery") {
+    return (
+      <Screen actions={<TextButton className="self-center" onClick={onKeep}>{t("keep")}</TextButton>}>
+        <PageTitle title={t("title")} className="pt-10" />
+        <div className="px-edge pt-6"><OrganizerRecovery /></div>
+      </Screen>
+    );
+  }
   return (
     <Screen actions={asked
       ? <Button onClick={() => router.replace(doneHref)}>{t("done")}</Button>
@@ -366,14 +381,14 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
           const response = await tryAuthAction(() => forgotPin(familyId, personId));
           if (response.success) haptic("success");
           setResult({...response, at: new Date()});
-        })}>{t("ask", {organizer})}</Button>
+        })}>{t("ask", {organizer: helper})}</Button>
         <TextButton className="self-center" onClick={onKeep}>{t("keep")}</TextButton>
       </>}>
-      <PageTitle title={t("title")} lead={t("lead", {organizer})} className="pt-10" />
+      <PageTitle title={t("title")} lead={t("lead", {organizer: helper})} className="pt-10" />
       <div className="flex flex-col gap-[18px] px-edge pt-6">
-        {asked && result.at && <div className="fge-drop"><AskedCard organizer={organizer} at={result.at} /></div>}
+        {asked && result.at && <div className="fge-drop"><AskedCard organizer={helper} at={result.at} /></div>}
         {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
-        <GroundNote icon="lock">{t("only", {organizer})}</GroundNote>
+        <GroundNote icon="lock">{t("only", {organizer: helper})}</GroundNote>
       </div>
     </Screen>
   );
@@ -390,6 +405,9 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
   const [pending, start] = useTransition();
   const [until] = useState(() => Date.now() + minutes * 60_000);
   const [remaining, setRemaining] = useState(minutes);
+  const recipient = useHelpContact(organizer)(personId);
+  const helper = recipient || organizer;
+  const recovery = recipient === null || result.error === "organizerRecovery";
   useEffect(() => {
     const update = () => setRemaining(Math.max(0, Math.ceil((until - Date.now()) / 60_000)));
     const timer = window.setInterval(update, 1000);
@@ -402,12 +420,12 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
   return (
     <Screen actions={<>
       {remaining === 0 && <Button disabled={pending} onClick={onRetry}>{t("retry")}</Button>}
-      {!result.success && (
+      {!recovery && !result.success && (
         <Button variant={remaining === 0 ? "outline" : "ground"} disabled={pending} onClick={() => start(async () => {
           const response = await tryAuthAction(() => forgotPin(familyId, personId));
           if (response.success) haptic("success");
           setResult({...response, at: new Date()});
-        })}>{t("ask", {organizer})}</Button>
+        })}>{t("ask", {organizer: helper})}</Button>
       )}
       <FaceIdLink label={t("face")} />
     </>}>
@@ -419,8 +437,9 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
       </div> : <p role="status" className="px-edge pt-[26px] text-center text-section">{t("ready")}</p>}
       <PageTitle title={t("title")} lead={t("lead", {name})} className="pt-[22px]" />
       <div className="flex flex-col gap-3 px-edge pt-[18px]">
+        {recovery && <OrganizerRecovery />}
         {result.success && result.at
-          ? <div className="fge-drop"><AskedCard organizer={organizer} at={result.at} /></div>
+          ? <div className="fge-drop"><AskedCard organizer={helper} at={result.at} /></div>
           : (
             <Card className="px-[18px] py-4">
               <ul className="flex flex-col gap-3">
@@ -429,8 +448,8 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
               </ul>
             </Card>
           )}
-        {result.error && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
-        {result.success && <p className="sr-only">{forgot("asked", {organizer})}</p>}
+        {result.error && result.error !== "organizerRecovery" && <ErrorBlock title={feedback(result.error as Parameters<typeof feedback>[0])} />}
+        {result.success && <p className="sr-only">{forgot("asked", {organizer: helper})}</p>}
       </div>
     </Screen>
   );
