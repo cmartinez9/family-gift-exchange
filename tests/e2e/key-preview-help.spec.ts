@@ -351,3 +351,43 @@ test("the key's helper branch asks without opening the key", async ({page}) => {
   expect(after.requests).toHaveLength(before.requests.length + 1);
   expect(after.requests.filter(({personId}) => personId === family.ids.Marta)).toHaveLength(2);
 });
+
+test("code entry and a paused family share help requests and the existing limit", async ({page}) => {
+  const f = await seed();
+  try {
+    const before = await keyState(f.familyId);
+    const cases = [
+      {query: "join=1", invalidCode: false},
+      {query: "join=1", invalidCode: true},
+      {query: "safety=1", invalidCode: false},
+      {query: "join=1", invalidCode: true},
+    ];
+    for (const [index, {query, invalidCode}] of cases.entries()) {
+      await page.goto(`/en/sign-in?family=${f.familyId}&${query}`);
+      const help = page.getByRole("button", {name: "Ask Christian for help"});
+      await expect(help).toBeVisible();
+      if (invalidCode) {
+        await page.getByLabel(en.auth.keyCode).fill("000000");
+        await page.getByRole("button", {name: en.auth.checkCode}).click();
+        await expect(page.getByRole("alert")).toHaveText(en.auth.feedback.unavailable);
+        await expect(help).toBeVisible();
+      }
+      if (index === 1) await shot(page, "code-entry-invalid-help");
+      await help.click();
+      await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
+      await expect(page.getByRole("status")).toHaveText(index < 3
+        ? "Christian has been asked. Watch your chat." : "Christian was already asked today. Watch your chat.");
+    }
+    const after = await keyState(f.familyId);
+    expect(after.requests).toHaveLength(3);
+    expect(after.requests.every(({personId}) => personId === f.ids.Tito)).toBe(true);
+    expect(after.keys).toEqual(before.keys);
+    expect(after.sessions).toEqual(before.sessions);
+    expect(after.pins).toEqual(before.pins);
+    const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
+    expect(notices).toHaveLength(6);
+    expect(notices.every(({requesterName}) => requesterName === "Tito")).toBe(true);
+  } finally {
+    await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
+  }
+});

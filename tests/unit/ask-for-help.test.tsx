@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {act, type ReactNode} from "react";
+import {act, cloneElement, isValidElement, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {createTranslator, NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
@@ -7,24 +7,36 @@ import en from "../../messages/en.json";
 import es from "../../messages/es.json";
 import {AskForHelp, firstName} from "../../src/app/[locale]/sign-in/ask-for-help";
 import {KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
-import {SignInScreen} from "../../src/app/[locale]/sign-in/screen";
+import {SignInFlow, SignInScreen} from "../../src/app/[locale]/sign-in/screen";
+import KeyPage from "../../src/app/[locale]/key/[key]/page";
+import FaceIdPage from "../../src/app/[locale]/face-id/page";
 
 const actions = vi.hoisted(() => ({
   askForHelpWithKey: vi.fn(), forgotPin: vi.fn(), useKey: vi.fn(), enterPin: vi.fn(), previewCode: vi.fn(),
   beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(), finishFaceIdSignIn: vi.fn(), reportUsedKey: vi.fn(), openFamily: vi.fn(),
 }));
 const server = vi.hoisted(() => ({
-  getViewer: vi.fn(), organizerName: vi.fn(), peopleOnDevice: vi.fn(), signInFamily: vi.fn(),
-  rememberedFamily: vi.fn(), currentDeviceHash: vi.fn(),
+  getViewer: vi.fn(), requireViewer: vi.fn(), organizerName: vi.fn(), peopleOnDevice: vi.fn(), signInFamily: vi.fn(),
+  rememberedFamily: vi.fn(), currentDeviceHash: vi.fn(), currentDeviceKind: vi.fn(),
+  inspectKey: vi.fn(), activePerson: vi.fn(), keySender: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
-vi.mock("@/server/auth", () => ({getViewer: server.getViewer}));
-vi.mock("@/server/auth/account", () => ({organizerName: server.organizerName, peopleOnDevice: server.peopleOnDevice}));
+vi.mock("@/server/auth", () => ({getViewer: server.getViewer, requireViewer: server.requireViewer}));
+vi.mock("@/server/auth/access", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../src/server/auth/access")>(), inspectKey: server.inspectKey, activePerson: server.activePerson,
+}));
+vi.mock("@/server/auth/account", () => ({
+  organizerName: server.organizerName, peopleOnDevice: server.peopleOnDevice, keySender: server.keySender,
+}));
 vi.mock("@/server/auth/families", () => ({signInFamily: server.signInFamily}));
-vi.mock("@/server/auth/request", () => ({rememberedFamily: server.rememberedFamily, currentDeviceHash: server.currentDeviceHash}));
+vi.mock("@/server/auth/request", () => ({
+  rememberedFamily: server.rememberedFamily, currentDeviceHash: server.currentDeviceHash, currentDeviceKind: server.currentDeviceKind,
+}));
 vi.mock("@/server/db/client", () => ({withFamily: (_: string, run: () => unknown) => run()}));
 vi.mock("next-intl/server", () => ({
-  getTranslations: async (namespace: "getIn.back" | "auth") => createTranslator({locale: "en", messages: en, namespace}),
+  getLocale: async () => "en",
+  getTranslations: async (namespace: "auth" | "home" | "getIn" | `getIn.${keyof typeof en.getIn}`) =>
+    createTranslator({locale: "en", messages: en, namespace}),
 }));
 vi.mock("../../src/app/[locale]/sign-in/actions", () => actions);
 vi.mock("@/i18n/navigation", () => ({
@@ -40,8 +52,13 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
   server.getViewer.mockResolvedValue(null);
+  server.requireViewer.mockResolvedValue({familyId: routeFamilyId, personId: "rosa", isOrganizer: false});
   server.rememberedFamily.mockResolvedValue("family");
   server.currentDeviceHash.mockResolvedValue("phone");
+  server.currentDeviceKind.mockResolvedValue("iphone");
+  server.inspectKey.mockResolvedValue(null);
+  server.activePerson.mockResolvedValue({displayName: "Ana"});
+  server.keySender.mockResolvedValue("Christian");
   server.organizerName.mockResolvedValue("Christian Martinez");
   server.peopleOnDevice.mockResolvedValue(["rosa"]);
   server.signInFamily.mockResolvedValue({name: "Martinez", names: [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}]});
@@ -57,9 +74,24 @@ afterEach(async () => {
 });
 
 async function render(node: ReactNode, locale: "en" | "es" = "en") {
+  const resolved = await resolveServerComponents(node);
   await act(async () => root.render(
-    <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : es} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
+    <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : es} timeZone="America/Chicago">{resolved}</NextIntlClientProvider>,
   ));
+}
+
+async function resolveServerComponents(node: ReactNode): Promise<ReactNode> {
+  if (Array.isArray(node)) return Promise.all(node.map(resolveServerComponents));
+  if (!isValidElement<Record<string, unknown>>(node)) return node;
+  if (typeof node.type === "function" && node.type.constructor.name === "AsyncFunction") {
+    const component = node.type as (props: Record<string, unknown>) => Promise<ReactNode>;
+    return resolveServerComponents(await component(node.props));
+  }
+  const props: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(node.props)) {
+    if (isValidElement(value) || Array.isArray(value)) props[name] = await resolveServerComponents(value as ReactNode);
+  }
+  return cloneElement(node, props);
 }
 
 const link = (label: string) => [...container.querySelectorAll("button")].find((node) => node.textContent?.startsWith(label));
@@ -70,6 +102,9 @@ async function tap(label: string) {
 }
 
 const keyAsker = {familyId: "family", key: {value: "token", typed: false, preview: null}};
+const routeFamilyId = "11111111-1111-4111-8111-111111111111";
+const routeKey = `${routeFamilyId}~${"x".repeat(43)}`;
+const keyEntry = {id: "key", personId: "rosa", name: "Rosa", familyName: "Martinez", available: true, usedAt: null};
 
 function prepareSheet() {
   const sheet = container.querySelector<HTMLDialogElement>("dialog")!;
@@ -91,6 +126,15 @@ async function chooseLastName() {
   const choice = container.querySelector<HTMLButtonElement>("dialog li:last-child button");
   expect(choice?.textContent).toContain("Ana");
   await act(async () => choice!.click());
+}
+
+async function submitCode(code = "BAD234") {
+  await act(async () => {
+    const field = container.querySelector<HTMLInputElement>('input[name="code"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, code);
+    field.dispatchEvent(new Event("input", {bubbles: true}));
+  });
+  await act(async () => { container.querySelector("form")!.requestSubmit(); });
 }
 
 it("names the organizer by first name", async () => {
@@ -225,4 +269,104 @@ it.each([false, true])("can ask with the key from each helper view (typed: %s)",
   await tap("Ask Christian for help");
   expect(actions.askForHelpWithKey).toHaveBeenCalledExactlyOnceWith("family", "token", typed, "signed");
   expect(actions.useKey).not.toHaveBeenCalled();
+});
+
+it.each(["unavailable", "tryLater", "connectionFailed"] as const)("keeps help available on code entry before and after %s", async (error) => {
+  actions.previewCode.mockResolvedValue({error});
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await SignInFlow({search: {family: routeFamilyId, join: "1"}}));
+  expect(link("Ask Christian for help")).toBeDefined();
+  await submitCode();
+  expect(actions.previewCode).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "BAD234");
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback[error]);
+  const {sheet} = prepareSheet();
+  await tap("Ask Christian for help");
+  expect(sheet.open).toBe(true);
+  await chooseLastName();
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "ana");
+  expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
+  expect(actions.useKey).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian has been asked. Watch your chat.");
+});
+
+it("asks from code entry without checking or using a code", async () => {
+  actions.forgotPin.mockResolvedValue({error: "tryLater"});
+  await render(await SignInFlow({search: {family: routeFamilyId, join: "1"}}));
+  prepareSheet();
+  await tap("Ask Christian for help");
+  await chooseLastName();
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "ana");
+  expect(actions.previewCode).not.toHaveBeenCalled();
+  expect(actions.useKey).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian was already asked today. Watch your chat.");
+});
+
+it("uses the checked code's proof when asking from its welcome screen", async () => {
+  actions.previewCode.mockResolvedValue({key: {...keyEntry, preview: "signed"}});
+  actions.askForHelpWithKey.mockResolvedValue({success: "resetRequested"});
+  await render(await SignInFlow({search: {family: routeFamilyId, join: "1"}}));
+  await submitCode();
+  await tap("Ask Christian for help");
+  expect(actions.askForHelpWithKey).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "BAD234", true, "signed");
+  expect(actions.forgotPin).not.toHaveBeenCalled();
+});
+
+it.each([true, false])("asks from a paused family with remembered identity: %s", async (remembered) => {
+  server.peopleOnDevice.mockResolvedValue(remembered ? ["rosa"] : []);
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await SignInFlow({search: {family: routeFamilyId, safety: "1"}}));
+  expect(container.querySelector("h1")?.textContent).toBe(en.getIn.paused.title);
+  if (!remembered) prepareSheet();
+  await tap("Ask Christian for help");
+  if (!remembered) await chooseLastName();
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, remembered ? "rosa" : "ana");
+});
+
+it.each(["home", "sign-in"] as const)("asks for the signed-in person from %s", async (screen) => {
+  server.getViewer.mockResolvedValue({familyId: routeFamilyId, personId: "ana"});
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(screen === "home" ? await SignInScreen({}) : await SignInFlow({}));
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "ana");
+});
+
+it.each([{}, {setup: "1"}, {welcome: "1"}])("keeps help on the Face ID offer and after enrollment failure (%j)", async (search) => {
+  actions.beginFaceId.mockRejectedValue(new Error("Face ID unavailable"));
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await FaceIdPage({searchParams: Promise.resolve(search)}));
+  expect(link("Ask Christian for help")).toBeDefined();
+  await tap(en.getIn.face.yes);
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.faceUnavailable);
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
+});
+
+it.each(["missing", "unavailable", "already-yours", "forwarded"] as const)("offers help on the %s key branch", async (branch) => {
+  const viewerFamilyId = branch === "forwarded" ? "22222222-2222-4222-8222-222222222222" : routeFamilyId;
+  if (branch !== "missing") server.inspectKey.mockResolvedValue({...keyEntry, available: false,
+    usedAt: branch === "already-yours" ? new Date("2026-01-01") : null});
+  if (branch === "already-yours" || branch === "forwarded") {
+    server.getViewer.mockResolvedValue({familyId: viewerFamilyId, personId: branch === "forwarded" ? "ana" : "rosa"});
+  }
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(viewerFamilyId, branch === "forwarded" ? "ana" : "rosa");
+  expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
+  expect(actions.useKey).not.toHaveBeenCalled();
+});
+
+it("uses a remembered family for a malformed key", async () => {
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await KeyPage({params: Promise.resolve({key: "bad-key"})}));
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "rosa");
+});
+
+it.each(["sign-in", "paused", "key"] as const)("does not invent a help recipient on %s without a known family", async (screen) => {
+  server.rememberedFamily.mockResolvedValue(null);
+  await render(screen === "key" ? await KeyPage({params: Promise.resolve({key: "bad-key"})})
+    : await SignInFlow({search: screen === "paused" ? {safety: "1"} : {}}));
+  expect(link("Ask Christian for help")).toBeUndefined();
+  expect(actions.forgotPin).not.toHaveBeenCalled();
 });

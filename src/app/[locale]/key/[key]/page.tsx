@@ -13,6 +13,7 @@ import {PREVIEW_SIZE, previewPieces} from "@/server/auth/key-preview-svg";
 import {appOrigin, currentDeviceKind} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {KeyAlreadyOpened, KeyWelcome} from "../../sign-in/get-in";
+import {SignInHelp} from "../../sign-in/screen";
 import {screenTitle} from "../../sign-in/title";
 import {linkPreview} from "./link-preview";
 
@@ -58,7 +59,10 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
 
   if (!key || !found) {
     return (
-      <Screen actions={<ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>}>
+      <Screen actions={<>
+        <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
+        <SignInHelp familyId={viewer?.familyId ?? key?.familyId} personId={viewer?.personId} />
+      </>}>
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("missing")} lead={t("missingLead")} className="pt-6" />
         <p role="alert" className="sr-only">{auth("feedback.unavailable")}</p>
@@ -74,7 +78,10 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     const currentName = current?.displayName ?? "";
     const device = auth(`device.${await currentDeviceKind()}`);
     return (
-      <Screen actions={<ButtonLink href="/" icon="home">{t("home", {current: currentName})}</ButtonLink>}>
+      <Screen actions={<>
+        <ButtonLink href="/" icon="home">{t("home", {current: currentName})}</ButtonLink>
+        <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+      </>}>
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("title", {name: entry.name})} lead={t("lead", {name: entry.name, current: currentName})} className="pt-6" />
         <div className="px-edge pt-5">
@@ -97,7 +104,10 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   if (entry.usedAt && viewer) {
     // already yours, on this phone
     return (
-      <Screen actions={<ButtonLink href="/account" transition="push">{auth("openAccount")}</ButtonLink>}>
+      <Screen actions={<>
+        <ButtonLink href="/account" transition="push">{auth("openAccount")}</ButtonLink>
+        <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+      </>}>
         <PageTitle title={auth("yourKey")} lead={auth("feedback.usedKey")} className="pt-10" />
       </Screen>
     );
@@ -107,7 +117,10 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   }
   if (!entry.available) {
     return (
-      <Screen actions={<ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>}>
+      <Screen actions={<>
+        <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
+        <SignInHelp familyId={key.familyId} personId={viewer?.personId} />
+      </>}>
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("missing")} lead={t("missingLead")} className="pt-6" />
         <p role="alert" className="sr-only">{auth("feedback.unavailable")}</p>

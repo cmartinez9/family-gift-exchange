@@ -145,13 +145,13 @@ export function FaceIdLink({label, next = "/account?face=1"}: {label: string; ne
 }
 
 /** Use Face ID next time? (1.6): the gold card at the bottom of the screen. */
-export function FaceIdOffer({next, steps}: {next: string; steps: boolean}) {
+export function FaceIdOffer({next, steps, help}: {next: string; steps: boolean; help: ReactNode}) {
   const t = useTranslations("getIn.face");
   const auth = useTranslations("auth");
   const router = useRouter();
   const {failed, pending, begin} = useFaceId(true, () => router.replace(next));
   return (
-    <Screen>
+    <Screen actions={help}>
       {steps && <WelcomeSteps step={1} />}
       <div aria-hidden="true" className="flex flex-1 items-center justify-center py-8">
         <StitchedFlake />
@@ -441,8 +441,8 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
 // ---------------------------------------------------------------------------------------------
 
 /** Type your key code: a short form that opens the same welcome as the link. */
-export function CodeEntry({familyId, backHref, sender, organizer}: {
-  familyId: string; backHref: string; sender: string | null; organizer: string;
+export function CodeEntry({familyId, backHref, sender, organizer, names}: {
+  familyId: string; backHref: string; sender: string | null; organizer: string; names: Array<{id: string; name: string}>;
 }) {
   const t = useTranslations("getIn.code");
   const auth = useTranslations("auth");
@@ -459,7 +459,7 @@ export function CodeEntry({familyId, backHref, sender, organizer}: {
       : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} organizer={organizer} />;
   }
   return (
-    <Screen back={backHref}>
+    <Screen back={backHref} actions={<AskForHelp organizer={organizer} asker={{familyId, names}} />}>
       <BackRow href={backHref} parent={find("title")} />
       <PageTitle title={t("title")} lead={t("lead")} />
       <form className="flex flex-col gap-3 px-edge pt-6" onSubmit={(event) => {

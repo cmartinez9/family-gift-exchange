@@ -1,5 +1,6 @@
 import {requireViewer} from "@/server/auth";
 import {FaceIdOffer} from "../sign-in/get-in";
+import {SignInHelp} from "../sign-in/screen";
 import {screenTitle} from "../sign-in/title";
 
 export async function generateMetadata() {
@@ -12,5 +13,5 @@ export default async function FaceIdPage({searchParams}: {searchParams: Promise<
   const welcome = search.welcome === "1";
   // the organizer goes on to set up the family; a new member goes on to onboarding
   const next = search.setup === "1" && viewer.isOrganizer ? "/family" : welcome ? "/welcome" : "/account";
-  return <FaceIdOffer next={next} steps={welcome} />;
+  return <FaceIdOffer next={next} steps={welcome} help={<SignInHelp familyId={viewer.familyId} personId={viewer.personId} />} />;
 }

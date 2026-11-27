@@ -52,7 +52,7 @@ it("discards an edited pending preview and submits the code and proof from the d
   const first = Promise.withResolvers<object>();
   const second = Promise.withResolvers<object>();
   actions.previewCode.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-  await act(async () => root.render(createElement(CodeEntry, {familyId: "family", backHref: "/sign-in", sender: null, organizer: "Org"})));
+  await act(async () => root.render(createElement(CodeEntry, {familyId: "family", backHref: "/sign-in", sender: null, organizer: "Org", names: []})));
   await input("AAAAAA");
   await act(async () => { container.querySelector("form")!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})); });
   await input("BBBBBB");
