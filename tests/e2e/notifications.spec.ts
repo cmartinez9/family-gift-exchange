@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {promisify} from "node:util";
 import {devices, expect, test, type Page} from "@playwright/test";
 import {eq} from "drizzle-orm";
+import {createTranslator} from "next-intl";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
@@ -24,6 +25,7 @@ for (const language of ["en", "es"] as const) {
   test(`ordinary wishlist and budget mutations notify privately, and reminders and helper inboxes work in ${language}`, async ({page, browser, browserName, request}) => {
     test.setTimeout(120_000);
     const {auth, helping, lists, notify, getIn} = language === "en" ? en : es;
+    const listText = createTranslator({locale: language, messages: lists});
     const {db, close} = connectDatabase(process.env.DATABASE_URL!);
     const guest = await browser.newContext({
       ...devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"], ignoreHTTPSErrors: true,
@@ -96,6 +98,8 @@ for (const language of ["en", "es"] as const) {
       await sheet.getByRole("button", {name: lists.deleteItem}).click();
       await expect(card).toHaveCount(0);
       expect((await removal).ok()).toBe(true);
+      // The title's count comes from the server; the card disappears optimistically before the refresh.
+      await expect(page.getByText(listText("itemCount", {count: 0}), {exact: true})).toBeVisible();
       expect(await scoped((tx) => tx.select().from(claims))).toEqual([]);
       expect(await scoped((tx) => tx.select().from(items))).toMatchObject([{id: claim.itemId, archivedAt: expect.any(Date)}]);
 

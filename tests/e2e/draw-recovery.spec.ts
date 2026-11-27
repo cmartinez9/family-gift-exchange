@@ -529,13 +529,16 @@ test("dropouts and late joiners preserve unaffected matches while a confirmed re
     const asker = f.devices[0].page;
     await asker.getByLabel("Your anonymous question").fill("Keep this question for B");
     await asker.getByRole("button", {name: "Send question", exact: true}).click();
+    await expect(asker.getByRole("status").filter({hasText: en.draw.questionSent})).toBeVisible();
     const recipient = f.devices[1].page;
     await recipient.reload();
     await recipient.getByLabel("Your answer").fill("Keep this private answer");
     await recipient.getByRole("button", {name: "Send answer", exact: true}).click();
+    await expect(recipient.getByText(en.draw.answered, {exact: true})).toBeVisible();
     const changed = f.devices[4].page;
     await changed.getByLabel("Your anonymous question").fill("Erase this question for F");
     await changed.getByRole("button", {name: "Send question", exact: true}).click();
+    await expect(changed.getByRole("status").filter({hasText: en.draw.questionSent})).toBeVisible();
     await asker.goto(f.manage);
     await asker.locator("summary").filter({hasText: /^Dropouts and late joiners$/}).click();
     await asker.getByRole("button", {name: "Person F can’t take part", exact: true}).click();
