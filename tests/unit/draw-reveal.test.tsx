@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {act, type ReactNode} from "react";
+import {act, StrictMode, useLayoutEffect, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
@@ -161,4 +161,28 @@ it("announces the name that arrives during the normal-motion tap animation", asy
   }
   expect(container.querySelector('[data-reveal="revealed"]')).not.toBeNull();
   expect(container.querySelector('[aria-live="assertive"]')?.textContent).toBe("You’re giving to Alex");
+});
+
+it("keeps an early keyboard hold advancing through effect replay", async () => {
+  vi.stubGlobal("matchMedia", () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
+  const frames = new Map<number, FrameRequestCallback>();
+  let frame = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frame, callback); return frame; });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  reveal.mockReturnValue(new Promise(() => {}));
+  function EarlyHold() {
+    useLayoutEffect(() => {
+      container.querySelector('button[aria-label]')!.dispatchEvent(new KeyboardEvent("keydown", {key: " ", bubbles: true}));
+    }, []);
+    return page("en", false);
+  }
+  await act(async () => root.render(<StrictMode><EarlyHold /></StrictMode>));
+  for (const time of [16, 600]) {
+    const pending = [...frames.values()];
+    frames.clear();
+    await act(async () => pending.forEach((callback) => callback(time)));
+  }
+  expect(Number(container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow"))).toBeGreaterThan(15);
+  await act(async () => root.render(null));
+  expect(frames.size).toBe(0);
 });

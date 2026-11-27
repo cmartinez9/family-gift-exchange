@@ -28,9 +28,25 @@ test(`holding, releasing and resuming reveals the complete name ${recipient}`, a
 
     const gift = page.getByRole("button", {name: /^The knitted gift/});
     const progress = page.getByRole("progressbar", {name: "Unravelling"});
+    await page.waitForLoadState("networkidle");
     await gift.focus();
     await page.keyboard.down("Space");
-    await expect.poll(async () => Number(await progress.getAttribute("aria-valuenow"))).toBeGreaterThan(15);
+    try {
+      await expect.poll(async () => Number(await progress.getAttribute("aria-valuenow"))).toBeGreaterThan(15);
+    } catch (error) {
+      await info.attach("stalled-hold-browser-state", {body: JSON.stringify(await page.evaluate(async () => {
+        let frames = 0;
+        let recording = true;
+        const sample = () => { if (recording) { frames++; requestAnimationFrame(sample); } };
+        requestAnimationFrame(sample);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        recording = false;
+        return {frames, visibility: document.visibilityState, focused: document.hasFocus(),
+          progress: document.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow"),
+          pulledRows: document.querySelectorAll('[data-gone="true"]').length};
+      })), contentType: "application/json"});
+      throw error;
+    }
     await page.keyboard.up("Space");
     await expect(page.getByText("Let go any time. Hold to keep pulling.", {exact: true})).toBeVisible();
     const paused = Number(await progress.getAttribute("aria-valuenow"));
@@ -71,6 +87,7 @@ test(`holding, releasing and resuming reveals the complete name ${recipient}`, a
     await page.getByRole("button", {name: `See ${recipient}’s page`, exact: true}).click();
     await expect(page.getByRole("heading", {level: 1})).toHaveText(`You’re giving to ${recipient}`);
   } finally {
+    await page.keyboard.up("Space").catch(() => {});
     if (familyId) {
       const db = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
       try {

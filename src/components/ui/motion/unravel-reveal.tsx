@@ -311,10 +311,14 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
     all.yarn = requestAnimationFrame(drawYarn);
     return () => {
       cancelAnimationFrame(all.yarn);
-      cancelAnimationFrame(all.hold);
-      cancelAnimationFrame(all.tap);
-      cancelAnimationFrame(all.knit);
-      pending.forEach((timer) => window.clearTimeout(timer));
+      // Effect replay can follow the first input. Stop user-started motion only after a real unmount.
+      queueMicrotask(() => {
+        if (stage.current) return;
+        cancelAnimationFrame(all.hold);
+        cancelAnimationFrame(all.tap);
+        cancelAnimationFrame(all.knit);
+        pending.forEach((timer) => window.clearTimeout(timer));
+      });
     };
   }, [drawYarn]);
 

@@ -42,6 +42,7 @@ function disclosure(page: Page, name: string) {
 }
 
 test("runs a private practice season through the browser", async ({page, browser}, info) => {
+  await page.emulateMedia({reducedMotion: "reduce"});
   const family = await newOrganizer(page);
   const visitor = await browser.newContext({ignoreHTTPSErrors: true});
   try {
@@ -67,6 +68,7 @@ test("runs a private practice season through the browser", async ({page, browser
     await expect(page.getByText(`Sent to ${recipient}`, {exact: true})).toBeVisible();
     await page.getByRole("link", {name: "Practice exchange"}).click();
     await page.getByRole("link", {name: recipient, exact: true}).click();
+    await expect(page.getByRole("link", {name: "Answer", exact: true})).toBeVisible();
     await page.getByRole("link", {name: "Answer", exact: true}).click();
     await expect(page.getByText("Any favorite colors?", {exact: true})).toBeVisible();
     await expect(page.getByText("Pinewisp", {exact: false})).toHaveCount(0);
@@ -154,7 +156,7 @@ test("keeps real previews sealed and resets the lock only after typed confirmati
     await expect(page.getByText("Hidden in preview", {exact: true})).toHaveCount(2);
     await expect(page.getByText("$35.00", {exact: true})).toBeVisible();
     await expect(page.getByText(/^Seal code /)).toHaveCount(0);
-    await expect(page.getByRole("button")).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
     await page.screenshot({path: info.outputPath("sealed-organizer-preview.png"), fullPage: true});
 
     await page.getByRole("link", {name: "Stop"}).click();

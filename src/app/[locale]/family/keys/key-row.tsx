@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {useEffect, useRef, useState, useTransition, type ReactNode} from "react";
+import {useEffect, useRef, useState, useTransition, type ReactNode, type RefObject} from "react";
 import {useFormatter, useTranslations} from "next-intl";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
@@ -31,7 +31,7 @@ function Feedback({state}: {state: AuthResult}) {
 /** One prepared key: the message on a track, how to send it, and the card details when it is for paper. */
 function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, onPrepare, onPrint, feedback}: {
   person: KeyPerson; prepared: PreparedKey; pending: boolean; feedback: AuthResult;
-  onShare: () => void; onWhatsapp: () => void; onMarkSent: () => void; onPrepare: (kind: KeyKind) => void; onPrint: () => void;
+  onShare: () => void; onWhatsapp: () => void; onMarkSent: () => void; onPrepare: (kind: KeyKind) => void; onPrint: (opener: HTMLElement) => void;
 }) {
   const t = useTranslations("auth");
   const k = useTranslations("draw.keys");
@@ -61,7 +61,7 @@ function KeyPanel({person, prepared, pending, onShare, onWhatsapp, onMarkSent, o
         <TextButton disabled={pending} onClick={onMarkSent}>{t("markSent")}</TextButton>
         {!person.joined && <TextButton disabled={pending} onClick={() => onPrepare("qr")}>{t("showQr")}</TextButton>}
         {!person.joined && <TextButton disabled={pending} onClick={() => onPrepare("print")}>{t("printCard")}</TextButton>}
-        {prepared.qr && <TextButton disabled={pending} onClick={onPrint}>{t("print")}</TextButton>}
+        {prepared.qr && <TextButton disabled={pending} onClick={(event) => onPrint(event.currentTarget)}>{t("print")}</TextButton>}
       </div>
       <Feedback state={feedback} />
     </div>
@@ -86,6 +86,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
   const [reset, setReset] = useState<KeyPerson | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [printBatch, setPrintBatch] = useState<Array<{person: KeyPerson; prepared?: Prepared}> | null>(null);
+  const overlayOpener = useRef<HTMLElement | null>(null);
   const waiting = people.filter(({joined}) => !joined);
   const qrIndex = people.findIndex(({id}) => id === qr);
   const qrPerson = people[qrIndex];
@@ -131,7 +132,8 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
     });
   }
 
-  function showQr(person: KeyPerson | undefined) {
+  function showQr(person: KeyPerson | undefined, opener?: HTMLElement) {
+    if (opener) overlayOpener.current = opener;
     if (!person) {
       setQr(null);
       return;
@@ -140,7 +142,8 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
     prepare(person, "qr", "overlay");
   }
 
-  function printAll() {
+  function printAll(opener: HTMLElement) {
+    overlayOpener.current = opener;
     setPrintBatch(waiting.map((person) => ({person})));
     transition(async () => {
       for (const person of waiting) {
@@ -162,7 +165,10 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
       <KeyPanel person={person} prepared={key} pending={pending} feedback={feedback[person.id] ?? {}}
         onShare={() => share(person)} onWhatsapp={() => transition(() => markSent(person))}
         onMarkSent={() => transition(() => markSent(person))} onPrepare={(kind) => prepare(person, kind)}
-        onPrint={() => setPrintBatch([{person, prepared: {key}}])} />
+        onPrint={(opener) => {
+          overlayOpener.current = opener;
+          setPrintBatch([{person, prepared: {key}}]);
+        }} />
     );
   };
 
@@ -241,15 +247,15 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
         </Card>
         {waiting.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="small" icon="qr" className="bg-snow-white! text-ink!" onClick={() => showQr(waiting[0])}>{t("showQr")}</Button>
-            <Button variant="small" icon="print" className="bg-snow-white! text-ink!" disabled={pending} onClick={printAll}>{k("printCards")}</Button>
+            <Button variant="small" icon="qr" className="bg-snow-white! text-ink!" onClick={(event) => showQr(waiting[0], event.currentTarget)}>{t("showQr")}</Button>
+            <Button variant="small" icon="print" className="bg-snow-white! text-ink!" disabled={pending} onClick={(event) => printAll(event.currentTarget)}>{k("printCards")}</Button>
           </div>
         )}
       </KnitIn>
       </div>
 
       {qrPerson && (
-        <Overlay onClose={() => setQr(null)} backLabel={t("sendKeys")}
+        <Overlay onClose={() => setQr(null)} backLabel={t("sendKeys")} opener={overlayOpener}
           action={<Button icon="arrow" onClick={() => showQr(nextQr)}>{nextQr ? k("nextPerson") : k("done")}</Button>}>
           <PageTitle title={k("qrTitle", {name: qrPerson.name})} lead={k("qrLead")} as="h2" />
           <div className="px-edge pt-6">
@@ -266,7 +272,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
       )}
 
       {printBatch && (
-        <Overlay onClose={() => setPrintBatch(null)} backLabel={t("sendKeys")} printable
+        <Overlay onClose={() => setPrintBatch(null)} backLabel={t("sendKeys")} opener={overlayOpener} printable
           action={<Button icon="print" disabled={!printReady} onClick={() => window.print()}>{k("printCount", {count: printBatch.length})}</Button>}>
           <div className="print:hidden">
             <PageTitle title={t("print")} as="h2" lead={k("printLead", {names: new Intl.ListFormat(undefined, {type: "conjunction"}).format(printBatch.map(({person}) => person.name))})} />
@@ -309,21 +315,21 @@ function Line({icon, children}: {icon: Parameters<typeof IconDisc>[0]["icon"]; c
 }
 
 /** A page pushed over Send keys (show a QR, print cards), with its own back disc. */
-function Overlay({children, action, onClose, backLabel, printable = false}: {
-  children: ReactNode; action: ReactNode; onClose: () => void; backLabel: string; printable?: boolean;
+function Overlay({children, action, onClose, backLabel, opener, printable = false}: {
+  children: ReactNode; action: ReactNode; onClose: () => void; backLabel: string; opener: RefObject<HTMLElement | null>; printable?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
-    const previous = document.activeElement;
+    const previous = opener.current;
     element.showModal();
     element.querySelector<HTMLButtonElement>("button")?.focus({preventScroll: true});
     return () => {
       element.close();
       if (previous instanceof HTMLElement) previous.focus({preventScroll: true});
     };
-  }, []);
+  }, [opener]);
   return (
     <dialog ref={dialog} aria-label={backLabel} onCancel={(event) => { event.preventDefault(); onClose(); }}
       className={`fixed inset-0 m-0 mx-auto h-full max-h-none w-full max-w-[480px] overflow-y-auto border-0 bg-sweater-red p-0 text-snow-white [&::backdrop]:bg-transparent ${printable ? "print:static print:h-auto print:overflow-visible print:bg-white print:text-black" : "print:hidden"}`}>

@@ -369,3 +369,189 @@ test("key printing waits for credentials, prints individual cards and replaces a
     await guest.close(); await db.close(); await cleanup(family.familyId);
   }
 });
+
+test("QR progression keeps Alex visible after joining and prepares the next waiting person", async ({page, browser}, info) => {
+  const family = await create(page);
+  const guest = await browser.newContext({ignoreHTTPSErrors: true});
+  try {
+    await page.getByRole("button", {name: "Next: who’s in"}).click();
+    await add(page, "Alex, Sam, Zoe");
+    await expect(page.getByRole("checkbox", {name: "Zoe", exact: true})).toBeChecked();
+    await page.goto("/en/family/keys");
+    const alex = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "Alex", exact: true})});
+    await alex.getByRole("button", {name: "Send", exact: true}).click();
+    const invitation = (await alex.getByText(/^Hi Alex! This is your private key/).innerText()).split(" ").at(-1)!;
+    await page.getByRole("button", {name: "Show QR", exact: true}).last().click();
+    const dialog = page.getByRole("dialog", {name: "Send keys", exact: true});
+    await expect(dialog.getByRole("heading", {name: "Alex, point your camera here", exact: true})).toBeVisible();
+    const image = dialog.getByRole("img", {name: en.auth.keyQr});
+    await expect(image).toBeVisible();
+    const alexQr = await image.getAttribute("src");
+    await openKey(await guest.newPage(), invitation, "4268");
+    const refreshed = page.waitForResponse((response) => response.request().headers()["rsc"] === "1");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await refreshed;
+    await expect(dialog.getByRole("heading", {name: "Alex, point your camera here", exact: true})).toBeVisible();
+    await expect(image).toHaveAttribute("src", alexQr!);
+    await capture(page, info, "QR-still-shows-Alex-after-Alex-joins");
+    await dialog.getByRole("button", {name: "Next person", exact: true}).click();
+    await expect(dialog.getByRole("heading", {name: "Sam, point your camera here", exact: true})).toBeVisible();
+    await expect(image).toBeVisible();
+    await expect(image).not.toHaveAttribute("src", alexQr!);
+    await capture(page, info, "QR-next-prepares-Sam-without-skipping");
+  } finally { await guest.close(); await cleanup(family.familyId); }
+});
+
+test("a failed reveal can retry and an already-open recipient updates after their wishlist changes", async ({page, browser, baseURL}, info) => {
+  const family = await create(page);
+  const db = database();
+  const owner = await browser.newContext({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true});
+  try {
+    await page.getByRole("button", {name: "Next: who’s in"}).click();
+    await add(page, "Alex, Sam, Pat");
+    await expect(page.getByRole("checkbox", {name: "Pat", exact: true})).toBeChecked();
+    await page.goto(`${family.manage}/draw`);
+    await page.getByRole("button", {name: "Draw names", exact: true}).click();
+    await page.getByRole("button", {name: "Skip the animation"}).click();
+    await expect(page.getByRole("heading", {name: "Names are drawn"})).toBeVisible();
+    const exchangePath = `/en/exchanges/${family.exchangeId}`;
+    await page.goto(exchangePath);
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await page.context().setOffline(true);
+    await page.getByRole("button", {name: "Or tap here to open it", exact: true}).click();
+    await expect(page.getByRole("button", {name: "Try again", exact: true})).toBeVisible();
+    await expect(page.getByRole("button", {name: /^See .+’s page$/})).toHaveCount(0);
+    await capture(page, info, "transport-rejection-offers-retry-without-revealing");
+    await page.context().setOffline(false);
+    await page.getByRole("button", {name: "Try again", exact: true}).click();
+    await page.getByRole("button", {name: "Or tap here to open it", exact: true}).click();
+    const see = page.getByRole("button", {name: /^See .+’s page$/});
+    await expect(see).toBeVisible();
+    const recipient = (await see.innerText()).replace(/^See /, "").replace(/’s page$/, "");
+    await see.click();
+    const empty = page.getByText(en.draw.person.emptyTitle.replace("{name}", recipient), {exact: true});
+    await expect(empty).toBeVisible();
+    await capture(page, info, "reveal-retry-succeeds-empty-recipient-list");
+    const [person] = await db.db.select().from(people).where(and(eq(people.familyId, family.familyId), eq(people.displayName, recipient)));
+    const token = secret();
+    const session = await runForFamily(db.db, family.familyId, (tx) => createSession(tx, family.familyId, person.id, digest(token), "iphone", new Date()));
+    await owner.addCookies([
+      {name: "__Host-fge-session", value: session.cookie, url: baseURL!, secure: true, httpOnly: true, sameSite: "Lax"},
+      {name: "__Host-fge-device", value: token, url: baseURL!, secure: true, httpOnly: true, sameSite: "Lax"},
+    ]);
+    const op = await owner.newPage();
+    await op.goto(`/en/lists/${person.id}/items/new?kind=note`);
+    await op.getByLabel("Item name", {exact: true}).fill("Blue winter scarf");
+    await op.getByRole("button", {name: "Save item", exact: true}).click();
+    await expect(op.getByRole("article", {name: "Blue winter scarf"})).toBeVisible();
+    const refreshed = page.waitForResponse((response) => response.request().headers()["rsc"] === "1");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await refreshed;
+    await expect(page.getByText("Blue winter scarf", {exact: true})).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await expect(page.getByRole("button", {name: `Ask ${recipient} a question`, exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {level: 1})).toHaveText(`You’re giving to ${recipient}`);
+    await capture(page, info, "recipient-list-refreshes-after-owner-adds-scarf");
+  } finally { await owner.close(); await db.close(); await cleanup(family.familyId); }
+});
+
+test("practice answers and repair results keep one mode banner and a working Stop action in both languages", async ({page}, info) => {
+  const family = await create(page);
+  try {
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await page.goto("/en/exchanges/practice");
+    await page.getByRole("button", {name: "Start practice", exact: true}).click();
+    await page.getByRole("button", {name: "Draw names", exact: true}).click();
+    const pairing = await page.getByRole("listitem").filter({hasText: /^Pinewisp gives to /}).innerText();
+    const recipient = pairing.replace("Pinewisp gives to ", "");
+    const giverHref = await page.getByRole("link", {name: "Pinewisp", exact: true}).getAttribute("href");
+    const recipientHref = await page.getByRole("link", {name: recipient, exact: true}).getAttribute("href");
+    await page.goto(giverHref!);
+    await page.getByRole("button", {name: "Or tap here to open it", exact: true}).click();
+    await page.getByRole("button", {name: `See ${recipient}’s page`, exact: true}).click();
+    await page.getByRole("button", {name: `Ask ${recipient} a question`, exact: true}).click();
+    await page.getByLabel("Your anonymous question").fill("Would you like a winter scarf?");
+    await page.getByRole("button", {name: "Send my question", exact: true}).click();
+    await expect(page.getByText("Would you like a winter scarf?", {exact: true})).toBeVisible();
+    for (const locale of ["en", "es"] as const) {
+      const messages = locale === "en" ? en : es;
+      await page.goto(recipientHref!.replace("/en/", `/${locale}/`) + "&answer=1");
+      const banner = page.getByRole("region", {name: messages.draw.setup.mode, exact: true});
+      await expect(banner).toHaveCount(1);
+      await expect(banner).toContainText(messages.draw.practiceViewing.replace("{name}", recipient));
+      await expect(banner.getByRole("link", {name: messages.draw.setup.stop, exact: true})).toHaveAttribute("href", `/${locale}/exchanges/practice`);
+      await expect(page.getByText("Would you like a winter scarf?", {exact: true})).toBeVisible();
+      await capture(page, info, `${locale}-practice-answer-keeps-mode-and-Stop`);
+    }
+    await page.goto(recipientHref! + "&answer=1");
+    await page.getByLabel("Your answer").fill("Blue, please.");
+    await page.getByRole("button", {name: "Send my answer", exact: true}).click();
+    await expect(page.getByText("You’ve answered.", {exact: true})).toBeVisible();
+    await page.goto(giverHref!);
+    await page.getByRole("button", {name: "Open your person", exact: true}).click();
+    await page.getByRole("button", {name: "Something wrong?", exact: true}).click();
+    await page.getByRole("button", {name: "Get a new person", exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Fixing it quietly", exact: true})).toBeVisible();
+    const fixedHref = new URL(page.url()).pathname + new URL(page.url()).search;
+    for (const locale of ["en", "es"] as const) {
+      const messages = locale === "en" ? en : es;
+      await page.goto(fixedHref.replace("/en/", `/${locale}/`));
+      const banner = page.getByRole("region", {name: messages.draw.setup.mode, exact: true});
+      await expect(banner).toHaveCount(1);
+      await expect(banner).toContainText(messages.draw.practiceViewing.replace("{name}", "Pinewisp"));
+      await expect(page.getByRole("heading", {name: messages.draw.person.fixedTitle, exact: true})).toBeVisible();
+      await capture(page, info, `${locale}-practice-repair-result-keeps-mode-and-Stop`);
+      await banner.getByRole("link", {name: messages.draw.setup.stop, exact: true}).click();
+      await expect(page).toHaveURL(new RegExp(`/${locale}/exchanges/practice$`));
+    }
+  } finally { await cleanup(family.familyId); }
+});
+
+test("closing a prepared print-card dialog returns keyboard focus to Print cards", async ({page}, info) => {
+  const family = await create(page);
+  try {
+    await page.getByRole("button", {name: "Next: who’s in"}).click();
+    await add(page, "Alex, Sam, Zoe");
+    await expect(page.getByRole("checkbox", {name: "Zoe", exact: true})).toBeChecked();
+    await page.goto("/en/family/keys");
+    const opener = page.getByRole("button", {name: "Print cards", exact: true});
+    await opener.focus();
+    await expect(opener).toBeFocused();
+    await opener.click();
+    const dialog = page.getByRole("dialog", {name: "Send keys", exact: true});
+    await expect(dialog.getByRole("button", {name: "Send keys", exact: true})).toBeFocused();
+    await expect(dialog.getByRole("button", {name: "Print 3 cards", exact: true})).toBeEnabled();
+    await capture(page, info, "print-dialog-has-keyboard-focus");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await info.attach("focus-after-print-dialog-close", {body: JSON.stringify(await page.evaluate(() => ({
+      activeTag: document.activeElement?.tagName,
+      activeText: document.activeElement?.textContent?.slice(0, 100),
+    }))), contentType: "application/json"});
+    await capture(page, info, "print-dialog-closed-focus-return");
+    await expect(opener).toBeFocused();
+  } finally { await cleanup(family.familyId); }
+});
+
+test("Tell the family opens the draw announcement in English and Spanish", async ({page}, info) => {
+  const family = await create(page);
+  try {
+    await page.getByRole("button", {name: "Next: who’s in"}).click();
+    await add(page, "Alex, Sam, Zoe");
+    await expect(page.getByRole("checkbox", {name: "Zoe", exact: true})).toBeChecked();
+    await page.goto(`${family.manage}/draw`);
+    await page.getByRole("button", {name: "Draw names", exact: true}).click();
+    await page.getByRole("button", {name: "Skip the animation"}).click();
+    await expect(page.getByRole("heading", {name: "Names are drawn"})).toBeVisible();
+    await page.getByRole("link", {name: "Next: send the keys", exact: true}).click();
+    await page.getByRole("link", {name: "Tell the family", exact: true}).click();
+    for (const locale of ["en", "es"] as const) {
+      const messages = locale === "en" ? en : es;
+      if (locale === "es") await page.goto("/es/family/group-chat");
+      const announcement = page.getByRole("region", {name: messages.notify.groupChat.topic.draw, exact: true});
+      await expect(announcement).toBeVisible();
+      await expect(announcement).toContainText(`/en/sign-in?family=${family.familyId}`.replace("/en/", `/${locale}/`));
+      await capture(page, info, `${locale}-draw-announcement-ready-to-share`);
+    }
+  } finally { await cleanup(family.familyId); }
+});

@@ -10,7 +10,7 @@ import {Icon} from "@/components/ui/icon";
 import {TextArea} from "@/components/ui/inputs";
 import {BudgetMeasure, ItemCard, ItemPicture, NoPicture, WantsLine} from "@/components/ui/item-card";
 import {STITCH_CELL, StitchedText} from "@/components/ui/knit/stitched-text";
-import {ModeBanner} from "@/components/ui/mode-banner";
+import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
 import {haptic} from "@/components/ui/motion/haptic";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {UnravelReveal} from "@/components/ui/motion/unravel-reveal";

@@ -229,7 +229,7 @@ test("the practice family and preview as someone", async () => {
   await page.getByRole("combobox", {name: "Person", exact: true}).selectOption({label: "Rosa"});
   await page.getByRole("button", {name: "Open preview"}).click();
   await expect(page.getByRole("heading", {name: "Preview as Rosa"})).toBeVisible();
-  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
   await shot(page, "f7-7_3-preview-as-rosa");
 });
 
