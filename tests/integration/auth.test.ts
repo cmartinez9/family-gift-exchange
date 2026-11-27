@@ -86,7 +86,7 @@ it("requires a personal key, stores hashes, and redeems a link or its code only 
   expect(stored.codeHash).not.toBe(issued.code);
   const results = await Promise.all([f.redeem(issued.token!, device), f.redeem(issued.code!, makeDevice(), true)]);
   expect(results.filter(({session}) => session)).toHaveLength(1);
-  expect(results.find(({error}) => error)).toEqual({error: "usedKey"});
+  expect(results.find(({error}) => error)).toMatchObject({error: "usedKey", noticeQueued: true});
   const usedKey = await tx(f.familyId, (t) => inspectKey(t, f.familyId, issued.token!, now));
   expect(usedKey).toMatchObject({available: false, usedAt: now, usedDevice: "iphone"});
   const signedIn = (await resolve(results.find(({session}) => session)!.session!.cookie))!;
@@ -199,7 +199,7 @@ it("records a forwarded used-key dispute without giving its holder access or rep
   const active = await tx(f.familyId, (t) => t.select().from(sessions).where(eq(sessions.personId, f.personId)));
   expect(active).toHaveLength(2);
   expect(active.every(({revokedAt}) => revokedAt === null)).toBe(true);
-  await expect(f.redeem(key.token!, reportDevice, false, reportAt, newPin)).resolves.toEqual({error: "usedKey"});
+  await expect(f.redeem(key.token!, reportDevice, false, reportAt, newPin)).resolves.toMatchObject({error: "usedKey", noticeQueued: true});
   await expect(f.login(newPin, reportDevice)).resolves.toEqual({error: "invalidPin"});
   const records = await tx(f.familyId, (t) => listKeyDisputes(t, f.familyId, f.personId));
   expect(records).toEqual([{keyId: key.id, sessionId: owner.id, deviceKind: "computer", at: reportAt}]);

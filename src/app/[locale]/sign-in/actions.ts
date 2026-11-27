@@ -23,7 +23,7 @@ import {
   authenticationFinish, authenticationStart, changePinAfterFaceId, registrationFinish, registrationStart,
 } from "@/server/auth/webauthn";
 
-export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number};
+export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number; usedAt?: string; noticeQueued?: boolean};
 
 function field(data: FormData, key: string) {
   const value = data.get(key);
@@ -109,15 +109,15 @@ export async function reportUsedKey(familyId: string, value: string, typed: bool
   return withFamily(familyId, (tx) => disputeUsedKey(tx, familyId, value, typed, authenticatorSecret(), device, new Date()));
 }
 
-export async function noticeUsedKeyLink(raw: string): Promise<boolean> {
+export async function noticeUsedKeyLink(raw: string, openingId: string): Promise<boolean> {
   const link = typeof raw === "string" && parseLinkKey(raw);
-  if (!link) return false;
+  if (!link || typeof openingId !== "string" || !uuidPattern.test(openingId)) return false;
   const {familyId, token} = link;
   const viewer = await getViewer();
   const notice = await withFamily(familyId, async (tx) => {
     const key = await lookupKey(tx, familyId, "", token);
     if (!key?.usedAt || !await lockFamily(tx, familyId)) return null;
-    return recordUsedKeyOpening(tx, key, viewer, new Date());
+    return recordUsedKeyOpening(tx, key, viewer, new Date(), openingId);
   });
   if (notice?.queued) schedulePushDelivery(familyId);
   return notice?.canConfirm ?? false;
@@ -125,7 +125,6 @@ export async function noticeUsedKeyLink(raw: string): Promise<boolean> {
 
 export type CodeResult = AuthResult & {
   key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string};
-  noticeQueued?: boolean;
 };
 
 export async function previewCode(familyId: string, code: string): Promise<CodeResult> {
@@ -166,7 +165,8 @@ export async function useKey(familyId: string, value: string, typed: boolean, pr
     pin: field(data, "pin"), confirmation: field(data, "confirmation"),
     pepper: authenticatorSecret(), now: new Date(),
   }));
-  if (!result.session) return {error: result.error ?? "unavailable"};
+  if (result.queued) schedulePushDelivery(familyId);
+  if (!result.session) return {error: result.error ?? "unavailable", usedAt: result.usedAt, noticeQueued: result.noticeQueued};
   await setSession(familyId, result.session.cookie);
   redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
 }

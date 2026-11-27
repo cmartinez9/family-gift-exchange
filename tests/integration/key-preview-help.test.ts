@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {createECDH, randomBytes, randomUUID} from "node:crypto";
 import {and, eq} from "drizzle-orm";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {requireIssuedKey} from "../helpers/issued-key";
@@ -14,10 +14,19 @@ import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinReset
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {authenticatorSecret} from "../../src/server/auth/pin";
 import {familyActivity, organizerContacts} from "../../src/server/auth/account";
-import {listNotifications} from "../../src/server/messages/inbox";
-import {forgotPin, noticeUsedKeyLink, previewCode} from "../../src/app/[locale]/sign-in/actions";
+import {listNotifications, markNotificationRead} from "../../src/server/messages/inbox";
+import {deliverPendingPushForFamily, schedulePushDelivery} from "../../src/server/messages/delivery";
+import {subscribePush} from "../../src/server/messages/subscriptions";
+import type {PushSender} from "../../src/server/messages/push";
+import {forgotPin, noticeUsedKeyLink, previewCode, useKey} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
+vi.mock("next/navigation", () => ({redirect: () => { throw new Error("redirect"); }}));
+vi.mock("../../src/server/messages/delivery", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../src/server/messages/delivery")>(),
+  schedulePushDelivery: vi.fn(),
+}));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => cookieValues.has(name) ? {value: cookieValues.get(name)!} : undefined,
@@ -34,6 +43,7 @@ const device = (): Device => ({hash: digest(secret()), kind: "iphone", network: 
 const tx = withFamily;
 
 beforeEach(() => {
+  vi.mocked(schedulePushDelivery).mockReset();
   cookieValues.clear();
   vi.stubEnv("AUTH_SECRET", secret());
 });
@@ -132,14 +142,14 @@ it("gives revoked, used, expired, unknown and looked-after keys the generic prev
   await expect(preview(theirs.token!)).resolves.toBeNull();
 });
 
-it("queues one used-key notice per key per hour across links and typed codes", async () => {
+it("records every opening, dedupes only the same opening, and limits only pushes per key per hour", async () => {
   const f = await fixture();
   const key = await f.issue();
   const unopened = await f.issue(f.ana);
-  const open = (token = key.token) => noticeUsedKeyLink(`${f.familyId}~${token}`);
+  const open = (token = key.token, openingId = randomUUID()) => noticeUsedKeyLink(`${f.familyId}~${token}`, openingId);
   await expect(open(unopened.token)).resolves.toBe(false);
   await expect(open(secret())).resolves.toBe(false);
-  await expect(noticeUsedKeyLink(`${randomUUID()}~${key.token}`)).resolves.toBe(false);
+  await expect(noticeUsedKeyLink(`${randomUUID()}~${key.token}`, randomUUID())).resolves.toBe(false);
 
   const redeemed = await f.redeem(key.token);
   const session = redeemed.session!.cookie;
@@ -152,26 +162,103 @@ it("queues one used-key notice per key per hour across links and typed codes", a
   vi.useFakeTimers({toFake: ["Date"]});
   vi.setSystemTime(new Date());
   const first = new Date();
-  await expect(Promise.all([open(), open(), open()])).resolves.toEqual([true, true, true]);
+  vi.stubEnv("VERCEL_ENV", "production");
+  const openingId = randomUUID();
+  await expect(open(key.token, openingId)).resolves.toBe(true);
+  const owner = (await resolve(session))!;
+  await markNotificationRead(owner, (await notices())[0].id);
+  await expect(Promise.all([open(key.token, openingId), open(key.token, openingId), open(), open()]))
+    .resolves.toEqual([true, true, true, true]);
   await expect(previewCode(f.familyId, key.code)).resolves.toMatchObject({noticeQueued: true, key: {personId: f.rosa}});
-  expect(await notices()).toEqual([expect.objectContaining({personId: f.rosa, createdAt: first, requesterName: null})]);
+  expect(await notices()).toHaveLength(4);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(1);
+  expect((await notices()).filter(({status}) => status === "skipped")).toHaveLength(3);
+  expect((await listNotifications(owner)).filter(({isRead}) => !isRead)).toHaveLength(3);
   const activity = () => tx(f.familyId, (t) => familyActivity(t, f.familyId));
   expect((await activity()).filter(({kind}) => kind === "secondPhone"))
-    .toEqual([{id: expect.any(String), kind: "secondPhone", at: first}]);
+    .toEqual(Array.from({length: 4}, () => ({id: expect.any(String), kind: "secondPhone", at: first})));
 
   vi.setSystemTime(new Date(first.getTime() + 3_599_999));
   await expect(open()).resolves.toBe(true);
-  expect(await notices()).toHaveLength(1);
+  expect(await notices()).toHaveLength(5);
   await f.redeem(unopened.token);
   await expect(open(unopened.token)).resolves.toBe(true);
-  expect(await notices()).toHaveLength(2);
+  expect(await notices()).toHaveLength(6);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(2);
 
   vi.setSystemTime(new Date(first.getTime() + 3_600_000));
   cookieValues.set("__Host-fge-session", f.organizerCookie);
   await expect(open()).resolves.toBe(true);
-  expect((await notices()).filter(({personId}) => personId === f.rosa).map(({createdAt}) => createdAt).sort((a, b) => a.getTime() - b.getTime()))
-    .toEqual([first, new Date()]);
-  expect((await activity()).filter(({kind}) => kind === "secondPhone")).toHaveLength(3);
+  expect(await notices()).toHaveLength(7);
+  expect((await notices()).filter(({status}) => status === "pending")).toHaveLength(3);
+  expect((await activity()).filter(({kind}) => kind === "secondPhone")).toHaveLength(7);
+});
+
+it("notifies existing phones after reset redemption while preserving resetUsed and earlier sign-outs", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const joined = await f.redeem(key.token);
+  const owner = (await resolve(joined.session!.cookie))!;
+  const second = await tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.rosa, pin, f.pepper, device(), now));
+  const signedOut = (await resolve(second.session!.cookie))!;
+  const subscription = () => {
+    const ecdh = createECDH("prime256v1");
+    return {endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+      keys: {p256dh: ecdh.generateKeys().toString("base64url"), auth: randomBytes(16).toString("base64url")}};
+  };
+  const enabled = subscription();
+  const disabled = subscription();
+  expect(await subscribePush(owner, enabled)).toBe(true);
+  expect(await subscribePush(signedOut, disabled)).toBe(true);
+  const signedOutAt = new Date(now.getTime() - 1000);
+  await tx(f.familyId, async (t) => {
+    await t.update(sessions).set({revokedAt: signedOutAt, trusted: false}).where(eq(sessions.id, signedOut.sessionId));
+    await t.insert(passkeys).values({familyId: f.familyId, personId: f.rosa, id: secret(),
+      deviceHash: secret(), publicKey: "fixture", counter: "0"});
+  });
+  const reset = await f.issue(f.rosa, "reset");
+  vi.stubEnv("VERCEL_ENV", "production");
+  let committed: ReturnType<typeof authState> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation((familyId) => { committed = authState(familyId); });
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, reset.token, false, null, {}, data)).rejects.toThrow("redirect");
+  expect(schedulePushDelivery).toHaveBeenCalledExactlyOnceWith(f.familyId);
+  const state = (await committed)!;
+  expect(state.outbox).toEqual([expect.objectContaining({personId: f.rosa, template: "key-opened-elsewhere", status: "pending"})]);
+  expect(state.events).toEqual(expect.arrayContaining([expect.objectContaining({keyId: reset.id, kind: "resetUsed"})]));
+  expect(state.passkeys.every(({revokedAt}) => revokedAt !== null)).toBe(true);
+  expect(state.sessions.find(({id}) => id === signedOut.sessionId)?.revokedAt).toEqual(signedOutAt);
+  await expect(resolve(joined.session!.cookie)).resolves.toBeNull();
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  await deliverPendingPushForFamily(f.familyId, sender);
+  expect(sender.mock.calls.map(([to]) => to.endpoint)).toEqual([enabled.endpoint]);
+  expect(sender.mock.calls[0][1]).toMatchObject({title: "Family Gift Exchange", url: "/en/notifications"});
+  const recovered = (await resolve(cookieValues.get("__Host-fge-session")!))!;
+  expect((await listNotifications(recovered))[0]).toMatchObject({template: "key-opened-elsewhere", isRead: false});
+});
+
+it.each([true, false])("records stale-preview redemption under the lock and schedules delivery after commit (typed: %s)", async (typed) => {
+  const f = await fixture();
+  const key = await f.issue();
+  const preview = await previewCode(f.familyId, key.code);
+  expect(preview.key?.usedAt).toBeNull();
+  await f.redeem(key.token);
+  const before = await authState(f.familyId);
+  let committed: ReturnType<typeof authState> | undefined;
+  vi.mocked(schedulePushDelivery).mockImplementation((familyId) => { committed = authState(familyId); });
+  const data = new FormData();
+  data.set("pin", "5379");
+  data.set("confirmation", "5379");
+  await expect(useKey(f.familyId, typed ? key.code : key.token, typed, preview.key!.preview!, {}, data))
+    .resolves.toMatchObject({error: "usedKey", usedAt: now.toISOString(), noticeQueued: true});
+  expect(schedulePushDelivery).toHaveBeenCalledExactlyOnceWith(f.familyId);
+  const after = (await committed)!;
+  expect(after.outbox).toEqual([expect.objectContaining({personId: f.rosa, template: "key-opened-elsewhere"})]);
+  expect(after.events.filter(({kind}) => kind === "keyOpenedElsewhere")).toHaveLength(1);
+  expect(after.pins).toEqual(before.pins);
+  expect(after.sessions).toEqual(before.sessions);
 });
 
 it("lets only the owner and assigned helper read the private used-key inbox", async () => {
@@ -184,10 +271,10 @@ it("lets only the owner and assigned helper read the private used-key inbox", as
   // Legacy data may have a used key for someone now looked after by a helper.
   await tx(f.familyId, (t) => t.update(people).set({helperId: f.ana, language: "es"}).where(eq(people.id, f.rosa)));
   await expect(previewCode(f.familyId, key.code)).resolves.toEqual({error: "unavailable"});
-  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`)).resolves.toBe(false);
+  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`, randomUUID())).resolves.toBe(false);
   const message = expect.objectContaining({title: "Tu llave se abrió en otro dispositivo", body: "¿Fuiste tú?", language: "es"});
-  await expect(listNotifications(owner)).resolves.toEqual([message]);
-  await expect(listNotifications({...helper, actingAs: f.rosa})).resolves.toEqual([message]);
+  await expect(listNotifications(owner)).resolves.toEqual([message, message]);
+  await expect(listNotifications({...helper, actingAs: f.rosa})).resolves.toEqual([message, message]);
   await expect(listNotifications(helper)).resolves.toEqual([]);
   await expect(listNotifications({...f.organizer, actingAs: f.rosa})).resolves.toEqual([]);
 });

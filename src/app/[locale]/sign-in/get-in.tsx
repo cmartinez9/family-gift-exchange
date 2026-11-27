@@ -198,13 +198,21 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
 }) {
   const t = useTranslations("getIn.hello");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
+  const [used, setUsed] = useState<AuthResult | null>(null);
   const help = <AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />;
+
+  if (used?.usedAt) return <KeyAlreadyOpened familyId={familyId} value={value} typed={typed}
+    entry={{...entry, usedAt: used.usedAt, available: false}} organizer={organizer} noticeQueued={used.noticeQueued} />;
 
   if (phase === "pin") {
     const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);
     return (
       <Screen>
-        <MakePin top={<WelcomeSteps step={1} />} save={(pin) => save({}, pinForm(pin))} footer={help} />
+        <MakePin top={<WelcomeSteps step={1} />} save={async (pin) => {
+          const result = await save({}, pinForm(pin));
+          if (result.error === "usedKey") setUsed(result);
+          return result;
+        }} footer={help} />
       </Screen>
     );
   }

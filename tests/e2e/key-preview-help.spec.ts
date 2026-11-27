@@ -203,23 +203,26 @@ for (const locale of ["en", "es"] as const) {
       await page.reload();
       await expect(page.getByText(told, {exact: true})).toBeVisible();
       const {outbox: notices, events} = await keyState(f.familyId);
-      const opening = events.find(({kind}) => kind === "keyOpenedElsewhere")!;
-      expect(events.filter(({kind}) => kind === "keyOpenedElsewhere")).toEqual([opening]);
-      expect(notices).toEqual([expect.objectContaining({template: "key-opened-elsewhere", language: locale, personId: f.ids.Beto, createdAt: opening.at})]);
+      const openings = events.filter(({kind}) => kind === "keyOpenedElsewhere");
+      expect(openings).toHaveLength(2);
+      expect(notices).toHaveLength(2);
+      expect(notices).toEqual(expect.arrayContaining(openings.map((opening) =>
+        expect.objectContaining({template: "key-opened-elsewhere", language: locale, personId: f.ids.Beto, createdAt: opening.at}))));
 
       await ownerPage.reload();
       const notice = ownerPage.getByRole("listitem").filter({hasText: title});
-      await expect(notice).toHaveCount(1);
-      await expect(notice).toContainText(words.notify.templates["key-opened-elsewhere"].body);
-      await expect(notice.locator("time")).toHaveAttribute("datetime", opening.at.toISOString());
+      await expect(notice).toHaveCount(2);
+      await expect(notice).toContainText(Array(2).fill(words.notify.templates["key-opened-elsewhere"].body));
+      expect(await notice.locator("time").evaluateAll((times) => times.map((time) => time.getAttribute("datetime"))))
+        .toEqual(expect.arrayContaining(openings.map(({at}) => at.toISOString())));
 
       await organizer.addCookies([cookie(f.organizer)]);
       const organizerPage = await organizer.newPage();
       await organizerPage.goto(`/${locale}/account/activity`);
       const activity = organizerPage.getByRole("listitem").filter({hasText: words.getIn.activity.secondPhone});
-      await expect(activity).toHaveCount(1);
-      await expect(activity).toContainText(words.getIn.activity.secondPhoneSub.split(" · ")[1]);
-      await expect(activity).not.toContainText("Beto");
+      await expect(activity).toHaveCount(2);
+      await expect(activity).toContainText(Array(2).fill(words.getIn.activity.secondPhoneSub.split(" · ")[1]));
+      await expect(activity).not.toContainText(["Beto", "Beto"]);
       await organizerPage.goto(`/${locale}/account/notices`);
       await expect(organizerPage.getByText(title, {exact: true})).toHaveCount(0);
     } finally {

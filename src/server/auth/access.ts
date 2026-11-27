@@ -8,6 +8,7 @@ import {createSession, digest, revalidateViewer, secret, seasonSeconds, uuidPatt
 import {clearedAttempts, day, failedAttempt, hashPin, keyedHash, pinProblem, verifyPin} from "./pin";
 import {validCodePreview} from "./code-preview";
 import {organizerContacts} from "./account";
+import {recordUsedKeyOpening} from "./used-key-notice";
 
 export type DeviceKind = "iphone" | "ipad" | "android" | "computer" | "other";
 export type Device = {hash: string; kind: DeviceKind; network: string | null};
@@ -241,7 +242,10 @@ export async function redeemKey(
   if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
     return {error: "otherPerson"} as const;
   }
-  if (key.usedAt) return {error: "usedKey"} as const;
+  if (key.usedAt) {
+    const notice = await recordUsedKeyOpening(tx, key, currentViewer, now);
+    return {error: "usedKey", usedAt: key.usedAt.toISOString(), noticeQueued: notice?.canConfirm ?? false, queued: notice?.queued ?? false} as const;
+  }
   const previous = await credential(tx, familyId, person.id);
   if (Boolean(previous) !== (key.kind === "reset")) return {error: "unavailable"} as const;
 
@@ -251,7 +255,7 @@ export async function redeemKey(
   await tx.update(people).set({needsNewKey: false}).where(and(eq(people.familyId, familyId), eq(people.id, person.id)));
   if (key.kind === "reset") {
     await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
-      eq(sessions.familyId, familyId), eq(sessions.personId, person.id),
+      eq(sessions.familyId, familyId), eq(sessions.personId, person.id), isNull(sessions.revokedAt),
     ));
     await tx.update(passkeys).set({revokedAt: now}).where(and(
       eq(passkeys.familyId, familyId), eq(passkeys.personId, person.id),
@@ -274,7 +278,9 @@ export async function redeemKey(
     familyId, personId: person.id, keyId: key.id, sessionId: session.id,
     kind: key.kind === "reset" ? "resetUsed" : "keyUsed", deviceKind: device.kind, at: now,
   });
-  return {session};
+  const notice = key.kind === "reset"
+    ? await recordUsedKeyOpening(tx, {...key, usedAt: now, usedSessionId: session.id}, null, now) : null;
+  return {session, queued: notice?.queued ?? false};
 }
 
 export async function signInWithPin(

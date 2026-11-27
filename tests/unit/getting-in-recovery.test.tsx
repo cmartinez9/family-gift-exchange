@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import {act, Component, type ReactNode} from "react";
+import {act, Component, StrictMode, type ReactNode} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import es from "../../messages/es.json";
-import {CodeEntry, KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
+import {CodeEntry, KeyAlreadyOpened, KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
 import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
@@ -66,7 +66,7 @@ it("shows the Spanish used-key promise only after the server confirms the notice
   await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
     entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />, "es");
   const told = es.getIn.used.told.replace("{name}", "Rosa");
-  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith("family~token");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith("family~token", expect.any(String));
   expect(container.textContent).not.toContain(told);
   await act(async () => result.resolve(true));
   expect(container.textContent).toContain(told);
@@ -78,6 +78,33 @@ it("keeps PIN entry available if the used-key notice fails", async () => {
     entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
   expect(container.textContent).not.toContain("Rosa's phone will be told.");
   expect(button("4").disabled).toBe(false);
+});
+
+it("reuses an opening identity when React repeats the notice effect", async () => {
+  actions.noticeUsedKeyLink.mockResolvedValue(true);
+  await render(<StrictMode><KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" /></StrictMode>);
+  const calls = actions.noticeUsedKeyLink.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  expect(new Set(calls.map(([, openingId]) => openingId)).size).toBe(1);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+});
+
+it.each([true, false])("switches a stale welcome to PIN entry without recording the opening twice (typed: %s)", async (typed) => {
+  vi.useFakeTimers();
+  actions.useKey.mockResolvedValue({error: "usedKey", usedAt: "2030-12-24", noticeQueued: true});
+  await render(<KeyWelcome familyId="family" value="token" typed={typed}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: null, available: true, preview: "preview"}}
+    sender={null} organizer="Ana" />);
+  await click(en.getIn.hello.yes);
+  await type("4268");
+  await advance(260);
+  await type("4268");
+  await advance(260);
+  expect(actions.useKey).toHaveBeenCalledOnce();
+  expect(container.textContent).toContain(en.getIn.used.title);
+  expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+  expect(actions.noticeUsedKeyLink).not.toHaveBeenCalled();
 });
 
 function button(label: string) {

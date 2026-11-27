@@ -66,7 +66,9 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
           .where(and(
             eq(pushSubscriptions.familyId, familyId), inArray(pushSubscriptions.personId, addressedTo), isNull(people.removedAt),
             keyOpening ? or(isNull(people.helperId), eq(people.id, message.personId)) : isNull(people.helperId),
-            isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()),
+            or(isNull(sessions.revokedAt), keyOpening ? and(
+              eq(sessions.revokedAt, sql`${message.createdAt}::timestamptz`), eq(sessions.trusted, false),
+            ) : undefined), gt(sessions.expiresAt, new Date()),
           ));
 
         const content = readTemplateContent(message);

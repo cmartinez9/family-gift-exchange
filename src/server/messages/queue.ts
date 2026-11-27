@@ -1,4 +1,3 @@
-import "server-only";
 import type {FamilyTransaction} from "../db/database";
 import {outbox} from "../db/schema";
 import type {Language, Template} from "./templates";
@@ -9,6 +8,7 @@ export type Message = {
   language: Language;
   dedupeKey?: string;
   createdAt?: Date;
+  push?: boolean;
 } & (
   | {template: Exclude<Template, "pin-reset-request">}
   | {template: "pin-reset-request"; requesterName: string}
@@ -29,6 +29,6 @@ export async function enqueueMessages(tx: FamilyTransaction, messages: Message[]
     requesterName: message.template === "pin-reset-request" ? message.requesterName : null,
     dedupeKey: message.dedupeKey,
     createdAt: message.createdAt,
-    status: isPushProduction() ? "pending" as const : "captured" as const,
+    status: message.push === false ? "skipped" as const : isPushProduction() ? "pending" as const : "captured" as const,
   }))).onConflictDoNothing({target: [outbox.familyId, outbox.personId, outbox.dedupeKey]});
 }
