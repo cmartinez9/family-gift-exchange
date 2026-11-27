@@ -19,8 +19,7 @@ export function repairDraw(
   const required = new Set(mustChange);
   const options = choices.map((recipients, giver) => shuffled(recipients)
     .map((recipient) => people[recipient].id)
-    .filter((recipient) => !required.has(people[giver].id) || recipient !== previous.get(people[giver].id))
-    .sort((a, b) => Number(b === previous.get(people[giver].id)) - Number(a === previous.get(people[giver].id))));
+    .filter((recipient) => !required.has(people[giver].id) || recipient !== previous.get(people[giver].id)));
   const next = new Map<string, string>();
   const used = new Set<string>();
   const observers = [...new Set(privacy?.observers)].sort();
@@ -37,10 +36,14 @@ export function repairDraw(
     }];
   });
   const candidates: {pairs: Pairs; observations: string[]}[] = [];
+  const candidateKeys = new Set<string>();
 
   function accept(changed: number) {
     if (!validPairs(rules, next)) return false;
     if (!privacy || !views.length) return true;
+    const key = JSON.stringify(people.map(({id}) => next.get(id)));
+    if (candidateKeys.has(key)) return false;
+    candidateKeys.add(key);
     const seenCount = privacy.fullRedraw ? 0 : privacy.seenGivers.filter((id) =>
       next.has(id) && next.get(id) === previous.get(id)).length;
     const oneLoop = inspectDraw(rules, next, []).oneLoop;
@@ -49,7 +52,7 @@ export function repairDraw(
       privacy.fullRedraw ? [] : view.questionGivers.map((id) => next.has(id) && next.get(id) === previous.get(id)),
       oneLoop,
     ]))});
-    return privacy.fullRedraw === true;
+    return true;
   }
 
   function choosePrivateRepair(): Pairs | null {
@@ -103,25 +106,29 @@ export function repairDraw(
     return false;
   }
 
-  if (privacy?.fullRedraw && views.length) {
+  for (let count = privacy?.fullRedraw ? people.length : required.size; count <= people.length; count++) {
+    candidates.length = 0;
+    candidateKeys.clear();
     for (let attempt = 1; attempt <= 1024; attempt++) {
       next.clear();
       used.clear();
-      for (let index = 0; index < options.length; index++) options[index] = shuffled(options[index]);
-      if (!search(0, people.length)) break;
-      if (attempt % 32 === 0) {
+      for (let index = 0; index < options.length; index++) {
+        const previousRecipient = previous.get(people[index].id);
+        options[index] = shuffled(options[index]).sort((a, b) => privacy?.fullRedraw ? 0 :
+          Number(b === previousRecipient) - Number(a === previousRecipient));
+      }
+      const found = search(0, count);
+      if (!privacy || !views.length) {
+        if (found) return new Map(next);
+        break;
+      }
+      if (!found || attempt % 32 === 0) {
         const selected = choosePrivateRepair();
         if (selected) return selected;
       }
+      if (!found) break;
     }
-    return choosePrivateRepair();
-  }
-
-  for (let count = privacy?.fullRedraw ? people.length : required.size; count <= people.length; count++) {
-    candidates.length = 0;
-    if (search(0, count)) return new Map(next);
-    const selected = choosePrivateRepair();
-    if (selected) return selected;
+    if (candidates.length === 1024) return null;
   }
   return null;
 }
