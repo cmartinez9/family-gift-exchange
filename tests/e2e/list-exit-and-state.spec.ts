@@ -90,13 +90,14 @@ test(`does not redisplay a removed item when immediately reloading during Undo${
       await holder.query("BEGIN");
       await holder.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [fixture.gifts[0].id]);
     }
-    await page.reload();
+    const reloading = page.reload();
     if (holder) {
       await expect.poll(async () => (await holder.query(
-        "SELECT count(*)::int AS count FROM pg_stat_activity WHERE pg_backend_pid() = ANY(pg_blocking_pids(pid))",
+        "SELECT count(*)::int AS count FROM pg_locks WHERE NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))",
       )).rows[0].count).toBeGreaterThan(0);
       await holder.query("COMMIT");
     }
+    await reloading;
     await expect.poll(() => database(fixture.familyId, async (tx) => {
       const [item] = await tx.select({archivedAt: items.archivedAt}).from(items).where(eq(items.id, fixture.gifts[0].id));
       return item.archivedAt !== null;
