@@ -168,9 +168,10 @@ export function ItemCard({tone = "info", picture, title, titleAs: Title = "h3", 
 }) {
   return (
     <Card tone={tone} size="item" as={as ?? "div"} className={className} data-item="">
-      <div className="flex items-start gap-3.5">
+      {/* at the largest text sizes the words drop under the picture rather than wrap a letter at a time */}
+      <div className="flex flex-wrap items-start gap-3.5">
         {picture}
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-[min(100%,8.5rem)] flex-1 flex-col gap-0.5">
           <Title className={cn("text-item-title", tag && "pr-[52px]")}>{title}</Title>
           {(store || price) && (
             <p className="text-body text-[var(--fg-muted)]">

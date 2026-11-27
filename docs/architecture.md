@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 1 | `src/server/auth/index.ts` | Sign-in, session identity, family membership, organizer and helper authorization |
 | 2 | `src/server/draw/index.ts` | Constraints, draw, sealed assignments, reveal, repair, and routing questions to the assigned recipient |
-| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link previews, item photos, exchange budget, and claim visibility |
+| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link previews, item photos, exchange budget, claim visibility, and claim change tracking |
 | 4 | `src/server/messages/index.ts` | Message templates, queue, delivery adapters, and reminders |
 | Shared | `src/app`, `src/i18n`, `src/server/db` | Routing, locale setup, database connection, and shared tables |
 
@@ -27,6 +27,8 @@ Keep reads in Server Components and use feature-local `actions.ts` files with `"
 Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep direct connection access limited to tooling, the local message viewer, and the reminder scheduler's discovery call in [`reminders.ts`](../src/server/messages/reminders.ts). RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
 Wishlist transactions use [`requireListActor`](../src/server/lists/access.ts) to acquire the exclusive family row lock also used by revocation and revalidate the live session and acting profile before accessing list data. Keep that lock through the protected operation. Edits must target the acting profile's own list; budget writes require the returned current organizer role and the organizer's own profile. Link fetching and photo storage happen outside these transactions; the final write must repeat editor authorization so a session revoked during that work cannot save changes.
+
+The [`SeenItem` contract](../src/server/lists/claims/changes.ts) owns claim comparison baselines and photo identity handling. See [Wishlists and gifts](../README.md#wishlists-and-gifts) for the change card's user workflow.
 
 Sealed draw operations use `withDrawFamily`. After acquiring the family row lock shared with account and family management, it revalidates the live session and acting profile before any draw callback runs. Practice delegates also require the live organizer-owner session and its persisted practice mapping before switching family scope. The practice loader audits decryption without reconciling the owner's real draw.
 

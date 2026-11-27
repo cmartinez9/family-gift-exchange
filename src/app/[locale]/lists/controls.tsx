@@ -64,7 +64,8 @@ export function ChecklistTick({
   const [state, setState] = useState<FormState>({});
   const [pending, startTransition] = useTransition();
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
+    // two to a row; one to a row when the text is too large for two
+    <div className="flex min-w-0 grow basis-[8.5rem] flex-col gap-1">
       <label className={cn("fge-press relative flex min-h-[52px] cursor-pointer items-center gap-3 rounded-pill bg-[var(--track)] py-2 pr-4 pl-2.5 text-body-strong",
         "has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-3 has-[:focus-visible]:outline-[var(--focus)]")}>
         <input
