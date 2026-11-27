@@ -25,7 +25,6 @@ export async function layoutProblems(page: Page, scope = "body"): Promise<Layout
       const label = element.getAttribute("aria-label") ?? "";
       return `${element.tagName.toLowerCase()}${label ? `[${label.slice(0, 40)}]` : ""} "${text}"`;
     };
-    const clips = (style: CSSStyleDeclaration) => style.overflowX !== "visible" || style.overflowY !== "visible";
     const hidden = (element: Element) => {
       // aria-hidden words are still on screen (a title read out through its link's label), so they count
       if (element.closest("[hidden], .sr-only, dialog:not([open]), template, script, style")) return true;
@@ -74,7 +73,8 @@ export async function layoutProblems(page: Page, scope = "body"): Promise<Layout
         if (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1) {
           problems.push({kind: "clipped", where: where(element), detail: "cut short with an ellipsis"});
         }
-      } else if (clips(style) && (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1)) {
+      } else if (style.overflowX !== "visible" && element.scrollWidth > element.clientWidth + 1
+        || !["visible", "auto", "scroll"].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1) {
         problems.push({kind: "clipped", where: where(element), detail: `${element.scrollWidth}x${element.scrollHeight} in ${element.clientWidth}x${element.clientHeight}`});
       }
     }

@@ -446,9 +446,9 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
           </div>
           {loading && (
             <Card size="item" aria-busy="true" className="fge-drop">
-              <div className="flex items-center gap-3.5">
+              <div className={cn("flex items-center gap-3.5", stackRow)}>
                 <LoadingPicture size={80} />
-                <div role="status" className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div role="status" className={cn("flex min-w-0 flex-1 flex-col gap-0.5", stackWords)}>
                   <p className="text-item-title">{store ? t("loading", {store}) : t("wait")}</p>
                   <p className="text-body text-muted-ink">{t("wait")}</p>
                 </div>
@@ -460,8 +460,8 @@ function PasteLink({ownerId, personOpened, submit, pending, error, onBack, backL
               picture={card.photo ? <ItemPicture src={card.photo} size={80} /> : <NoPicture size={80} camera={false} />}
               title={card.title || store} store={card.store} price={card.price ? `$${card.price}` : undefined}
               after={<div className="flex flex-col gap-2.5 pt-3.5">
-                <Chip pressed={want} onPressedChange={setWant} className="self-start pr-4 pl-3">
-                  <span className="flex items-center gap-2"><Heart on={want} />{t("want")}</span>
+                <Chip pressed={want} onPressedChange={setWant} className="self-start pr-4 pl-3 max-[299px]:h-auto max-[299px]:min-h-12 max-[299px]:max-w-full max-[299px]:rounded-[24px] max-[299px]:px-2 max-[299px]:py-2.5 max-[299px]:whitespace-normal">
+                  <span className="flex items-center gap-2 max-[299px]:flex-col max-[299px]:gap-1 max-[299px]:text-center"><Heart on={want} />{t("want")}</span>
                 </Chip>
                 <TextField label={t("noteField")} name="note" maxLength={500} className="[&_label]:sr-only" placeholder={t("noteField")}
                   value={note} onChange={(event) => setNote(event.target.value)} />

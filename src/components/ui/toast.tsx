@@ -1,8 +1,7 @@
 "use client";
 
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from "react";
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from "react";
 import {cn} from "./cn";
-import {stackRow, stackWords} from "./card";
 import {Icon, type IconName} from "./icon";
 import {DURATION} from "./motion/easing";
 
@@ -85,19 +84,24 @@ export function ToastHost({undoLabel}: {undoLabel: string}) {
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const top = shown?.placement === "top";
+  const offset = top ? "calc(52px + var(--safe-top))" : bottom;
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4 max-[299px]:px-3" style={top ? {top: "calc(52px + var(--safe-top))"} : {bottom}}
+    <div className="pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-[480px] px-4 max-[299px]:px-3" style={{
+      ...(top ? {top: offset} : {bottom: offset}),
+      "--toast-max-height": `calc(100dvh - ${offset} - var(${top ? "--safe-bottom" : "--safe-top"}) - 12px)`,
+    } as CSSProperties & {"--toast-max-height": string}}
       data-toast-host="">
       <div role="status" aria-live="polite" aria-atomic="true">
         <div data-show={visible} data-placement={top ? "top" : "bottom"}
-          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white max-[299px]:p-3", stackRow)}
+          className={cn("fge-toast flex min-h-[60px] items-center gap-3 rounded-[30px] bg-ink py-1.5 pr-1.5 pl-5 text-snow-white",
+            "max-[299px]:grid max-[299px]:grid-cols-[auto_minmax(0,1fr)] max-[299px]:grid-rows-[auto_minmax(0,1fr)] max-[299px]:max-h-[var(--toast-max-height)] max-[299px]:gap-y-1.5 max-[299px]:p-3")}
           inert={!visible}>
           {shown && <>
             <Icon name={shown.icon ?? "check"} size={22} strokeWidth={2.6} className="text-gold" />
-            <p className={cn("flex-1 text-body font-semibold", stackWords)}>{shown.message}</p>
+            <p className="flex-1 text-body font-semibold max-[299px]:order-last max-[299px]:col-span-2 max-[299px]:min-h-0 max-[299px]:self-stretch max-[299px]:overflow-y-auto max-[299px]:overscroll-contain">{shown.message}</p>
             {shown.undo && (
               <button type="button"
-                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4 max-[299px]:px-2"
+                className="fge-press inline-flex h-12 shrink-0 cursor-pointer items-center rounded-pill px-4 text-body font-extrabold text-gold underline underline-offset-4 max-[299px]:justify-self-end max-[299px]:px-2"
                 onClick={() => {
                   const undo = shown.undo;
                   dismissToast(shown.id);

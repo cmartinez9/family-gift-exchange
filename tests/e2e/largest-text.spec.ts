@@ -24,6 +24,7 @@ import es from "../../messages/es.json" with {type: "json"};
 const names = ["Christian", "Rosa", "Tito", "Ana", "Beto", "Leo", "Marta"] as const;
 type Name = (typeof names)[number];
 const messages = {en, es} as const;
+const longTitle = "PREMIUM NOISE CANCELLING WIRELESS HEADPHONES WITH RECHARGEABLE BATTERY AND COMFORTABLE EAR CUSHIONS FOR MUSIC MOVIES AND TRAVEL ".repeat(2).slice(0, 200);
 
 /** A family with a drawn exchange (Christian has opened his person, Rosa has not), or one still in setup. */
 async function family(browser: Browser, origin: string, status: "setup" | "drawn") {
@@ -106,6 +107,9 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
       position: 0, url: "https://www.target.com/p/wool-socks/-/A-12345",
       preview: {title: "Wool socks", pending: Date.now()}});
     return `/lists/${ids.Ana}`;
+  }, async longList() {
+    await database.db.insert(items).values({familyId, ownerId: ids.Beto, kind: "note", title: longTitle, position: 0});
+    return `/lists/${ids.Beto}`;
   }, async close() {
     await Promise.allSettled(contexts.map((context) => context.close()));
     const practice = await database.db.select().from(practiceFamilies).where(eq(practiceFamilies.familyId, familyId));
@@ -120,10 +124,29 @@ type Messages = (typeof messages)[keyof typeof messages];
 type Screen = {
   name: string; who: Name | "guest"; family?: "setup" | "drawn";
   path: (f: Family) => string | Promise<string>;
+  scope?: string;
   /** What to do once the page is open, such as opening a sheet. */
   then?: (page: Page, t: Messages) => Promise<void>;
   afterLayout?: (page: Page, t: Messages) => Promise<void>;
 };
+
+async function removeForUndo(page: Page, t: Messages, title: string) {
+  await page.getByRole("link", {name: t.lists.editNamedItem.replace("{title}", title), exact: true}).click();
+  const dialog = page.getByRole("dialog", {name: t.lists.editItem});
+  await expect(dialog).toBeVisible();
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await dialog.getByRole("button", {name: t.lists.deleteItem, exact: true}).click();
+  await page.clock.runFor(500);
+  await expect(page.getByRole("button", {name: t.ui.undo, exact: true})).toBeInViewport({ratio: 1});
+  await expect(page.getByRole("article", {name: title, exact: true})).toHaveCount(0);
+}
+
+async function undoRemoval(page: Page, t: Messages, title: string) {
+  await page.getByRole("button", {name: t.ui.undo, exact: true}).click();
+  await page.clock.resume();
+  await expect(page.getByRole("article", {name: title, exact: true})).toBeVisible();
+}
 
 const screens: Screen[] = [
   {name: "home", who: "Christian", path: () => "/"},
@@ -136,19 +159,25 @@ const screens: Screen[] = [
     await expect(page.getByRole("status").filter({hasText: t.lists.pictureComing.replace("{store}", "Target")})).toBeVisible();
   }},
   {name: "undo-toast", who: "Christian", path: (f) => `/lists/${f.ids.Christian}`, then: async (page, t) => {
-    await page.getByRole("link", {name: t.lists.editNamedItem.replace("{title}", "Noise-cancelling headphones"), exact: true}).click();
-    const dialog = page.getByRole("dialog", {name: t.lists.editItem});
-    await expect(dialog).toBeVisible();
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
-    await dialog.getByRole("button", {name: t.lists.deleteItem, exact: true}).click();
-    await page.clock.runFor(500);
-    await expect(page.getByRole("button", {name: t.ui.undo, exact: true})).toBeVisible();
-    await expect(page.getByRole("article", {name: "Noise-cancelling headphones", exact: true})).toHaveCount(0);
+    await removeForUndo(page, t, "Noise-cancelling headphones");
   }, afterLayout: async (page, t) => {
-    await page.getByRole("button", {name: t.ui.undo, exact: true}).click();
-    await page.clock.resume();
-    await expect(page.getByRole("article", {name: "Noise-cancelling headphones", exact: true})).toBeVisible();
+    await undoRemoval(page, t, "Noise-cancelling headphones");
+  }},
+  {name: "long-undo-toast", who: "Beto", path: (f) => f.longList(), then: async (page, t) => {
+    await removeForUndo(page, t, longTitle);
+    const message = page.locator("[data-toast-host] p");
+    await expect(message).toHaveText(t.lists.tookOff.replace("{title}", longTitle));
+    const bounds = await message.evaluate((element) => ({top: element.getBoundingClientRect().top,
+      bottom: element.getBoundingClientRect().bottom, viewport: window.innerHeight,
+      height: element.clientHeight, content: element.scrollHeight}));
+    expect(bounds.top).toBeGreaterThanOrEqual(12);
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewport);
+    expect(bounds.content).toBeGreaterThan(bounds.height);
+    await message.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    expect(await message.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
+    await expect(page.getByRole("button", {name: t.ui.undo, exact: true})).toBeInViewport({ratio: 1});
+  }, afterLayout: async (page, t) => {
+    await undoRemoval(page, t, longTitle);
   }},
   {name: "add-something", who: "Christian", path: (f) => `/lists/${f.ids.Christian}`, then: async (page, t) => {
     await page.getByRole("button", {name: t.lists.addSomething, exact: true}).click();
@@ -199,6 +228,30 @@ const screens: Screen[] = [
   {name: "practice", who: "Christian", path: () => "/exchanges/practice"},
   {name: "welcome-sizes", who: "Christian", path: () => "/welcome/sizes"},
   {name: "welcome-list", who: "Christian", path: () => "/welcome/list"},
+  {name: "welcome-link-loading", who: "Christian", path: () => "/welcome/list", scope: ".fge-card", then: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.getByLabel(t.getIn.paste.field, {exact: true}).fill("https://www.target.com/p/wool-socks/-/A-12345");
+    await page.clock.runFor(100);
+    await expect(page.getByRole("status").filter({hasText: t.getIn.paste.loading.replace("{store}", "Target")})).toBeVisible();
+  }, afterLayout: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.paste.clear, exact: true}).click();
+    await page.clock.resume();
+  }},
+  {name: "welcome-link-preview", who: "Christian", path: () => "/welcome/list", scope: ".fge-card", then: async (page, t) => {
+    await page.route("**/lists/*/link-preview", (route) => route.fulfill({json: {card: {
+      url: "https://www.target.com/p/wool-socks/-/A-12345", title: "Wool socks", price: "18.00", store: "Target", icon: "target",
+    }}}));
+    await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
+    await page.getByLabel(t.getIn.paste.field, {exact: true}).fill("https://www.target.com/p/wool-socks/-/A-12345");
+    const want = page.getByRole("button", {name: t.getIn.paste.want, exact: true});
+    await expect(want).toHaveAttribute("aria-pressed", "false");
+    expect(await layoutProblems(page, ".fge-card")).toEqual([]);
+    await want.click();
+    await expect(want).toHaveAttribute("aria-pressed", "true");
+    await expect(want).toHaveText(t.getIn.paste.want);
+  }},
   {name: "welcome-done", who: "Christian", path: () => "/welcome/done"},
   {name: "setup-home-hyphenated-season", who: "Christian", family: "setup", path: () => "/"},
   {name: "setup-new", who: "Christian", family: "setup", path: () => "/exchanges/new"},
@@ -236,7 +289,7 @@ for (const locale of ["en", "es"] as const) {
           const folder = join(process.env.E2E_EVIDENCE_DIR ?? join(process.cwd(), "test-results", "largest-text"), test.info().project.name);
           mkdirSync(folder, {recursive: true});
           await page.screenshot({path: join(folder, `${locale}-${screen.name}.png`), fullPage: true});
-          expect(await layoutProblems(page), "nothing runs off the phone, is cut off, or breaks inside a word").toEqual([]);
+          expect(await layoutProblems(page, screen.scope), "nothing runs off the phone, is cut off, or breaks inside a word").toEqual([]);
           await screen.afterLayout?.(page, messages[locale]);
           expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
         } finally {
