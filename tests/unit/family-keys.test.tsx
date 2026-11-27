@@ -35,7 +35,10 @@ function printButton() {
 
 async function render(currentPeople = people) {
   await act(async () => root.render(<NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
+    <a href="/family">Family</a>
     <KeysList people={currentPeople} helped={[]} />
+    <input aria-label="Family sign-in address" readOnly value="https://example.com/sign-in?family=family" />
+    <a href="/family/group-chat">Tell the family</a>
   </NextIntlClientProvider>));
 }
 
@@ -164,4 +167,30 @@ it("prepares a replacement after a cached invitation is redeemed and marked sent
   sentKey.mockResolvedValueOnce({success: "sent"});
   await act(async () => button(en.auth.markSent, row).click());
   expect(sentKey).toHaveBeenLastCalledWith("replacement");
+});
+
+it.each([
+  ["qr", "cancel"], ["qr", "back"], ["print", "cancel"], ["print", "back"],
+] as const)("moves focus into the %s modal and restores it after %s", async (kind, exit) => {
+  prepareKey.mockResolvedValue(key("alex"));
+  const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+  const close = vi.spyOn(HTMLDialogElement.prototype, "close");
+  const opener = button(kind === "qr" ? en.auth.showQr : en.draw.keys.printCards);
+  opener.focus();
+  expect(document.activeElement).toBe(opener);
+  await act(async () => opener.click());
+  const dialog = container.querySelector<HTMLDialogElement>("dialog[open]")!;
+  expect(dialog).not.toBeNull();
+  expect(showModal).toHaveBeenCalledOnce();
+  expect(document.activeElement).toBe(button(en.auth.sendKeys, dialog));
+  if (exit === "cancel") {
+    const cancel = new Event("cancel", {cancelable: true});
+    await act(async () => dialog.dispatchEvent(cancel));
+    expect(cancel.defaultPrevented).toBe(true);
+  } else {
+    await act(async () => button(en.auth.sendKeys, dialog).click());
+  }
+  expect(close).toHaveBeenCalledOnce();
+  expect(container.querySelector("dialog")).toBeNull();
+  expect(document.activeElement).toBe(opener);
 });

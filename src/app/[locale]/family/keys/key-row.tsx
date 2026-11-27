@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {useState, useTransition, type ReactNode} from "react";
+import {useEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useFormatter, useTranslations} from "next-intl";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
@@ -166,7 +166,7 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
 
   return (
     <>
-      <div className="print:hidden" inert={qr !== null || printBatch !== null}>
+      <div className="print:hidden">
       <KnitIn className="flex flex-col gap-3 px-edge pt-6">
         <Card flush className="px-5 py-1">
           <ul className="fge-rows flex flex-col">
@@ -310,18 +310,32 @@ function Line({icon, children}: {icon: Parameters<typeof IconDisc>[0]["icon"]; c
 function Overlay({children, action, onClose, backLabel, printable = false}: {
   children: ReactNode; action: ReactNode; onClose: () => void; backLabel: string; printable?: boolean;
 }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    const previous = document.activeElement;
+    element.showModal();
+    element.querySelector<HTMLButtonElement>("button")?.focus({preventScroll: true});
+    return () => {
+      element.close();
+      if (previous instanceof HTMLElement) previous.focus({preventScroll: true});
+    };
+  }, []);
   return (
-    <section aria-label={backLabel}
-      className={`fixed inset-0 z-40 mx-auto flex max-w-[480px] flex-col overflow-y-auto bg-sweater-red text-snow-white fge-arrive-one ${printable ? "print:static print:bg-white print:text-black" : "print:hidden"}`}>
-      <div className="flex items-center px-4 pt-[calc(8px+var(--safe-top))] print:hidden">
-        <button type="button" onClick={onClose} className="fge-press inline-flex min-h-12 cursor-pointer items-center gap-2.5 rounded-pill pr-2">
-          <span aria-hidden="true" className="inline-flex size-12 items-center justify-center rounded-full bg-on-ground"><Icon name="back" size={24} strokeWidth={2.5} /></span>
-          <span className="text-body font-semibold">{backLabel}</span>
-        </button>
-      </div>
-      <div className="flex-1">{children}</div>
-      <div className="sticky bottom-0 flex flex-col gap-2 bg-sweater-red px-edge pt-4 pb-[calc(34px+var(--safe-bottom))] print:hidden">{action}</div>
-    </section>
+    <dialog ref={dialog} aria-label={backLabel} onCancel={(event) => { event.preventDefault(); onClose(); }}
+      className={`fixed inset-0 m-0 mx-auto h-full max-h-none w-full max-w-[480px] overflow-y-auto border-0 bg-sweater-red p-0 text-snow-white [&::backdrop]:bg-transparent ${printable ? "print:static print:h-auto print:overflow-visible print:bg-white print:text-black" : "print:hidden"}`}>
+      <section className="flex min-h-full flex-col fge-arrive-one">
+        <div className="flex items-center px-4 pt-[calc(8px+var(--safe-top))] print:hidden">
+          <button type="button" onClick={onClose} className="fge-press inline-flex min-h-12 cursor-pointer items-center gap-2.5 rounded-pill pr-2">
+            <span aria-hidden="true" className="inline-flex size-12 items-center justify-center rounded-full bg-on-ground"><Icon name="back" size={24} strokeWidth={2.5} /></span>
+            <span className="text-body font-semibold">{backLabel}</span>
+          </button>
+        </div>
+        <div className="flex-1">{children}</div>
+        <div className="sticky bottom-0 flex flex-col gap-2 bg-sweater-red px-edge pt-4 pb-[calc(34px+var(--safe-bottom))] print:hidden">{action}</div>
+      </section>
+    </dialog>
   );
 }
 

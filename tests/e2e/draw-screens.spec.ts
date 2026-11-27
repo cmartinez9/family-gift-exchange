@@ -1,6 +1,6 @@
 import {mkdirSync} from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import {expect, test, type Browser, type BrowserContext, type Page} from "@playwright/test";
+import {expect, test, type Browser, type BrowserContext, type Locator, type Page} from "@playwright/test";
 import {and, eq, inArray} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {aboutMe, families, households, items, people, sizes} from "../../src/server/db/schema";
@@ -14,6 +14,18 @@ import {practiceFamilies} from "../../src/server/draw/schema";
 const DIR = process.env.E2E_SCREENSHOT_DIR || "test-results/design";
 const phone = {viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true};
 const NAMES = ["Rosa", "Tito", "Ana", "Beto", "Leo"] as const;
+
+async function closeKeyOverlayWithKeyboard(page: Page, opener: Locator) {
+  const dialog = page.getByRole("dialog", {name: "Send keys"});
+  await expect(dialog.getByRole("button", {name: "Send keys", exact: true})).toBeFocused();
+  for (const key of ["Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+}
 
 test.describe.configure({mode: "serial"});
 test.skip(({browserName}) => browserName !== "chromium", "One engine is enough for the screen walk");
@@ -168,15 +180,22 @@ test("send keys, show a code, print cards, tell the family", async () => {
   await ana.getByRole("button", {name: "Send", exact: true}).click();
   await expect(ana.getByText(/^Hi Ana! This is your private key/)).toBeVisible();
   await shot(page, "f7-7_13-send-ana-her-key");
-  await page.getByRole("button", {name: "Show QR", exact: true}).last().click();
+  const qrOpener = page.getByRole("button", {name: "Show QR", exact: true}).last();
+  await qrOpener.click();
   await expect(page.getByRole("img", {name: "Scan to open your private key"}).last()).toBeVisible();
   await shot(page, "f7-7_14-show-the-key");
-  await page.getByRole("button", {name: "Send keys"}).click();
-  await page.getByRole("button", {name: "Print cards"}).click();
+  await closeKeyOverlayWithKeyboard(page, qrOpener);
+  const printOpener = page.getByRole("button", {name: "Print cards"});
+  await printOpener.click();
   await expect(page.getByRole("heading", {name: "Print key cards"})).toBeVisible();
   await expect(page.getByRole("img", {name: "Scan to open your private key"})).toHaveCount(3);
   await shot(page, "f7-7_15-print-key-cards");
-  await page.getByRole("button", {name: "Send keys"}).click();
+  await page.emulateMedia({media: "print"});
+  const printed = page.getByRole("dialog", {name: "Send keys"}).getByRole("img", {name: "Scan to open your private key"});
+  await expect(printed).toHaveCount(3);
+  for (const card of await printed.all()) await expect(card).toBeVisible();
+  await page.emulateMedia({media: "screen"});
+  await closeKeyOverlayWithKeyboard(page, printOpener);
   await page.getByRole("link", {name: "Tell the family"}).click();
   await expect(page.getByRole("region", {name: "Names are drawn!"})).toBeVisible();
   await shot(page, "f7-7_16-tell-the-family");

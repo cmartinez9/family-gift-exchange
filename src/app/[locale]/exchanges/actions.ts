@@ -8,7 +8,7 @@ import {getWishlist} from "@/server/lists";
 import {sizeKinds, sizePresets} from "@/server/lists/validation";
 import {
   answerQuestion, askYourPerson, changeParticipation, closeExchange, createExchange, DrawError, dryRunDraw,
-  editExchange, practiceCommand, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
+  editExchange, practiceCommand, reportPair, revealMyPerson, runDraw, setParticipants, startPractice,
   type ExchangeDetails,
 } from "@/server/draw";
 
@@ -85,8 +85,7 @@ export async function saveRosterAndContinue(id: string, _previous: FormState, da
 }
 
 type Management =
-  | {kind: "edit" | "roster" | "ruleAdd" | "dryRun" | "close"}
-  | {kind: "ruleRemove"; first: string; second: string}
+  | {kind: "edit" | "dryRun" | "close"}
   | {kind: "draw"; expectedVersion: number; allowSelection?: boolean}
   | {kind: "participation"; personId: string; status: "in" | "out"; expectedVersion: number};
 
@@ -99,21 +98,6 @@ export async function manage(id: string, request: Management, _previous: FormSta
       case "edit": {
         await editExchange(viewer, id, details(data));
         feedback = t("detailsSaved");
-        break;
-      }
-      case "roster": {
-        await setParticipants(viewer, id, selected(data));
-        feedback = t("rosterSaved");
-        break;
-      }
-      case "ruleAdd": {
-        await setKeepApart(viewer, id, field(data, "first"), field(data, "second"), "custom");
-        feedback = t("ruleSaved");
-        break;
-      }
-      case "ruleRemove": {
-        await setKeepApart(viewer, id, request.first, request.second, null);
-        feedback = t("ruleRemoved");
         break;
       }
       case "draw": {
