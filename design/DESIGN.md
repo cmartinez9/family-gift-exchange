@@ -466,7 +466,7 @@ On the web this is `navigator.vibrate` where it exists; iPhone Safari has no web
   - Item-card words always take a full-width row below the picture, leaving the claim tag above them without reserved title padding. Loading rows and photo actions also give their words a full-width row.
   - A button's icon stacks over its label, and its corners soften so two or three lines stay inside the shape. Ticks sit over their word. A field's action (Add) moves under the field, and its label stays visible above the input.
   - Paired fields stack; size grids use fewer columns; shoe sizes get a full-width row above their stepper controls. QR images and loading placeholders stay square within the available width.
-  - A sheet's title drops under the close disc; a stitched greeting scales down with the column.
+  - A sheet's title drops under the close disc. Stitched greetings and pass names scale down with the column; the pass's chevron moves below its name and its privacy caption can wrap.
   - A toast stays within the visible viewport, with its icon and Undo above a scrollable message, so a long item name cannot push Undo off screen.
   - Only a word longer than the available full-width line, or an address or code, may break inside itself. [`tests/e2e/largest-text.spec.ts`](../tests/e2e/largest-text.spec.ts) covers screens and conditional states in both languages using the simulated enlarged-text viewport in [`tests/helpers/largest-text.ts`](../tests/helpers/largest-text.ts), with additional width checks for the organizer input and claimed items.
 - Focus: a 3px yarn-white ring, 3px offset (ink on light cards and inside sheets).

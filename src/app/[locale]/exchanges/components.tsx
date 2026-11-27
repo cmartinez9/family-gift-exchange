@@ -173,4 +173,3 @@ export async function ExchangeFacts({details}: {details: ExchangeDetails}) {
     </Card>
   );
 }
-
