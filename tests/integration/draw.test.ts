@@ -457,7 +457,7 @@ it.each(["open", "setup"] as const)("clears all family marks and checklist entri
     await setClaimTick(buyer, item.id, "wrapped", true);
   }
   expect(await claimRows()).toContainEqual(expect.objectContaining({
-    itemId: season.id, exchangeId: status === "setup" ? null : exchangeId,
+    itemId: season.id, exchangeId: null,
   }));
   expect(await getGettingList(buyer)).toEqual(expect.arrayContaining(
     [season, other, standalone].map(({id}) => expect.objectContaining({itemId: id, bought: true, wrapped: true})),
@@ -474,6 +474,82 @@ it.each(["open", "setup"] as const)("clears all family marks and checklist entri
   expect(await getGettingList(buyer)).toEqual([]);
   expect(await foreignClaims()).toEqual(savedForeignClaims);
   expect(await getGettingList(foreignBuyer)).toEqual(foreignChecklist);
+});
+
+it.each(["between seasons", "during the next season"])("preserves later marks after a repeated close %s", async (phase) => {
+  const {organizer, coOrganizer, viewers, exchangeId, familyId} = await fixture();
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const item = await addListItem(owner, owner.actingAs, {kind: "note", title: "Gift for later"});
+  await claimItem(buyer, item.id);
+  await closeExchange(organizer, exchangeId);
+  expect(await getGettingList(buyer)).toEqual([]);
+  if (phase === "during the next season") await createExchange(organizer, {...details, name: "Next season"});
+  await claimItem(buyer, item.id);
+  await setClaimTick(buyer, item.id, "bought", true);
+  await setClaimTick(buyer, item.id, "wrapped", true);
+  const claimRows = () => runForFamily(app.db, familyId, (tx) => tx.select().from(claims));
+  const savedClaims = await claimRows();
+  const checklist = await getGettingList(buyer);
+  expect(checklist).toEqual([expect.objectContaining({itemId: item.id, bought: true, wrapped: true})]);
+
+  await closeExchange(coOrganizer, exchangeId);
+
+  expect(await claimRows()).toEqual(savedClaims);
+  expect(await getGettingList(buyer)).toEqual(checklist);
+  expect((await getWishlist(buyer, owner.actingAs)).items).toEqual([expect.objectContaining({id: item.id, claim: "mine"})]);
+});
+
+it.each(["open", "setup"] as const)("waits for a concurrent %s claim before clearing family marks", async (status) => {
+  const {organizer, viewers, exchangeId, familyId} = await fixture();
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const item = await addListItem(owner, owner.actingAs, {kind: "note", title: "Concurrent gift"});
+  await runForFamily(app.db, familyId, (tx) => tx.update(exchanges).set({status}).where(eq(exchanges.id, exchangeId)));
+  const locked = Promise.withResolvers<number>();
+  const release = Promise.withResolvers<void>();
+  const holding = admin.db.transaction(async (tx) => {
+    await tx.select({id: items.id}).from(items).where(and(eq(items.familyId, familyId), eq(items.id, item.id))).for("update");
+    const {rows: [row]} = await tx.execute<{pid: number}>(sql`SELECT pg_backend_pid() AS pid`);
+    locked.resolve(row.pid);
+    await release.promise;
+  });
+  void holding.catch(locked.reject);
+  let claiming: Promise<{value?: unknown; error?: unknown}> | undefined;
+  let closing: Promise<{value?: unknown; error?: unknown}> | undefined;
+  try {
+    const blocker = await locked.promise;
+    claiming = claimItem(buyer, item.id).then((value) => ({value}), (error: unknown) => ({error}));
+    let claimPid = 0;
+    await vi.waitFor(async () => {
+      const {rows} = await admin.db.execute<{pid: number}>(sql`
+        SELECT pid FROM pg_stat_activity
+        WHERE ${blocker} = ANY(pg_blocking_pids(pid)) AND usename = ${appRole}
+      `);
+      expect(rows).toHaveLength(1);
+      claimPid = rows[0].pid;
+    }, {timeout: 3000, interval: 10});
+    closing = closeExchange(organizer, exchangeId).then((value) => ({value}), (error: unknown) => ({error}));
+    await vi.waitFor(async () => {
+      const {rows: [row]} = await admin.db.execute<{blocked: boolean}>(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM pg_stat_activity
+          WHERE ${claimPid} = ANY(pg_blocking_pids(pid)) AND usename = ${drawRole}
+        ) AS blocked
+      `);
+      expect(row.blocked).toBe(true);
+    }, {timeout: 3000, interval: 10});
+  } finally {
+    release.resolve();
+    await holding;
+    await Promise.all([claiming, closing]);
+  }
+  expect(await claiming).toEqual({value: undefined});
+  expect(await closing).toEqual({value: undefined});
+  expect((await organizerExchange(organizer, exchangeId)).exchange.status).toBe("closed");
+  expect(await runForFamily(app.db, familyId, (tx) => tx.select().from(claims))).toEqual([]);
+  expect(await getGettingList(buyer)).toEqual([]);
+  expect((await getWishlist(buyer, owner.actingAs)).items).toEqual([expect.objectContaining({id: item.id})]);
 });
 
 it("rejects a stale Family lists budget form after the exchange closes", async () => {
