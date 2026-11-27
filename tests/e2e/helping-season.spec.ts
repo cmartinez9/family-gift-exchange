@@ -1,11 +1,11 @@
-import {mkdirSync} from "node:fs";
+import {mkdirSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {randomUUID} from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type Browser, type BrowserContextOptions, type Page} from "@playwright/test";
-import {eq} from "drizzle-orm";
+import {eq, sql} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {exchanges, families, outbox, participants, people} from "../../src/server/db/schema";
+import {claims, exchanges, families, items, outbox, participants, people} from "../../src/server/db/schema";
 import {issueKey} from "../../src/server/auth/access";
 import {pinCredentials} from "../../src/server/auth/schema";
 import {hashPin} from "../../src/server/auth/pin";
@@ -301,6 +301,13 @@ for (const locale of ["en", "es"] as const) {
       await buyer.goto(`/${locale}/lists/getting`);
       const entry = buyer.getByRole("heading", {name: title, exact: true});
       await expect(entry).toBeVisible();
+      for (const label of [lists.bought, lists.wrapped]) {
+        const tick = buyer.getByRole("checkbox", {name: label, exact: true});
+        await tick.check();
+        await expect(tick).toBeEnabled();
+        await expect(tick).toBeChecked();
+      }
+      await shot(buyer, `close-checklist-before-${locale}`, {axe: false});
 
       const closing = await f.signedIn("Christian", {...phone, reducedMotion});
       const zoomed = await f.signedIn("Christian", {...largest, deviceScaleFactor: 2, reducedMotion});
@@ -325,18 +332,23 @@ for (const locale of ["en", "es"] as const) {
       }
       await buyer.reload();
       await expect(entry).toBeVisible();
+      await expect(buyer.getByRole("checkbox", {name: lists.bought, exact: true})).toBeChecked();
+      await expect(buyer.getByRole("checkbox", {name: lists.wrapped, exact: true})).toBeChecked();
 
       await closing.getByRole("button", {name: draw.close, exact: true}).click();
       await closing.getByRole("dialog").getByRole("button", {name: confirm, exact: true}).click();
       await expect(closing.getByRole("heading", {name: season.wrapTitle, exact: true})).toBeVisible();
+      await shot(closing, `close-wrap-${locale}`, {axe: false});
 
       await buyer.reload();
       await expect(buyer.getByText(lists.emptyGetting, {exact: true})).toBeVisible();
       await expect(entry).toHaveCount(0);
+      await shot(buyer, `close-checklist-cleared-${locale}`, {axe: false});
       await buyer.goto(ownerList);
       await expect(buyer.getByRole("article", {name: title}).getByRole("button", {name: lists.claim, exact: true})).toBeVisible();
       await owner.reload();
       await expect(item).toBeVisible();
+      await shot(owner, `close-wishlist-retained-${locale}`, {axe: false});
     } finally {
       await f.close();
     }
@@ -378,6 +390,234 @@ for (const locale of ["en", "es"] as const) {
       }
     });
   }
+}
+
+async function addClosingGift(page: Page, ownerId: string, title: string) {
+  await page.goto(`/en/lists/${ownerId}/items/new?kind=note`);
+  await page.getByLabel(en.lists.title, {exact: true}).fill(title);
+  await page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
+  await expect(page.getByRole("article", {name: title})).toBeVisible();
+}
+
+async function markClosingGift(page: Page, ownerId: string) {
+  await page.goto(`/en/lists/${ownerId}`);
+  await page.getByRole("button", {name: en.lists.claim, exact: true}).click();
+  await expect(page.getByText(en.lists.mine, {exact: true})).toBeVisible();
+  await page.goto("/en/lists/getting");
+  for (const name of [en.lists.bought, en.lists.wrapped]) {
+    const tick = page.getByRole("checkbox", {name, exact: true});
+    await expect(tick).not.toBeChecked();
+    await tick.check();
+    await expect(tick).toBeEnabled();
+    await expect(tick).toBeChecked();
+  }
+}
+
+async function prepareClosingSheet(page: Page, exchangeId: string) {
+  await page.goto(`/en/exchanges/${exchangeId}/manage`);
+  await page.getByRole("button", {name: en.draw.close, exact: true}).click();
+  return page.getByRole("dialog").getByRole("button", {name: "Close Christmas 2026", exact: true});
+}
+
+function closingEvidence(label: string, state: unknown) {
+  const folder = join(process.env.E2E_EVIDENCE_DIR ?? "test-results", test.info().project.name);
+  mkdirSync(folder, {recursive: true});
+  writeFileSync(join(folder, `${label}.json`), JSON.stringify(state, null, 2));
+}
+
+for (const status of ["setup", "open"] as const) {
+  test(`clears pre-draw ${status} and legacy marks after drawing while retaining lists and another family's checklist`, async ({browser}) => {
+    test.setTimeout(90_000);
+    const f = await family(browser);
+    const foreign = await family(browser);
+    const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
+    try {
+      await database.db.delete(assignments).where(eq(assignments.familyId, f.familyId));
+      await database.db.delete(drawRuleSnapshots).where(eq(drawRuleSnapshots.familyId, f.familyId));
+      await database.db.update(exchanges).set({status, drawVersion: 0, seal: null}).where(eq(exchanges.id, f.exchangeId));
+      const oldExchangeId = randomUUID();
+      await database.db.insert(exchanges).values({familyId: f.familyId, id: oldExchangeId, name: "Prior year", status: "closed"});
+      const legacyItems = [randomUUID(), randomUUID()];
+      await database.db.insert(items).values(legacyItems.map((id, index) => ({
+        familyId: f.familyId, id, ownerId: f.ids.Ana, kind: "note" as const, title: `Legacy gift ${index + 1}`,
+      })));
+      await database.db.insert(claims).values(legacyItems.map((itemId, index) => ({
+        familyId: f.familyId, itemId, claimerId: f.ids.Beto, exchangeId: index ? oldExchangeId : null,
+        boughtAt: new Date(), wrappedAt: new Date(),
+      })));
+      const [foreignItem] = await database.db.insert(items).values({familyId: foreign.familyId,
+        ownerId: foreign.ids.Ana, kind: "note", title: "Other family's scarf"}).returning();
+      await database.db.insert(claims).values({familyId: foreign.familyId, itemId: foreignItem.id,
+        claimerId: foreign.ids.Rosa, boughtAt: new Date(), wrappedAt: new Date()});
+      const foreignRows = () => database.db.select().from(claims).where(eq(claims.familyId, foreign.familyId));
+      const savedForeign = await foreignRows();
+      const foreignBuyer = await foreign.signedIn("Rosa");
+      await foreignBuyer.goto("/en/lists/getting");
+      await expect(foreignBuyer.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeChecked();
+
+      const owner = await f.signedIn("Ana");
+      await addClosingGift(owner, f.ids.Ana, "Setup winter hat");
+      const buyer = await f.signedIn("Rosa");
+      await markClosingGift(buyer, f.ids.Ana);
+      await shot(buyer, `pre-draw-${status}-checklist`, {axe: false});
+      const savedItems = await database.db.select().from(items).where(eq(items.familyId, f.familyId)).orderBy(items.id);
+      const initialClaims = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
+      expect(initialClaims).toHaveLength(3);
+      expect(initialClaims.every(({boughtAt, wrappedAt}) => boughtAt && wrappedAt)).toBe(true);
+
+      const organizer = await f.signedIn("Christian");
+      await organizer.goto(`/en/exchanges/${f.exchangeId}/manage`);
+      if (status === "setup") {
+        await organizer.getByRole("button", {name: en.draw.saveDetails, exact: true}).click();
+        await expect(organizer.getByLabel(en.draw.name, {exact: true})).toBeHidden();
+      }
+      await organizer.locator("summary").filter({hasText: /^Draw names$/}).click();
+      await organizer.getByRole("button", {name: en.draw.confirmDraw, exact: true}).click();
+      await expect(organizer.getByText(/^Draw seal /)).toBeVisible();
+      const [drawn] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
+      await buyer.goto(`/en/exchanges/${f.exchangeId}`);
+      await buyer.getByRole("button", {name: en.draw.reveal, exact: true}).tap();
+      await expect(buyer.getByText(/^You’re giving to /)).toBeVisible();
+      await buyer.getByLabel("Your anonymous question").fill("Any favorite winter colors?");
+      await buyer.getByRole("button", {name: "Send question", exact: true}).click();
+      await expect(buyer.getByText("Waiting for an answer", {exact: true})).toBeVisible();
+      const beforeCounts = (await database.db.execute(sql`SELECT
+        (SELECT count(*)::int FROM assignments WHERE family_id = ${f.familyId}::uuid) AS assignments,
+        (SELECT count(*)::int FROM questions WHERE family_id = ${f.familyId}::uuid) AS questions`)).rows;
+      expect(beforeCounts).toEqual([{assignments: 6, questions: 1}]);
+      await (await prepareClosingSheet(organizer, f.exchangeId)).click();
+      await expect(organizer.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
+      const remaining = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
+      expect(remaining).toEqual([]);
+      expect(await database.db.select().from(items).where(eq(items.familyId, f.familyId)).orderBy(items.id)).toEqual(savedItems);
+      expect(await foreignRows()).toEqual(savedForeign);
+      const [closed] = await database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId));
+      expect(closed).toMatchObject({status: "closed", seal: drawn.seal, budgetAmount: drawn.budgetAmount, giftDay: drawn.giftDay});
+      const afterCounts = (await database.db.execute(sql`SELECT
+        (SELECT count(*)::int FROM assignments WHERE family_id = ${f.familyId}::uuid) AS assignments,
+        (SELECT count(*)::int FROM questions WHERE family_id = ${f.familyId}::uuid) AS questions`)).rows;
+      expect(afterCounts).toEqual([{assignments: 0, questions: 0}]);
+      closingEvidence(`pre-draw-${status}-persisted-state`, {initialClaims, remaining, retainedItemTitles: savedItems.map(({title}) => title),
+        foreignBefore: savedForeign, foreignAfter: await foreignRows(), beforeCounts, afterCounts, drawn, closed});
+      await buyer.goto("/en/lists/getting");
+      await expect(buyer.getByText(en.lists.emptyGetting, {exact: true})).toBeVisible();
+      await shot(buyer, `pre-draw-${status}-cleared`, {axe: false});
+      await buyer.goto(`/en/lists/${f.ids.Ana}`);
+      await expect(buyer.getByRole("button", {name: en.lists.claim, exact: true})).toHaveCount(3);
+      await shot(buyer, `pre-draw-${status}-wishlist-retained`, {axe: false});
+      await foreignBuyer.reload();
+      await expect(foreignBuyer.getByRole("checkbox", {name: "Bought", exact: true})).toBeChecked();
+      await expect(foreignBuyer.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeChecked();
+      await shot(foreignBuyer, `pre-draw-${status}-other-family-retained`, {axe: false});
+    } finally {
+      await database.close();
+      await f.close();
+      await foreign.close();
+    }
+  });
+}
+
+for (const nextSeason of [false, true]) {
+  test(`a stale close confirmation preserves later marks ${nextSeason ? "during the next season" : "between seasons"}`, async ({browser}) => {
+    test.setTimeout(60_000);
+    const f = await family(browser);
+    const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
+    try {
+      await database.db.update(people).set({role: "co_organizer"}).where(eq(people.id, f.ids.Beto));
+      const owner = await f.signedIn("Ana");
+      await addClosingGift(owner, f.ids.Ana, "Gift for next time");
+      const buyer = await f.signedIn("Rosa");
+      await markClosingGift(buyer, f.ids.Ana);
+      const organizer = await f.signedIn("Christian");
+      const coOrganizer = await f.signedIn("Beto");
+      const first = await prepareClosingSheet(organizer, f.exchangeId);
+      const stale = await prepareClosingSheet(coOrganizer, f.exchangeId);
+      await first.click();
+      await expect(organizer.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
+      await buyer.reload();
+      await expect(buyer.getByText(en.lists.emptyGetting, {exact: true})).toBeVisible();
+      if (nextSeason) {
+        await organizer.goto("/en/exchanges/new");
+        await organizer.getByLabel(en.draw.name, {exact: true}).fill("Christmas 2027");
+        await organizer.getByRole("button", {name: en.draw.create, exact: true}).click();
+        await expect(organizer.getByRole("heading", {name: "Christmas 2027", exact: true})).toBeVisible();
+      }
+      await markClosingGift(buyer, f.ids.Ana);
+      const saved = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
+      await stale.click();
+      await expect(coOrganizer.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
+      const remaining = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
+      expect(remaining).toEqual(saved);
+      await buyer.reload();
+      await expect(buyer.getByRole("heading", {name: "Gift for next time", exact: true})).toBeVisible();
+      await expect(buyer.getByRole("checkbox", {name: "Bought", exact: true})).toBeChecked();
+      await expect(buyer.getByRole("checkbox", {name: "Wrapped", exact: true})).toBeChecked();
+      const phase = nextSeason ? "next-season" : "between-seasons";
+      await shot(buyer, `stale-close-${phase}-retained`, {axe: false});
+      closingEvidence(`stale-close-${phase}-persisted-state`, {beforeStaleClose: saved, afterStaleClose: remaining});
+    } finally {
+      await database.close();
+      await f.close();
+    }
+  });
+}
+
+for (const status of ["setup", "open"] as const) {
+  test(`closing waits for an in-flight ${status} claim and clears its committed mark`, async ({browser}) => {
+    test.setTimeout(60_000);
+    const f = await family(browser);
+    const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
+    const release = Promise.withResolvers<void>();
+    let holding: Promise<unknown> | undefined;
+    try {
+      await database.db.update(exchanges).set({status}).where(eq(exchanges.id, f.exchangeId));
+      const owner = await f.signedIn("Ana");
+      await addClosingGift(owner, f.ids.Ana, "Concurrent winter gift");
+      const buyer = await f.signedIn("Rosa");
+      await buyer.goto(`/en/lists/${f.ids.Ana}`);
+      const organizer = await f.signedIn("Christian");
+      const close = await prepareClosingSheet(organizer, f.exchangeId);
+      const locked = Promise.withResolvers<number>();
+      holding = database.db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM items WHERE family_id = ${f.familyId}::uuid FOR UPDATE`);
+        const {rows: [row]} = await tx.execute<{pid: number}>(sql`SELECT pg_backend_pid() AS pid`);
+        locked.resolve(row.pid);
+        await release.promise;
+      });
+      void holding.catch(locked.reject);
+      const blocker = await locked.promise;
+      const claimed = buyer.waitForResponse((response) => response.request().method() === "POST");
+      await buyer.getByRole("button", {name: en.lists.claim, exact: true}).click();
+      const waiting = (pid: number) => database.db.execute<{pid: number; query: string}>(sql`
+        SELECT pid, query FROM pg_stat_activity WHERE ${pid} = ANY(pg_blocking_pids(pid)) AND wait_event_type = 'Lock'
+      `);
+      await expect.poll(async () => (await waiting(blocker)).rows.length).toBe(1);
+      const claimWait = (await waiting(blocker)).rows;
+      await close.click();
+      await expect.poll(async () => (await waiting(claimWait[0].pid)).rows.length).toBe(1);
+      const closeWait = (await waiting(claimWait[0].pid)).rows;
+      release.resolve();
+      await holding;
+      const claimResponse = await claimed;
+      expect(claimResponse.ok()).toBe(true);
+      await claimResponse.finished();
+      await expect(buyer.getByRole("button", {name: en.lists.claim, exact: true})
+        .or(buyer.getByRole("button", {name: en.lists.undoClaim, exact: true}))).toBeEnabled();
+      await expect(buyer.getByRole("main").getByRole("alert")).toHaveCount(0);
+      await expect(organizer.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
+      const remaining = await database.db.select().from(claims).where(eq(claims.familyId, f.familyId));
+      expect(remaining).toEqual([]);
+      await buyer.goto("/en/lists/getting");
+      await expect(buyer.getByText(en.lists.emptyGetting, {exact: true})).toBeVisible();
+      await shot(buyer, `concurrent-${status}-claim-cleared`, {axe: false});
+      closingEvidence(`concurrent-${status}-lock-and-state`, {claimWait, closeWait, claimHttpStatus: claimResponse.status(), remaining});
+    } finally {
+      release.resolve();
+      await holding;
+      await database.close();
+      await f.close();
+    }
+  });
 }
 
 for (const locale of ["en", "es"] as const) {
