@@ -187,8 +187,8 @@ test("rejects stale claim actions after another tab switches the acting profile"
   try {
     const owner = await f.signedIn("Ana");
     await owner.goto(`/en/lists/${f.ids.Ana}/items/new?kind=note`);
-    await owner.getByLabel("Item name", {exact: true}).fill("Warm mittens");
-    await owner.getByRole("button", {name: "Save item", exact: true}).click();
+    await owner.getByLabel(en.lists.title, {exact: true}).fill("Warm mittens");
+    await owner.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
     await expect(owner.getByRole("article", {name: "Warm mittens"})).toBeVisible();
 
     const rosa = await f.signedIn("Rosa");
@@ -198,7 +198,7 @@ test("rejects stale claim actions after another tab switches the acting profile"
     await switcher.getByRole("button", {name: "Help Tito", exact: true}).click();
     await expect(switcher).toHaveURL(/\/en\/helping$/);
     await rosa.getByRole("button", {name: "I’m getting this", exact: true}).click();
-    await expect(rosa.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
+    await expect(rosa.locator(".fge-toast")).toHaveText(en.lists.feedback.forbidden);
     await shot(rosa, "stale-claim-rejected", {axe: false});
 
     await rosa.reload();
@@ -207,7 +207,7 @@ test("rejects stale claim actions after another tab switches the acting profile"
     await expect(rosa.getByText("You’re getting this", {exact: true})).toBeVisible();
     const reserved = await rosa.context().newPage();
     await reserved.goto(`/en/lists/${f.ids.Ana}`);
-    await expect(reserved.getByRole("button", {name: "Undo mark", exact: true})).toBeVisible();
+    await expect(reserved.getByRole("button", {name: en.lists.undoClaim, exact: true})).toBeVisible();
     await rosa.goto("/en/lists/getting");
     await rosa.getByRole("checkbox", {name: "Bought", exact: true}).check();
     await expect(rosa.getByRole("checkbox", {name: "Bought", exact: true})).toBeEnabled();
@@ -219,12 +219,12 @@ test("rejects stale claim actions after another tab switches the acting profile"
 
     await switcher.getByRole("button", {name: "Done", exact: true}).click();
     await expect(switcher).toHaveURL(/\/en\/account$/);
-    await reserved.getByRole("button", {name: "Undo mark", exact: true}).click();
-    await expect(reserved.getByRole("main").getByRole("alert")).toHaveText("You can’t make this change.");
+    await reserved.getByRole("button", {name: en.lists.undoClaim, exact: true}).click();
+    await expect(reserved.locator(".fge-toast")).toHaveText(en.lists.feedback.forbidden);
     for (const [index, name] of ["Bought", "Wrapped"].entries()) {
       const tick = rosa.getByRole("checkbox", {name, exact: true});
       // Rejection restores the check, so uncheck()'s unchecked postcondition would race it.
-      await rosa.getByText(name, {exact: true}).click();
+      await tick.click();
       await expect(rosa.getByRole("main").getByRole("alert")).toHaveCount(index + 1);
       await expect(tick).toBeChecked();
     }
@@ -286,7 +286,6 @@ for (const locale of ["en", "es"] as const) {
         const organizer = await f.signedIn("Christian");
         const closing = await organizer.context().newPage();
         await organizer.goto(`/${locale}/lists`);
-        await organizer.locator("summary").click();
         await organizer.locator('input[name="budget"]').fill(value);
         await closing.goto(`/en/exchanges/${f.exchangeId}/manage`);
         await closing.getByRole("button", {name: "Close exchange", exact: true}).click();

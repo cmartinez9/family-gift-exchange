@@ -24,6 +24,7 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
+const actingAs = "buyer";
 const item: ListItemView = {id: "item", kind: "note", title: "Tea tin", note: null, price: null, store: null, starred: false, url: null};
 const about = {likes: null, dislikes: null, allergies: null, colors: null};
 let ownerId: string;
@@ -96,7 +97,7 @@ it.each([
   ["bought", false], ["bought", true], ["wrapped", false], ["wrapped", true],
 ] as const)("rolls back %s from %s after a rejected save and allows retry", async (command, checked) => {
   const response = Promise.withResolvers<FormState>();
-  const checklist = (value: boolean) => <ChecklistTick label={en.lists[command]} checked={value} action={claimCommand.bind(null, item.id, command)} />;
+  const checklist = (value: boolean) => <ChecklistTick label={en.lists[command]} checked={value} action={claimCommand.bind(null, actingAs, item.id, command)} />;
   vi.mocked(claimCommand).mockReturnValueOnce(response.promise).mockImplementationOnce(async () => {
     root.render(view(checklist(!checked)));
     return {};
@@ -114,13 +115,13 @@ it.each([
   expect(checkbox().checked).toBe(!checked);
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(claimCommand).toHaveBeenCalledTimes(2);
-  expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, !checked, {});
+  expect(claimCommand).toHaveBeenNthCalledWith(1, actingAs, item.id, command, !checked, {});
 });
 
 it.each(["bought", "wrapped"] as const)("reconciles %s when a concurrent save returns the same server value", async (command) => {
   const response = Promise.withResolvers<FormState>();
   let checked = true;
-  const checklist = () => <ChecklistTick label={en.lists[command]} checked={checked} action={claimCommand.bind(null, item.id, command)} />;
+  const checklist = () => <ChecklistTick label={en.lists[command]} checked={checked} action={claimCommand.bind(null, actingAs, item.id, command)} />;
   vi.mocked(claimCommand).mockImplementationOnce(async () => {
     checked = false;
     root.render(view(checklist()));
@@ -140,8 +141,8 @@ it.each(["bought", "wrapped"] as const)("reconciles %s when a concurrent save re
   expect(checkbox().checked).toBe(false);
   expect(checkbox().disabled).toBe(false);
   expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, false, {});
-  expect(claimCommand).toHaveBeenNthCalledWith(2, item.id, command, true, {});
+  expect(claimCommand).toHaveBeenNthCalledWith(1, actingAs, item.id, command, false, {});
+  expect(claimCommand).toHaveBeenNthCalledWith(2, actingAs, item.id, command, true, {});
 });
 
 it("rolls back a rejected heart save, reports it, and allows retry", async () => {

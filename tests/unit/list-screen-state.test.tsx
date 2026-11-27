@@ -24,6 +24,7 @@ vi.mock("@/i18n/navigation", () => ({
 }));
 
 let ownerId: string;
+const actingAs = "buyer";
 const item: ListItemView = {id: "item", kind: "note", title: "Tea tin", note: null, price: null, store: null, starred: false, url: null};
 let container: HTMLDivElement;
 let root: Root;
@@ -286,7 +287,7 @@ it("uses the edited heart value after a prior optimistic toggle", async () => {
 
 it("shows claim controls only when the list permits claiming", async () => {
   const card = (canClaim: boolean) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={item} ownerName="Willow" canClaim={canClaim} />
+    <ClaimItem actingAs={actingAs} item={item} ownerName="Willow" canClaim={canClaim} />
   </NextIntlClientProvider>;
   await render(card(false));
   expect(container.querySelector("article")?.textContent).toContain(item.title);
@@ -300,7 +301,7 @@ it.each(["claim", "undo"] as const)("restores the previous claim state after a r
   vi.mocked(claimCommand).mockReturnValueOnce(response.promise).mockResolvedValueOnce({});
   const initial: ListItemView = {...item, ...(command === "undo" ? {claim: "mine"} : {})};
   await render(<NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={initial} ownerName="Willow" canClaim />
+    <ClaimItem actingAs={actingAs} item={initial} ownerName="Willow" canClaim />
     <ToastHost undoLabel="Undo" />
   </NextIntlClientProvider>);
   const label = command === "claim" ? en.lists.claim : en.lists.undoClaim;
@@ -320,14 +321,14 @@ it.each(["claim", "undo"] as const)("restores the previous claim state after a r
   await click(button());
   expect(container.querySelector("article")?.getAttribute("data-claim")).toBe(after);
   expect(claimCommand).toHaveBeenCalledTimes(2);
-  expect(claimCommand).toHaveBeenNthCalledWith(1, item.id, command, command === "claim");
-  expect(claimCommand).toHaveBeenNthCalledWith(2, item.id, command, command === "claim");
+  expect(claimCommand).toHaveBeenNthCalledWith(1, actingAs, item.id, command, command === "claim");
+  expect(claimCommand).toHaveBeenNthCalledWith(2, actingAs, item.id, command, command === "claim");
 });
 
 it("keeps the taken-card response when another person claimed the item first", async () => {
   vi.mocked(claimCommand).mockResolvedValueOnce({error: "already-claimed"});
   await render(<NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={item} ownerName="Willow" canClaim />
+    <ClaimItem actingAs={actingAs} item={item} ownerName="Willow" canClaim />
     <ToastHost undoLabel="Undo" />
   </NextIntlClientProvider>);
   await click(container.querySelector<HTMLButtonElement>("[data-claim-origin]")!);
@@ -340,10 +341,10 @@ it("refreshes a reservation undone in another tab when a different item is claim
   const reservations = new Map<string, "mine">();
   let entries: ListItemView[] = [{...item, id: "a"}, {...item, id: "b", title: "Book"}];
   const list = () => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    {entries.map((entry) => <ClaimItem key={entry.id} item={entry} ownerName="Willow" canClaim />)}
+    {entries.map((entry) => <ClaimItem actingAs={actingAs} key={entry.id} item={entry} ownerName="Willow" canClaim />)}
   </NextIntlClientProvider>;
   const card = (id: string) => container.querySelectorAll<HTMLElement>("article")[id === "a" ? 0 : 1];
-  vi.mocked(claimCommand).mockImplementation(async (id) => {
+  vi.mocked(claimCommand).mockImplementation(async (_actingAs, id) => {
     reservations.set(id, "mine");
     entries = entries.map((entry) => ({...entry, claim: reservations.get(entry.id)}));
     root.render(list());
@@ -361,7 +362,7 @@ it("refreshes a reservation undone in another tab when a different item is claim
 
 it("shows a reservation made in another tab after receiving refreshed item data", async () => {
   const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={entry} ownerName="Willow" canClaim />
+    <ClaimItem actingAs={actingAs} item={entry} ownerName="Willow" canClaim />
   </NextIntlClientProvider>;
   await render(card(item));
   expect(container.querySelector("article")?.getAttribute("data-claim")).toBe("open");
@@ -373,7 +374,7 @@ it("shows a reservation made in another tab after receiving refreshed item data"
 it.each([undefined, "mine", "someone"] as const)("clears stale late feedback when refreshed claim data is %s", async (claim) => {
   vi.mocked(claimCommand).mockResolvedValueOnce({error: "already-claimed"});
   const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={entry} ownerName="Willow" canClaim />
+    <ClaimItem actingAs={actingAs} item={entry} ownerName="Willow" canClaim />
   </NextIntlClientProvider>;
   await render(card(item));
   await click(container.querySelector<HTMLButtonElement>("[data-claim-origin]")!);
@@ -388,7 +389,7 @@ it.each(["claim", "undo"] as const)("keeps refreshed server data after an older 
   const response = Promise.withResolvers<FormState>();
   vi.mocked(claimCommand).mockReturnValueOnce(response.promise);
   const card = (entry: ListItemView) => <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">
-    <ClaimItem item={entry} ownerName="Willow" canClaim />
+    <ClaimItem actingAs={actingAs} item={entry} ownerName="Willow" canClaim />
     <ToastHost undoLabel="Undo" />
   </NextIntlClientProvider>;
   await render(card({...item, claim: command === "undo" ? "mine" : undefined}));
