@@ -404,6 +404,8 @@ async function markClosingGift(page: Page, ownerId: string) {
   await page.goto(`/en/lists/${ownerId}`);
   await page.getByRole("button", {name: en.lists.claim, exact: true}).click();
   await expect(page.getByText(en.lists.mine, {exact: true})).toBeVisible();
+  // The claimed label is optimistic; wait for the save before leaving the page.
+  await expect(page.getByRole("button", {name: en.lists.undoClaim, exact: true})).toBeEnabled();
   await page.goto("/en/lists/getting");
   for (const name of [en.lists.bought, en.lists.wrapped]) {
     const tick = page.getByRole("checkbox", {name, exact: true});
