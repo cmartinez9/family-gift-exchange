@@ -110,9 +110,6 @@ export async function setItemStar(ownerId: string, itemId: string, starred: bool
   return {status: "saved"};
 }
 
-/**
- * Defer the server deletion until Undo expires so cancellation preserves the item, photo, and claim.
- */
 export async function removeItem(ownerId: string, itemId: string): Promise<FormState> {
   const viewer = await requireViewer();
   try {

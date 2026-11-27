@@ -63,9 +63,12 @@ for (const failure of ["writes", "access"] as const) {
       await tabs.getByRole("link", {name: ui.tabs.family}).click();
       await tabs.getByRole("link", {name: ui.tabs.home}).click();
       await expect(install).toHaveCount(0);
+      // Let the tab crossfade settle so the evidence shows the resulting Home screen.
+      await page.waitForTimeout(700);
       await page.screenshot({path: test.info().outputPath(`storage-${failure}-dismissed.png`), fullPage: true});
       await page.getByRole("button", {name: ui.undo, exact: true}).click();
       await expect(install).toBeVisible();
+      await page.waitForTimeout(700);
       await page.screenshot({path: test.info().outputPath(`storage-${failure}-undo.png`), fullPage: true});
     } finally {
       await database(fixture.familyId, (tx) => tx.delete(families).where(eq(families.id, fixture.familyId)).execute());

@@ -57,6 +57,7 @@ export function usePendingRemovals(ownerId: string, items: readonly {id: string}
   return snapshot;
 }
 
+/** Keep the item, photo, and claim intact until commit so Undo needs no compensating writes. */
 export function removeWithUndo(locale: string, ownerId: string, itemId: string, message: string, errorMessage: (error: Feedback) => string) {
   const items = pending.get(ownerId) ?? new Map<string, Removal>();
   if (items.has(itemId)) return;
