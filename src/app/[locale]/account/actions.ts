@@ -5,7 +5,7 @@ import {getLocale} from "next-intl/server";
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {requireViewer} from "@/server/auth";
-import {clearSession} from "@/server/auth/request";
+import {clearBorrowedSession, clearSession} from "@/server/auth/request";
 import {actFor, disputeEvent, disputeSession, endSessions, signOutDevice, turnOffFaceId} from "@/server/auth/security";
 import {revalidateViewer, uuidPattern} from "@/server/auth/session";
 import {lockFamily} from "@/server/auth/access";
@@ -29,6 +29,12 @@ export async function switchProfile(personId: string): Promise<AuthResult> {
 export async function signOut(all: boolean): Promise<AuthResult> {
   const viewer = await requireViewer();
   await withFamily(viewer.familyId, (tx) => endSessions(tx, viewer, new Date(), all === true));
+  if (viewer.borrowed) {
+    // signing out on a borrowed phone hands it back: its owner is still signed in
+    await clearBorrowedSession();
+    revalidatePath("/", "layout");
+    redirect(`/${await getLocale()}`);
+  }
   await clearSession();
   revalidatePath("/", "layout");
   redirect(`/${await getLocale()}/sign-in`);

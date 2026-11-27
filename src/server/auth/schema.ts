@@ -18,6 +18,10 @@ export const sessions = pgTable("sessions", {
   resetNoticeEligible: boolean("reset_notice_eligible").default(false).notNull(),
   trusted: boolean("trusted").default(true).notNull(),
   hadOrganizerAccess: boolean("had_organizer_access").default(false).notNull(),
+  /** Set when this session was opened on someone else's phone, inside their session: it only lives as long as theirs. */
+  lentBySessionId: uuid("lent_by_session_id"),
+  /** When a session on a borrowed phone hid its person: from then on it has no sealed draw access. */
+  personHiddenAt: instant("person_hidden_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
   index("sessions_person_idx").on(table.familyId, table.personId),
@@ -35,6 +39,11 @@ export const sessions = pgTable("sessions", {
     name: "sessions_acting_as_fk",
     columns: [table.familyId, table.actingAs],
     foreignColumns: [people.familyId, people.id],
+  }),
+  foreignKey({
+    name: "sessions_lender_fk",
+    columns: [table.familyId, table.lentBySessionId],
+    foreignColumns: [table.familyId, table.id],
   }),
 ]);
 

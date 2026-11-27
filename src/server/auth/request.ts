@@ -2,7 +2,7 @@ import "server-only";
 import {isIP} from "node:net";
 import {cookies, headers} from "next/headers";
 import {authenticatorSecret, keyedHash} from "./pin";
-import {digest, seasonSeconds, secret, sessionCookie, uuidPattern} from "./session";
+import {borrowedCookie, digest, seasonSeconds, secret, sessionCookie, uuidPattern} from "./session";
 import type {Device, DeviceKind} from "./access";
 
 const familyCookie = "__Host-fge-family";
@@ -18,10 +18,26 @@ export async function setSession(familyId: string, value: string) {
   const jar = await cookies();
   jar.set(sessionCookie, value, {...privateCookie, maxAge: seasonSeconds});
   jar.set(familyCookie, familyId, {...privateCookie, maxAge: seasonSeconds});
+  jar.set(borrowedCookie, "", {...privateCookie, maxAge: 0});
 }
 
 export async function clearSession() {
-  (await cookies()).set(sessionCookie, "", {...privateCookie, maxAge: 0});
+  const jar = await cookies();
+  jar.set(sessionCookie, "", {...privateCookie, maxAge: 0});
+  jar.set(borrowedCookie, "", {...privateCookie, maxAge: 0});
+}
+
+/**
+ * A relative's session on this phone, beside the owner's. No max age: it also ends when the browser does,
+ * and the server ends it within the hour anyway.
+ */
+export async function setBorrowedSession(value: string) {
+  (await cookies()).set(borrowedCookie, value, privateCookie);
+}
+
+/** The phone is its owner's again. */
+export async function clearBorrowedSession() {
+  (await cookies()).set(borrowedCookie, "", {...privateCookie, maxAge: 0});
 }
 
 export function identifyDevice(agent: string): DeviceKind {

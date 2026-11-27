@@ -84,6 +84,9 @@ export async function lookupKey(tx: FamilyTransaction, familyId: string, pepper:
   return row;
 }
 
+/** How long a relative may stay signed in on someone else's phone: one sitting, then it is the owner's again. */
+export const lendSeconds = 30 * 60;
+
 export async function inspectKey(tx: FamilyTransaction, familyId: string, token: string, now: Date, pepper?: string) {
   const key = await lookupKey(tx, familyId, pepper ?? "", token, Boolean(pepper));
   if (!key) return null;
@@ -102,6 +105,8 @@ export async function describeKey(tx: FamilyTransaction, key: typeof personalKey
     personId: person.id, name: person.displayName, familyName: family.name,
     usedAt: key.usedAt, usedDevice: usedDevice?.kind,
     available: !key.revokedAt && !key.usedAt && key.expiresAt > now,
+    /** A first key, which can also be opened on a relative's signed-in phone; a replacement key cannot. */
+    first: key.kind !== "reset",
   };
 }
 
@@ -227,6 +232,18 @@ export async function signInDevice(
   return {...session, queued: notice?.queued ?? false};
 }
 
+/**
+ * Signs a relative in on the owner's phone, inside the owner's session (9.1 to 9.5): never trusted, never
+ * remembered by the phone, and over within `lendSeconds` or as soon as the owner's session ends.
+ */
+async function lendDevice(
+  tx: FamilyTransaction, familyId: string, personId: string, device: Device, lenderSessionId: string, now: Date,
+) {
+  const session = await createSession(tx, familyId, personId, device.hash, device.kind, now, null, {lenderSessionId, seconds: lendSeconds});
+  await tx.insert(authEvents).values({familyId, personId, sessionId: session.id, kind: "newDevice", deviceKind: device.kind, at: now});
+  return {...session, queued: false};
+}
+
 async function isTrustedDevice(tx: FamilyTransaction, familyId: string, personId: string, hash: string, now: Date) {
   const [row] = await tx.select({id: sessions.id}).from(sessions).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, hash),
@@ -239,6 +256,8 @@ export async function redeemKey(
   tx: FamilyTransaction, input: {
     familyId: string; value: string; typed: boolean; pepper: string; pin: string; confirmation: string;
     device: Device; currentViewer: Viewer | null; now: Date; preview?: string | null; openingId?: string;
+    /** The key's person is here, using `currentViewer`'s phone: sign them in beside its owner. */
+    lend?: boolean;
   },
 ) {
   const {familyId, value, typed, pepper, pin, confirmation, device, currentViewer, now} = input;
@@ -259,7 +278,13 @@ export async function redeemKey(
   }
   const person = await activePerson(tx, familyId, key.personId);
   if (!person || person.helperId) return {error: "unavailable"} as const;
-  if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
+  let lender: Awaited<ReturnType<typeof revalidateViewer>> = null;
+  if (input.lend) {
+    // only a first link key, on the same family's live, signed-in phone, and never inside another borrowed session
+    lender = currentViewer && currentViewer.familyId === familyId && currentViewer.personId !== person.id && !typed
+      && key.kind !== "reset" ? await revalidateViewer(tx, currentViewer) : null;
+    if (!lender || lender.borrowed || lender.deviceHash !== device.hash) return {error: "otherPerson"} as const;
+  } else if (currentViewer && (currentViewer.familyId !== familyId || currentViewer.personId !== person.id)) {
     return {error: "otherPerson"} as const;
   }
   if (key.usedAt) {
@@ -286,9 +311,11 @@ export async function redeemKey(
       eq(passkeys.familyId, familyId), eq(passkeys.personId, person.id),
     ));
   }
-  const session = await signInDevice(tx, familyId, person.id, device, now, null, key.kind === "reset",
-    key.kind === "reset" ? {value, typed, openingId, pepper} : undefined,
-  );
+  const session = lender
+    ? await lendDevice(tx, familyId, person.id, device, lender.sessionId, now)
+    : await signInDevice(tx, familyId, person.id, device, now, null, key.kind === "reset",
+      key.kind === "reset" ? {value, typed, openingId, pepper} : undefined,
+    );
   await tx.update(personalKeys).set({usedAt: now, usedSessionId: session.id}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.id, key.id),
   ));
