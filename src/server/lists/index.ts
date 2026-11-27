@@ -18,7 +18,7 @@ export async function listFamilyWishlists(viewer: ListViewer) {
   return withFamily(viewer.familyId, async (tx) => {
     await requireListActor(tx, viewer);
     const members = await tx.select({
-      id: people.id, name: people.displayName, noClothes: people.noClothes,
+      id: people.id, name: people.displayName, noClothes: people.noClothes, helperId: people.helperId,
     }).from(people).where(and(eq(people.familyId, viewer.familyId), isNull(people.removedAt)))
       .orderBy(asc(people.displayName), asc(people.id));
     const totals = await tx.select({id: items.ownerId, count: count()}).from(items)
@@ -35,7 +35,7 @@ export async function listFamilyWishlists(viewer: ListViewer) {
     return members.map((member) => {
       const itemCount = itemCounts.get(member.id) ?? 0;
       return {
-        id: member.id, name: member.name, itemCount,
+        id: member.id, name: member.name, helperId: member.helperId, itemCount,
         ready: isListReady(itemCount, member.noClothes, answered.get(member.id) ?? new Set()),
       };
     });

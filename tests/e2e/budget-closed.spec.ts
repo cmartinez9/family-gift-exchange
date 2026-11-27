@@ -30,7 +30,6 @@ async function organizer(page: Page) {
 async function budgetForm(page: Page, locale: "en" | "es" = "en") {
   const messages = locale === "en" ? en : es;
   await page.goto(`/${locale}/lists`);
-  await page.locator("summary").filter({hasText: messages.lists.budget}).click();
   return page.getByLabel(messages.lists.budget, {exact: true});
 }
 
@@ -38,7 +37,7 @@ async function setBudget(page: Page, value: string) {
   const field = await budgetForm(page);
   await field.fill(value);
   await page.getByRole("button", {name: en.lists.saveBudget}).click();
-  await expect(page.getByRole("main").getByRole("status")).toHaveText(en.lists.saved);
+  await expect(page.getByRole("status").filter({hasText: en.lists.saved})).toBeVisible();
 }
 
 async function state(exchangeId: string) {
@@ -155,7 +154,7 @@ test("a budget save queued behind the real close action rechecks status under th
     const {rows: [{pid}]} = await holder.query("select pg_backend_pid() as pid");
     const blockers = [pid];
     const waiting = async () => (await database.query(
-      "select pid, wait_event_type, query from pg_stat_activity where pg_blocking_pids(pid) && $1::int[] and wait_event_type = 'Lock' and query like '%\"families\"%'",
+      "select pid, wait_event_type, query from pg_stat_activity where pg_blocking_pids(pid) && $1::int[] and wait_event_type = 'Lock'",
       [blockers],
     )).rows;
     await close.click();

@@ -42,7 +42,7 @@ async function addPerson(page: Page, name: string, helper?: string) {
   await form.getByLabel("Name or nickname").fill(name);
   if (helper) await form.getByLabel("Who helps on their own device?").selectOption({label: helper});
   await form.getByRole("button", {name: "Add a person", exact: true}).click();
-  await expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
+  await expect(form.getByRole("status")).toHaveText("Saved.");
   // The add form remains open after its server action.
   await page.reload();
 }

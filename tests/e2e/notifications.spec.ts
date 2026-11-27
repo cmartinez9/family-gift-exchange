@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {promisify} from "node:util";
 import {devices, expect, test, type Page} from "@playwright/test";
 import {eq} from "drizzle-orm";
+import {createTranslator} from "next-intl";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
@@ -25,6 +26,7 @@ for (const language of ["en", "es"] as const) {
   test(`ordinary wishlist and budget mutations notify privately, and reminders and helper inboxes work in ${language}`, async ({page, browser, browserName, request}) => {
     test.setTimeout(120_000);
     const {auth, helping, lists, notify, getIn} = language === "en" ? en : es;
+    const listText = createTranslator({locale: language, messages: lists});
     const {db, close} = connectDatabase(process.env.DATABASE_URL!);
     const guest = await browser.newContext({
       ...devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"], ignoreHTTPSErrors: true,
@@ -77,21 +79,29 @@ for (const language of ["en", "es"] as const) {
       await buyer.goto(`/${language}/lists/${ownerId}`);
       await buyer.getByRole("button", {name: lists.claim, exact: true}).click();
       await expect(buyer.getByText(lists.mine, {exact: true})).toBeVisible();
+      await expect(buyer.getByRole("article", {name: "Private winter puzzle"})).toHaveAttribute("aria-busy", "false");
       const [claim] = await scoped((tx) => tx.select().from(claims));
       expect(claim.exchangeId).toBeNull();
       await page.reload();
       await expect(card.getByText(lists.someone, {exact: true})).toHaveCount(0);
+      const sheet = page.getByRole("dialog", {name: lists.editItem});
       await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
-      await page.getByRole("button", {name: lists.saveItem}).click();
-      await expect(card).toBeVisible();
+      await sheet.getByRole("button", {name: lists.saveItem}).click();
+      await expect(sheet).toBeHidden();
       expect(await scoped((tx) => tx.select().from(outbox))).toEqual([]);
       await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
-      await page.getByRole("textbox", {name: lists.note, exact: true}).fill("Red box instead");
-      await page.getByRole("button", {name: lists.saveItem}).click();
+      await sheet.getByRole("textbox", {name: lists.note, exact: true}).fill("Red box instead");
+      await sheet.getByRole("button", {name: lists.saveItem}).click();
+      await expect(sheet).toBeHidden();
       await expect(card.getByText("Red box instead", {exact: true})).toBeVisible();
-      await card.getByText(lists.deleteItem, {exact: true}).click();
-      await card.getByRole("button", {name: lists.confirmDeleteButton}).click();
+      // taking it off has Undo, so it is removed once the Undo has passed
+      await card.getByRole("link", {name: lists.editNamedItem.replace("{title}", "Private winter puzzle")}).click();
+      const removal = page.waitForResponse((response) => response.request().method() === "POST", {timeout: 15_000});
+      await sheet.getByRole("button", {name: lists.deleteItem}).click();
       await expect(card).toHaveCount(0);
+      expect((await removal).ok()).toBe(true);
+      // The title's count comes from the server; the card disappears optimistically before the refresh.
+      await expect(page.getByText(listText("itemCount", {count: 0}), {exact: true})).toBeVisible();
       expect(await scoped((tx) => tx.select().from(claims))).toEqual([]);
       expect(await scoped((tx) => tx.select().from(items))).toMatchObject([{id: claim.itemId, archivedAt: expect.any(Date)}]);
 

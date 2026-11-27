@@ -4,7 +4,9 @@ import {getTranslations} from "next-intl/server";
 import {HomeScreenHelp} from "@/components/notifications/home-screen-help";
 import {Link} from "@/i18n/navigation";
 import {routing, type Locale} from "@/i18n/routing";
+import {getViewer} from "@/server/auth";
 
+import {HomeScreen} from "./_home/home-screen";
 import {SignInScreen} from "./sign-in/screen";
 
 const languageNames: Record<Locale, string> = {en: "English", es: "Español"};
@@ -21,6 +23,8 @@ async function getPageLocale(params: HomeProps["params"]): Promise<Locale> {
 
 export default async function HomePage({params}: HomeProps) {
   const locale = await getPageLocale(params);
+  const viewer = await getViewer();
+  if (viewer) return <HomeScreen viewer={viewer} />;
   const t = await getTranslations({locale, namespace: "home"});
 
   return (

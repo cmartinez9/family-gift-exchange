@@ -132,7 +132,7 @@ export function YarnTag({scale = 1}: {scale?: number}) {
 /** The tag hanging from a card's top right on its yarn strand: an item someone (you) is getting. */
 export function HangingTag({className, style}: {className?: string; style?: CSSProperties}) {
   return (
-    <span aria-hidden="true" className={cn("pointer-events-none absolute -top-2.5 right-[42px] flex flex-col items-center", className)}
+    <span aria-hidden="true" className={cn("pointer-events-none absolute -top-2.5 right-4 flex flex-col items-center", className)}
       style={{transformOrigin: "50% 0", ...style}}>
       <span className="block h-3.5 w-[2.5px] bg-yarn-white" />
       <span className="block" style={{transform: "rotate(6deg)", transformOrigin: "50% 0"}}><YarnTag /></span>
@@ -172,9 +172,9 @@ export function ItemCard({tone = "info", picture, title, titleAs: Title = "h3", 
         {picture}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <Title className={cn("text-item-title", tag && "pr-[52px]")}>{title}</Title>
-          {store && (
+          {(store || price) && (
             <p className="text-body text-[var(--fg-muted)]">
-              {store}{price && <> · <span className="font-bold text-[var(--fg)]">{price}</span></>}
+              {store}{store && price && " · "}{price && <span className="font-bold text-[var(--fg)]">{price}</span>}
             </p>
           )}
           {details}

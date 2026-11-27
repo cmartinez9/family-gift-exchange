@@ -52,6 +52,7 @@ export function projectItem(item: Item) {
     store: item.store,
     starred: item.starred,
     hasPhoto: Boolean(item.imageKey),
+    updatedAt: item.updatedAt,
     hasIcon: Boolean(preview.iconKey),
     icon: preview.icon,
   };

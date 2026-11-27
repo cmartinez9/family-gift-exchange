@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {promisify} from "node:util";
 import {expect, test, type Browser, type Page, type TestInfo} from "@playwright/test";
 import {and, eq, sql} from "drizzle-orm";
+import en from "../../messages/en.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {exchanges, families, households, keepApart, participants, people} from "../../src/server/db/schema";
 import {pinCredentials} from "../../src/server/auth/schema";
@@ -431,8 +432,8 @@ test("same-named recipients open their exact wishlists in English and Spanish", 
         .where(and(eq(people.familyId, f.familyId), eq(people.id, f.ids[index])));
       const page = f.devices[index].page;
       await page.goto(`/en/lists/${f.ids[index]}/items/new?kind=note`);
-      await page.getByLabel("Item name", {exact: true}).fill(index === 1 ? "Alex's telescope" : "Alex's knitting book");
-      await page.getByRole("button", {name: "Save item", exact: true}).click();
+      await page.getByLabel(en.lists.title, {exact: true}).fill(index === 1 ? "Alex's telescope" : "Alex's knitting book");
+      await page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
       await expect(page.getByRole("article")).toHaveCount(1);
     }
     for (const [locale, index, title] of [["en", 0, "Alex's telescope"], ["es", 1, "Alex's knitting book"]] as const) {
@@ -458,10 +459,10 @@ test("a wishlist save queued behind a session revocation cannot insert an item",
   try {
     const page = f.devices[1].page;
     await page.goto(`/en/lists/${f.ids[1]}/items/new?kind=note`);
-    await page.getByLabel("Item name", {exact: true}).fill("Revoked session's gift");
+    await page.getByLabel(en.lists.title, {exact: true}).fill("Revoked session's gift");
     await blocker.query("BEGIN");
     await blocker.query("SELECT id FROM families WHERE id = $1 FOR UPDATE", [f.familyId]);
-    const clicking = page.getByRole("button", {name: "Save item", exact: true}).click();
+    const clicking = page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
     const appLogin = decodeURIComponent(new URL(process.env.DATABASE_URL!).username);
     await expect.poll(async () => {
       const result = await f.database.db.execute(sql`SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND usename = ${appLogin}`);
@@ -491,7 +492,7 @@ test("reporting a session during a real link fetch prevents its pending wishlist
     const reporter = await f.device(1);
     await reporter.page.goto("/en/account");
     await page.goto(`/en/lists/${f.ids[1]}/items/new?kind=link`);
-    await page.getByLabel("Item name", {exact: true}).fill("Interrupted link save");
+    await page.getByLabel(en.lists.title, {exact: true}).fill("Interrupted link save");
     await page.getByLabel("Product link", {exact: true}).fill(process.env.E2E_SLOW_PRODUCT_URL!);
     await blocker.query("BEGIN");
     await blocker.query("SELECT id FROM families WHERE id = $1 FOR UPDATE", [f.familyId]);

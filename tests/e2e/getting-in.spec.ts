@@ -546,7 +546,8 @@ test("regression: another tab switching to Help Leo rejects Ana's old draft and 
     await other.goto("/en/account");
     await other.getByRole("button", {name: "Help Leo", exact: true}).click();
     await expect(other.getByText("You're helping Leo", {exact: true})).toBeVisible();
-    await other.getByRole("link", {name: en.lists.account, exact: true}).click();
+    await expect(other).toHaveURL(/\/en\/lists\/[^/]+$/);
+    await other.goto("/en/account");
     await expect(other.getByRole("link", {name: /^My sizes/})).toContainText(t.you.sizesNone);
     await other.goto("/en/welcome/sizes");
     await other.getByRole("group", {name: t.sizes.tops}).getByText("M", {exact: true}).click();
