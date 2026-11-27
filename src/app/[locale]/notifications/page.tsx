@@ -26,6 +26,7 @@ const ICONS: Readonly<Record<Template, IconName>> = {
   "participation-cancelled": "gift",
   "gift-day-reminder": "calendar",
   "pin-reset-request": "lock",
+  "key-opened-elsewhere": "phone",
   "claimed-item-changed": "gift",
   "budget-changed": "tag",
   "question-answered": "message",

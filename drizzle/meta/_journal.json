@@ -134,6 +134,13 @@
       "when": 1795751120731,
       "tag": "0018_claim-seen",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795760137073,
+      "tag": "0019_session-reset-notices",
+      "breakpoints": true
     }
   ]
 }

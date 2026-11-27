@@ -12,6 +12,7 @@ export const templates = [
   "participation-cancelled",
   "gift-day-reminder",
   "pin-reset-request",
+  "key-opened-elsewhere",
   "claimed-item-changed",
   "budget-changed",
   "question-answered",

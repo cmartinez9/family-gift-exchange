@@ -286,6 +286,28 @@ it("counts unread notices only within the newest 100 without deleting older noti
   expect(stored.filter(({readAt}) => readAt === null).map(({id}) => id)).toEqual([ids[100]]);
 });
 
+it("sends a generic used-key push only to the owner's enabled phone", async () => {
+  const owner = await signedInDevice(members[1].id);
+  const other = await signedInDevice(organizers[0].id);
+  const subscriptions = await Promise.all([owner, other].map(async (viewer) => {
+    const subscription = browserSubscription();
+    await subscribePush(viewer, subscription);
+    return subscription;
+  }));
+  vi.stubEnv("VERCEL_ENV", "production");
+  await sendMessage({familyId, personId: owner.personId, language: "es", template: "key-opened-elsewhere"});
+
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  await deliverPendingPushForFamily(familyId, sender);
+  expect(sender.mock.calls.map(([subscription]) => subscription.endpoint)).toEqual([subscriptions[0].endpoint]);
+  const notice = (await listNotifications(owner))[0];
+  for (const [, payload] of sender.mock.calls) {
+    expect(payload).toMatchObject({url: "/es/notifications", tag: notice.id});
+    expect(payload.title).not.toBe(notice.title);
+    expect(payload.body).not.toBe(notice.body);
+  }
+});
+
 it("prunes a gone endpoint, scopes subscriptions to sessions, and delivers only safe payloads", async () => {
   const owner = await signedInDevice(organizers[0].id);
   const gone = await signedInDevice(organizers[0].id);

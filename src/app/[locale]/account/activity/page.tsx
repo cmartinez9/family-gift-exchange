@@ -35,7 +35,8 @@ export default async function FamilyActivityPage() {
                 const date = format.dateTime(row.at, SHORT);
                 const [icon, title, sub] = row.kind === "joined" ? ["plus", t("joined", {name: row.name ?? ""}), date] as const
                   : row.kind === "reset" ? ["lock", t("reset"), t("resetSub", {date, organizer})] as const
-                    : row.kind === "secondPhone" ? ["phone", t("secondPhone"), t("secondPhoneSub", {date})] as const
+                    : row.kind === "secondPhone" || row.kind === "keyDisputed"
+                      ? ["phone", t("secondPhone"), t(row.kind === "secondPhone" ? "secondPhoneSub" : "keyDisputedSub", {date})] as const
                       : row.kind === "signedOut" ? ["phone", t("signedOut"), t("signedOutSub", {date})] as const
                         : row.kind === "faceOff" ? ["faceid", t("faceOff"), t("faceOffSub", {date})] as const
                           : ["alert", t("paused"), date] as const;
