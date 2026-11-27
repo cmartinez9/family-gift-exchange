@@ -28,7 +28,7 @@ After opening your person, use **Ask your person** to send an anonymous question
 
 Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
 
-Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings, questions, and the exchange's gift marks and checklist entries. It retains the exchange details and seal and opens **That's a wrap**. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings, questions, and all of the family's gift marks and checklist entries. It retains the exchange details and seal and opens **That's a wrap**. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
 
 ## Wishlists and gifts
 
@@ -40,7 +40,7 @@ Choose **Edit sizes and About me** to add sizing, preferences, or allergies. The
 
 On someone else's list, choose **I'm getting this** to reserve a gift. Other members see **Someone is getting this**, without a buyer's name. Claim marks are omitted when you view your own list; while helping someone, they are omitted on both that person's list and your own. Use **Things I'm getting** to track **Bought** and **Wrapped**, or return to the item and choose **Undo mark** to release it. Removing an item clears its mark. Removing a member releases that member's unpurchased reservations so others can claim those gifts; reservations already marked **Bought** remain in place.
 
-New marks made once a season is open belong to that exchange. Closing it clears those marks. Marks made without an open season are independent.
+Closing a season clears all of the family's marks and their **Bought** and **Wrapped** state, including marks made before the season opened. Wishlists and items stay.
 
 ## Notifications
 

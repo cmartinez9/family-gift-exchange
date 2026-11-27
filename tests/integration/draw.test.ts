@@ -418,8 +418,9 @@ it("creates, edits and closes an exchange manually regardless of its gift day", 
   expect(await memberDrawStatus(viewers[1], exchangeId)).toMatchObject({status: "closed"});
 });
 
-it("clears only the closing exchange's marks and checklist entries while keeping its wishlists", async () => {
+it.each(["open", "setup"] as const)("clears all family marks and checklist entries after claims during %s", async (status) => {
   const {organizer, viewers, exchangeId, familyId} = await fixture();
+  const foreign = await fixture({count: 3, active: 3});
   const buyer = viewers[1];
   const owner = viewers[2];
   const otherExchangeId = randomUUID();
@@ -431,31 +432,48 @@ it("clears only the closing exchange's marks and checklist entries while keeping
   const claimRows = () => scoped((tx) => tx.select().from(claims).orderBy(claims.id));
   const itemRows = () => scoped((tx) => tx.select().from(items).orderBy(items.id));
   await scoped(async (tx) => {
+    await tx.update(exchanges).set({status}).where(eq(exchanges.id, exchangeId));
     await tx.insert(exchanges).values({familyId, id: otherExchangeId, name: "Other season", status: "closed"});
     await tx.insert(claims).values([
       {familyId, itemId: other.id, exchangeId: otherExchangeId, claimerId: buyer.actingAs},
       {familyId, itemId: standalone.id, claimerId: buyer.actingAs},
     ]);
   });
+  const foreignOwner = foreign.viewers[2];
+  const foreignBuyer = foreign.viewers[1];
+  const foreignItem = await addListItem(foreignOwner, foreignOwner.actingAs, {kind: "note", title: "Another family's gift"});
+  await claimItem(foreignBuyer, foreignItem.id);
+  await setClaimTick(foreignBuyer, foreignItem.id, "bought", true);
+  await setClaimTick(foreignBuyer, foreignItem.id, "wrapped", true);
+  const foreignClaims = () => runForFamily(app.db, foreign.familyId, (tx) => tx.select().from(claims));
+  const savedForeignClaims = await foreignClaims();
+  const foreignChecklist = await getGettingList(foreignBuyer);
   const wishlist = await getWishlist(owner, owner.actingAs);
   const savedItems = await itemRows();
-  const survivingClaims = await claimRows();
 
   await claimItem(buyer, season.id);
-  await setClaimTick(buyer, season.id, "bought", true);
-  await setClaimTick(buyer, season.id, "wrapped", true);
-  expect(await claimRows()).toContainEqual(expect.objectContaining({itemId: season.id, exchangeId}));
-  expect(await getGettingList(buyer)).toContainEqual(expect.objectContaining({
-    itemId: season.id, bought: true, wrapped: true,
+  for (const item of [season, other, standalone]) {
+    await setClaimTick(buyer, item.id, "bought", true);
+    await setClaimTick(buyer, item.id, "wrapped", true);
+  }
+  expect(await claimRows()).toContainEqual(expect.objectContaining({
+    itemId: season.id, exchangeId: status === "setup" ? null : exchangeId,
   }));
+  expect(await getGettingList(buyer)).toEqual(expect.arrayContaining(
+    [season, other, standalone].map(({id}) => expect.objectContaining({itemId: id, bought: true, wrapped: true})),
+  ));
 
+  await editExchange(organizer, exchangeId, details);
+  await runDraw(organizer, exchangeId, {expectedVersion: 0});
   await closeExchange(organizer, exchangeId);
 
-  expect(await claimRows()).toEqual(survivingClaims);
+  expect(await claimRows()).toEqual([]);
   expect(await itemRows()).toEqual(savedItems);
   expect(await getWishlist(owner, owner.actingAs)).toEqual(wishlist);
-  expect((await getWishlist(buyer, owner.actingAs)).items.find(({id}) => id === season.id)?.claim).toBeUndefined();
-  expect((await getGettingList(buyer)).map(({itemId}) => itemId)).toEqual([standalone.id, other.id]);
+  expect((await getWishlist(buyer, owner.actingAs)).items.every((item) => item.claim === undefined)).toBe(true);
+  expect(await getGettingList(buyer)).toEqual([]);
+  expect(await foreignClaims()).toEqual(savedForeignClaims);
+  expect(await getGettingList(foreignBuyer)).toEqual(foreignChecklist);
 });
 
 it("rejects a stale Family lists budget form after the exchange closes", async () => {

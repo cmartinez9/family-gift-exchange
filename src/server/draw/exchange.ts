@@ -58,7 +58,7 @@ export async function closeExchange(viewer: DrawViewer, id: string) {
     // A closed exchange retains its details and seal, with no pairing history.
     await tx.delete(assignments).where(assignmentScope(familyId, exchange.id));
     await tx.delete(questions).where(and(eq(questions.familyId, familyId), eq(questions.exchangeId, exchange.id)));
-    await tx.delete(claims).where(and(eq(claims.familyId, familyId), eq(claims.exchangeId, exchange.id)));
+    await tx.delete(claims).where(eq(claims.familyId, familyId));
     await tx.delete(drawRuleSnapshots).where(and(
       eq(drawRuleSnapshots.familyId, familyId), eq(drawRuleSnapshots.exchangeId, exchange.id),
     ));
