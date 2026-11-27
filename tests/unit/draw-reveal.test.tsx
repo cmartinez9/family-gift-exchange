@@ -6,7 +6,7 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import es from "../../messages/es.json";
 
-const {reveal, memberAction} = vi.hoisted(() => ({reveal: vi.fn(), memberAction: vi.fn()}));
+const {reveal, readPersonList, memberAction} = vi.hoisted(() => ({reveal: vi.fn(), readPersonList: vi.fn(), memberAction: vi.fn()}));
 
 vi.mock("@/i18n/navigation", () => ({
   Link: ({href, children, className}: {href: string; children: ReactNode; className?: string}) =>
@@ -14,7 +14,7 @@ vi.mock("@/i18n/navigation", () => ({
   useRouter: () => ({replace: vi.fn(), push: vi.fn(), back: vi.fn()}),
 }));
 vi.mock("next/navigation", () => ({useRouter: () => ({replace: vi.fn(), push: vi.fn(), back: vi.fn()})}));
-vi.mock("../../src/app/[locale]/exchanges/actions", () => ({reveal, memberAction}));
+vi.mock("../../src/app/[locale]/exchanges/actions", () => ({reveal, readPersonList, memberAction}));
 
 const {MemberPerson} = await import("../../src/app/[locale]/exchanges/person");
 
@@ -37,6 +37,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal ??= function () { this.open = true; };
   HTMLDialogElement.prototype.close ??= function () { this.open = false; };
   reveal.mockReset();
+  readPersonList.mockReset().mockResolvedValue(undefined);
   memberAction.mockReset();
   container = document.createElement("div");
   document.body.append(container);
@@ -97,6 +98,7 @@ it("keeps synthetic practice reveals inside practice", async () => {
   await act(async () => button("Open your person").click());
   expect(container.querySelector("h1")?.textContent).toContain("Alex");
   expect(container.querySelector('a[href^="/lists/"]')).toBeNull();
+  expect(readPersonList).not.toHaveBeenCalled();
 });
 
 it.each([false, true])("recovers a reveal after a transport rejection (seen: %s)", async (seen) => {

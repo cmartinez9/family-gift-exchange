@@ -40,7 +40,6 @@ export default async function MemberExchangePage({params, searchParams}: {
       exchangeFacts={<section aria-label={t("detailsTitle")} className="pb-6">
         <SectionHeading title={t("detailsTitle")} />
         <div className="px-edge pt-3"><ExchangeFacts details={state.exchange} /></div>
-      </section>}
-      helping={viewer.actingAs !== viewer.personId ? {label: t("helping", {name: state.subjectName}), href: "/account", action: t("person.helpingDone")} : undefined} />
+      </section>} />
   );
 }

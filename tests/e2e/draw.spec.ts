@@ -6,6 +6,7 @@ import {connectDatabase} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {practiceFamilies} from "../../src/server/draw/schema";
 import {openFamilyAfterDetails} from "../helpers/family-setup";
+import {openPerson} from "../helpers/open-person";
 
 async function newOrganizer(page: Page) {
   const name = `The Snowbell Family ${randomUUID().slice(0, 6)}`;
@@ -38,17 +39,6 @@ async function removeFamily(familyId: string) {
 
 function disclosure(page: Page, name: string) {
   return page.locator("summary").filter({hasText: new RegExp(`^${name}$`)});
-}
-
-/** Opens your person: the gift's tap path the first time, the plain button after; returns the name. */
-async function openPerson(page: Page) {
-  const heading = page.getByRole("heading", {level: 1, name: /^You’re giving to /});
-  await page.getByRole("button", {name: /^(Open your person|Or tap here to open it)$/}).click();
-  const see = page.getByRole("button", {name: /^See .+’s page$/});
-  await expect(heading.or(see)).toBeVisible({timeout: 10_000});
-  if (await see.isVisible()) await see.click();
-  await expect(heading).toBeVisible();
-  return (await heading.textContent())!.replace("You’re giving to", "").trim();
 }
 
 test("runs a private practice season through the browser", async ({page, browser}, info) => {

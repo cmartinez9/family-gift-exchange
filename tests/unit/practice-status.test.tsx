@@ -23,7 +23,7 @@ vi.mock("@/server/draw", () => ({
   practiceMemberView, practiceSeason: vi.fn(), redrawConfirmation: {}, DrawError: class extends Error {},
 }));
 vi.mock("../../src/app/[locale]/exchanges/actions", () => ({
-  beginPractice: vi.fn(), managePractice: vi.fn(), memberAction: vi.fn(), reveal: vi.fn(),
+  beginPractice: vi.fn(), managePractice: vi.fn(), memberAction: vi.fn(), reveal: vi.fn(), readPersonList: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/i18n/navigation", () => ({
   Link: ({href, children}: {href: string; children: ReactNode}) => <a href={href}>{children}</a>,

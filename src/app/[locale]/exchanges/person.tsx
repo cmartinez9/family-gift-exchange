@@ -10,7 +10,7 @@ import {Icon} from "@/components/ui/icon";
 import {TextArea} from "@/components/ui/inputs";
 import {BudgetMeasure, ItemCard, ItemPicture, NoPicture, WantsLine} from "@/components/ui/item-card";
 import {STITCH_CELL, StitchedText} from "@/components/ui/knit/stitched-text";
-import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
+import {ModeBanner} from "@/components/ui/mode-banner";
 import {haptic} from "@/components/ui/motion/haptic";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {UnravelReveal} from "@/components/ui/motion/unravel-reveal";
@@ -20,7 +20,7 @@ import {Screen} from "@/components/ui/screen";
 import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
 import {useLocale} from "next-intl";
-import {memberAction, reveal, type FormState, type MemberContext, type PersonList, type RevealState} from "./actions";
+import {memberAction, readPersonList, reveal, type FormState, type MemberContext, type PersonList, type RevealState} from "./actions";
 
 export type Outgoing = {id: string; text: string; answer: string | null};
 
@@ -32,7 +32,7 @@ const SUGGESTIONS = ["size", "color", "have"] as const;
  * Your person: the reveal the first time, then their page — pine, because only you may see it.
  * The name comes from the reveal itself; until it is opened on this visit the page keeps it hidden.
  */
-export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, helping, exchangeFacts}: {
+export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, exchangeFacts}: {
   context: MemberContext;
   seen: boolean;
   canReport: boolean;
@@ -45,8 +45,6 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   back: string;
   backLabel: string;
   answerHref: string;
-  /** A mode: "You're helping Tito" or "Viewing as Pinewisp", and the way out of it. */
-  helping?: {label: string; href: string; action: string};
   exchangeFacts?: ReactNode;
 }) {
   const t = useTranslations("draw");
@@ -59,6 +57,15 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   const asked = useRef(false);
   const [ask, setAsk] = useState(false);
   const [report, setReport] = useState(false);
+  const openedId = person?.id;
+  useEffect(() => {
+    if (!openedId || context.practice) return;
+    let active = true;
+    void readPersonList(openedId).then((list) => {
+      if (active && list) setPerson((current) => current?.id === openedId ? {...current, list} : current);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [context, openedId]);
 
   function open(then?: () => void) {
     if (asked.current) return;
@@ -81,16 +88,9 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
     });
   }
 
-  const banner = helping && (
-    <ModeBanner icon="user" action={<AppLink href={helping.href} className={modeActionClass}>{helping.action}</AppLink>}>
-      {helping.label}
-    </ModeBanner>
-  );
-
   if (view === "reveal") {
     return (
       <Screen ground="red" back={back}>
-        {banner}
         {incoming.length > 0 && (
           // a question for you can be answered before you open your own person
           <ModeBanner icon="message" action={<AppLink href={answerHref} transition="push" className={modeActionClass}>{t("person.answer")}</AppLink>}>
@@ -135,7 +135,6 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
     ) : !name ? (
       <Button icon="gift" onClick={() => open()}>{t("reveal")}</Button>
     ) : undefined}>
-      {banner}
       <BackRow href={back} parent={backLabel} backLabel={ui("back")}
         right={canReport && <TextButton className="text-snow-white" onClick={() => setReport(true)}>{t("report")}</TextButton>} />
 

@@ -204,6 +204,10 @@ async function personList(viewer: Viewer, personId: string): Promise<PersonList 
   };
 }
 
+export async function readPersonList(personId: string): Promise<PersonList | undefined> {
+  return personList(await requireViewer(), personId);
+}
+
 export async function reveal(context: MemberContext): Promise<RevealState> {
   const viewer = await requireViewer();
   return drawAction(async () => {

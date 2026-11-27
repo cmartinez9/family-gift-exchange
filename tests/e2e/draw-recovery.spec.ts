@@ -13,6 +13,7 @@ import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server
 import {drawSeal, sealText} from "../../src/server/draw/sealing";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import {openKey, signInWithPin, skipFaceId} from "../helpers/pin-pad";
+import {openPerson as reveal} from "../helpers/open-person";
 
 // Seed only the starting state: a known, encrypted cycle in a disposable database.
 // Reveals, questions, reporting, recovery, and redraws run against the HTTPS app.
@@ -68,17 +69,6 @@ async function fixture(browser: Browser, count: number, organizer = 0, coOrganiz
       await database.close();
     },
   };
-}
-
-/** Opens your person: the gift's tap path the first time, the plain button after; returns the name. */
-async function reveal(page: Page) {
-  const heading = page.getByRole("heading", {level: 1, name: /^(You’re giving to|Le regalas a) /});
-  await page.getByRole("button", {name: /^(Open your person|Or tap here to open it|Descubrir a tu persona|O toca aquí para abrirlo)$/}).click();
-  const see = page.getByRole("button", {name: /^(See .+’s page|Ver la página de .+)$/});
-  await expect(heading.or(see)).toBeVisible({timeout: 10_000});
-  if (await see.isVisible()) await see.click();
-  await expect(heading).toBeVisible();
-  return (await heading.textContent())!.replace(/^(You’re giving to|Le regalas a)/, "").trim();
 }
 
 async function open(page: Page, path: string) {
