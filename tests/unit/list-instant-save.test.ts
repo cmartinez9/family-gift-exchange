@@ -50,3 +50,15 @@ it("uses a preview read ahead of time instead of reading the page again", async 
   expect(services.later).toBeUndefined();
   await expect(services.resolve()).resolves.toBe(preview);
 });
+
+it.each([false, true])("distinguishes an explicitly cleared price from an untouched blank: %s", async (edited) => {
+  server.readLinkDraft.mockReturnValue(undefined);
+  const form = linkForm();
+  form.set("title", "Target");
+  form.set("price", "");
+  form.set("priceEdited", String(edited));
+  await saveItem("ana", null, "link", false, {}, form);
+  expect(server.addListItem).toHaveBeenCalledWith(ana, "ana", expect.objectContaining({
+    title: "Target", price: edited ? "" : undefined,
+  }), {later: server.after});
+});

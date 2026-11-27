@@ -40,6 +40,8 @@ type PreviewFields = {
   imageSource?: "upload" | "preview";
   /** When a link saved before its page was read; cleared once the page has been read or given up on. */
   pending?: number;
+  titleEdited?: boolean;
+  priceEdited?: boolean;
 };
 
 function readPreview(value: Item["preview"]): PreviewFields {
@@ -52,6 +54,8 @@ function readPreview(value: Item["preview"]): PreviewFields {
     iconKey: typeof value?.iconKey === "string" ? value.iconKey : undefined,
     imageSource: value?.imageSource === "upload" || value?.imageSource === "preview" ? value.imageSource : undefined,
     pending: typeof value?.pending === "number" ? value.pending : undefined,
+    titleEdited: value?.titleEdited === true,
+    priceEdited: value?.priceEdited === true,
   };
 }
 
@@ -173,7 +177,7 @@ export async function addListItem(viewer: ListViewer, ownerId: string, input: Ad
         url: preview?.url, store: preview?.store, imageKey, position: (last?.position ?? -1) + 1,
         preview: preview && {
           ...previewFields(preview, iconKey, input.upload ? "upload" : imageKey ? "preview" : undefined),
-          ...(later && {pending: Date.now()}),
+          ...(later && {pending: Date.now(), titleEdited: Boolean(fields.title), priceEdited: fields.price !== undefined}),
         },
       }).returning();
       return projectItem(item);
@@ -257,14 +261,23 @@ async function changeListItem(
       const nextImageKey = keepUploaded ? item.imageKey : imageKey ?? (newLink === undefined ? item.imageKey : null);
       const imageSource = input.upload || keepUploaded ? "upload" : nextImageKey ? "preview" : undefined;
       const nextIconKey = nextImageKey ? undefined : iconKey ?? (newLink === undefined ? oldPreview.iconKey : undefined);
-      const nextPreview = preview
+      let nextPreview = preview
         ? previewFields({
           ...preview,
           price: preview.price ?? (refresh ? oldPreview.price ?? null : null),
         }, nextIconKey, imageSource)
         : input.upload && item.kind === "link" ? {...oldPreview, iconKey: undefined, imageSource: "upload"} : undefined;
-      const suggestedTitle = item.title === oldPreview.title || item.title === item.store ? preview?.title : undefined;
-      const suggestedPrice = item.price === (oldPreview.price ?? null) ? preview?.price ?? undefined : undefined;
+      if (!preview && oldPreview.pending !== undefined) {
+        nextPreview = {
+          ...(nextPreview ?? oldPreview),
+          titleEdited: oldPreview.titleEdited || fields.title !== undefined,
+          priceEdited: oldPreview.priceEdited || fields.price !== undefined,
+        };
+      }
+      const suggestedTitle = !oldPreview.titleEdited && (item.title === oldPreview.title || item.title === item.store)
+        ? preview?.title : undefined;
+      const suggestedPrice = !oldPreview.priceEdited && item.price === (oldPreview.price ?? null)
+        ? preview?.price ?? undefined : undefined;
       const updated = await saveChanges(tx, item, {
         ...fields,
         title: fields.title ?? suggestedTitle ?? undefined,

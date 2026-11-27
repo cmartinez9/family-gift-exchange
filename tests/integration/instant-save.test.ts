@@ -119,6 +119,48 @@ describe("saving a pasted link at once", () => {
     expect(save.files.size).toBe(1);
   });
 
+  it.each([
+    {title: "Target"},
+    {title: "fleece robe"},
+    {price: ""},
+    {title: "Target", price: " "},
+  ])("preserves explicitly supplied fields matching generated defaults: %j", async (input) => {
+    const save = instantSave();
+    save.resolve.mockImplementation(async () => robe());
+    const added = await addListItem(owner, ownerId, {
+      kind: "link", link: "https://www.target.com/p/fleece-robe/-/A-12345", ...input,
+    }, save.services);
+
+    await save.runLater();
+    expect((await getWishlist(owner, ownerId)).items.find(({id}) => id === added.id)).toMatchObject({
+      title: input.title ?? "Cozy Fleece Robe",
+      price: input.price === undefined ? "39.99" : null,
+      hasPhoto: true, pictureComing: false,
+    });
+  });
+
+  it("preserves matching titles and cleared prices edited during the deferred read", async () => {
+    const save = instantSave();
+    const started = Promise.withResolvers<void>();
+    const response = Promise.withResolvers<LinkPreview>();
+    save.resolve.mockImplementation(() => {
+      started.resolve();
+      return response.promise;
+    });
+    const added = await addListItem(owner, ownerId, {
+      kind: "link", link: "https://www.target.com/p/fleece-robe/-/A-12345",
+    }, save.services);
+    const filling = save.runLater();
+    await started.promise;
+    await editListItem(owner, ownerId, added.id, {title: "Target", price: ""}, save.services);
+    response.resolve(await robe());
+    await filling;
+
+    expect((await getWishlist(owner, ownerId)).items.find(({id}) => id === added.id)).toMatchObject({
+      title: "Target", price: null, hasPhoto: true, pictureComing: false,
+    });
+  });
+
   it("does not tell a giver about the first picture arriving", async () => {
     const save = instantSave();
     save.resolve.mockImplementation(async () => robe());
