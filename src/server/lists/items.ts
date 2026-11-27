@@ -7,17 +7,29 @@ import {ListError, requireListActor, requireListEditor, requireListPerson, type 
 import {clearItemClaim, getClaimDestination} from "./claims";
 import {listItemsScope, requireListItem} from "./item-records";
 import {listEvents, type ListEvents} from "./list-events";
-import {resolveLinkPreview, type LinkPreview} from "./link-preview";
+import {linkPreviewFromUrl, resolveLinkPreview, type LinkPreview} from "./link-preview";
 import {safeStoredLink} from "./link-preview/url";
 import {discardListPhoto, photoStorage, processListPhoto, storeListPhoto, type ListPhotoStorage} from "./photo-storage";
-import {itemKinds, listText, NOTE_LIMIT, TITLE_LIMIT, usdAmount, type ItemKind} from "./validation";
+import {itemKinds, listText, NOTE_LIMIT, PICTURE_WAIT_MS, TITLE_LIMIT, usdAmount, type ItemKind} from "./validation";
 
 type Item = typeof items.$inferSelect;
 type ItemValues = Partial<typeof items.$inferInsert>;
 type WritableFields = {title?: string; note?: string; price?: string; starred?: boolean};
 type ItemInput = WritableFields & {link?: string; upload?: Buffer};
 type AddItemInput = ItemInput & {kind: ItemKind};
-type ItemServices = {events?: ListEvents; storage?: ListPhotoStorage; resolve?: typeof resolveLinkPreview};
+type ItemServices = {
+  events?: ListEvents;
+  storage?: ListPhotoStorage;
+  /** Reads a link's store page; a preview read ahead of time can stand in for it. */
+  resolve?: typeof resolveLinkPreview;
+  /** Reads what a link says on its own, before its page loads. */
+  readLink?: typeof linkPreviewFromUrl;
+  /**
+   * Runs work after the response (Next.js `after()`). Given one, a new link saves at once from the link
+   * alone, and its store page is read afterwards.
+   */
+  later?: (task: () => Promise<void>) => void;
+};
 type PreviewFields = {
   title?: string;
   price?: string;
@@ -26,6 +38,10 @@ type PreviewFields = {
   brand?: string;
   iconKey?: string;
   imageSource?: "upload" | "preview";
+  /** When a link saved before its page was read; cleared once the page has been read or given up on. */
+  pending?: number;
+  titleEdited?: boolean;
+  priceEdited?: boolean;
 };
 
 function readPreview(value: Item["preview"]): PreviewFields {
@@ -37,11 +53,15 @@ function readPreview(value: Item["preview"]): PreviewFields {
     brand: typeof value?.brand === "string" ? value.brand : undefined,
     iconKey: typeof value?.iconKey === "string" ? value.iconKey : undefined,
     imageSource: value?.imageSource === "upload" || value?.imageSource === "preview" ? value.imageSource : undefined,
+    pending: typeof value?.pending === "number" ? value.pending : undefined,
+    titleEdited: value?.titleEdited === true,
+    priceEdited: value?.priceEdited === true,
   };
 }
 
-export function projectItem(item: Item) {
+export function projectItem(item: Item, now = Date.now()) {
   const preview = readPreview(item.preview);
+  const pending = preview.pending;
   return {
     id: item.id,
     kind: item.kind,
@@ -55,6 +75,8 @@ export function projectItem(item: Item) {
     updatedAt: item.updatedAt,
     hasIcon: Boolean(preview.iconKey),
     icon: preview.icon,
+    /** The store's page is still being read for this new link's picture, title and price. */
+    pictureComing: pending !== undefined && now - pending < PICTURE_WAIT_MS,
   };
 }
 
@@ -134,8 +156,11 @@ export async function addListItem(viewer: ListViewer, ownerId: string, input: Ad
 
   const photos = new ItemPhotos(viewer.familyId, services.storage);
   let usedKeys: (string | undefined)[] = [];
+  const link = input.link;
+  const later = link ? services.later : undefined;
   try {
-    const preview = input.link ? await (services.resolve ?? resolveLinkPreview)(input.link) : undefined;
+    const read = later ? services.readLink ?? linkPreviewFromUrl : services.resolve ?? resolveLinkPreview;
+    const preview = link ? await read(link) : undefined;
     const imageKey = await prepareItemPhoto(photos, input.upload, preview);
     const iconKey = imageKey ? undefined : await photos.save(preview?.favicon);
     const result = await withFamily(viewer.familyId, async (tx) => {
@@ -150,11 +175,15 @@ export async function addListItem(viewer: ListViewer, ownerId: string, input: Ad
         note: fields.note, starred: fields.starred,
         price: fields.price === undefined ? preview?.price : fields.price,
         url: preview?.url, store: preview?.store, imageKey, position: (last?.position ?? -1) + 1,
-        preview: preview && previewFields(preview, iconKey, input.upload ? "upload" : imageKey ? "preview" : undefined),
+        preview: preview && {
+          ...previewFields(preview, iconKey, input.upload ? "upload" : imageKey ? "preview" : undefined),
+          ...(later && {pending: Date.now(), titleEdited: Boolean(fields.title), priceEdited: fields.price !== undefined}),
+        },
       }).returning();
       return projectItem(item);
     });
     usedKeys = [imageKey, iconKey];
+    if (later && link) later(() => fillLinkPreview(viewer, ownerId, result.id, link, services));
     return result;
   } finally {
     await photos.cleanup(usedKeys);
@@ -169,19 +198,28 @@ async function notifyClaimChange(tx: FamilyTransaction, item: Item, events: List
   });
 }
 
-async function saveChanges(tx: FamilyTransaction, item: Item, changes: ItemValues, events: ListEvents) {
+async function saveChanges(tx: FamilyTransaction, item: Item, changes: ItemValues, events: ListEvents, notify = true) {
   const [updated] = await tx.update(items).set({...changes, updatedAt: new Date()}).where(
     and(eq(items.familyId, item.familyId), eq(items.id, item.id)),
   ).returning();
   const changed = updated.title !== item.title || updated.note !== item.note || updated.url !== item.url ||
     updated.imageKey !== item.imageKey || updated.price !== item.price || updated.starred !== item.starred;
-  if (changed) await notifyClaimChange(tx, item, events, "edited");
+  if (changed && notify) await notifyClaimChange(tx, item, events, "edited");
   return updated;
 }
 
+/**
+ * `refresh` reads the item's link again. `fill` is the read a new link's save left for later: it changes
+ * only an item still waiting on it, starting from the words first pasted, and tells no one (the item's
+ * first details are not an edit).
+ */
+type ChangeMode = {refresh: false} | {refresh: true; fill?: {source: string}};
+
 async function changeListItem(
-  viewer: ListViewer, ownerId: string, itemId: string, input: ItemInput, services: ItemServices, refresh: boolean,
+  viewer: ListViewer, ownerId: string, itemId: string, input: ItemInput, services: ItemServices, mode: ChangeMode,
 ) {
+  const refresh = mode.refresh;
+  const fill = mode.refresh ? mode.fill : undefined;
   const fields = writableFields(input);
   if (fields.title === "") throw new ListError("invalid-item");
   const before = await withFamily(viewer.familyId, async (tx) => {
@@ -195,12 +233,13 @@ async function changeListItem(
     (input.upload && before.kind === "note") || (refresh && !before.url)) {
     throw new ListError("invalid-item");
   }
+  if (fill && readPreview(before.preview).pending === undefined) return projectItem(before);
 
   const photos = new ItemPhotos(viewer.familyId, services.storage);
   let usedKeys: (string | null | undefined)[] = [];
   let replacedKeys: (string | null | undefined)[] = [];
   try {
-    const link = refresh ? before.url : newLink;
+    const link = fill ? fill.source : refresh ? before.url : newLink;
     const preview = link !== undefined && link !== null
       ? await (services.resolve ?? resolveLinkPreview)(link)
       : undefined;
@@ -212,18 +251,27 @@ async function changeListItem(
       if (item.ownerId !== ownerId) throw new ListError("not-found");
       if (preview && item.url !== before.url) throw new ListError("item-changed");
       const oldPreview = readPreview(item.preview);
+      if (fill && oldPreview.pending === undefined) return {item: projectItem(item), kept: [], old: []};
       const keepUploaded = oldPreview.imageSource === "upload" && !input.upload;
       const nextImageKey = keepUploaded ? item.imageKey : imageKey ?? (newLink === undefined ? item.imageKey : null);
       const imageSource = input.upload || keepUploaded ? "upload" : nextImageKey ? "preview" : undefined;
       const nextIconKey = nextImageKey ? undefined : iconKey ?? (newLink === undefined ? oldPreview.iconKey : undefined);
-      const nextPreview = preview
-        ? previewFields({
+      // Preserve ownership markers on every preview replacement: a title matching the store default
+      // or an intentionally cleared price must stay protected through deferred fills and later refreshes.
+      const nextPreview = item.kind === "link" ? {
+        ...(preview ? previewFields({
           ...preview,
           price: preview.price ?? (refresh ? oldPreview.price ?? null : null),
-        }, nextIconKey, imageSource)
-        : input.upload && item.kind === "link" ? {...oldPreview, iconKey: undefined, imageSource: "upload"} : undefined;
-      const suggestedTitle = item.title === oldPreview.title || item.title === item.store ? preview?.title : undefined;
-      const suggestedPrice = item.price === (oldPreview.price ?? null) ? preview?.price ?? undefined : undefined;
+        }) : oldPreview),
+        iconKey: nextIconKey,
+        imageSource,
+        titleEdited: oldPreview.titleEdited || (oldPreview.pending !== undefined && fields.title !== undefined),
+        priceEdited: oldPreview.priceEdited || (oldPreview.pending !== undefined && fields.price !== undefined),
+      } : undefined;
+      const suggestedTitle = !oldPreview.titleEdited && (item.title === oldPreview.title || item.title === item.store)
+        ? preview?.title : undefined;
+      const suggestedPrice = !oldPreview.priceEdited && item.price === (oldPreview.price ?? null)
+        ? preview?.price ?? undefined : undefined;
       const updated = await saveChanges(tx, item, {
         ...fields,
         title: fields.title ?? suggestedTitle ?? undefined,
@@ -232,7 +280,7 @@ async function changeListItem(
         store: preview?.store,
         imageKey: nextImageKey,
         preview: nextPreview,
-      }, services.events ?? listEvents);
+      }, services.events ?? listEvents, !fill);
       return {
         item: projectItem(updated),
         kept: [updated.imageKey, readPreview(updated.preview).iconKey],
@@ -248,11 +296,35 @@ async function changeListItem(
 }
 
 export function editListItem(viewer: ListViewer, ownerId: string, itemId: string, input: ItemInput, services?: ItemServices) {
-  return changeListItem(viewer, ownerId, itemId, input, services ?? {}, false);
+  return changeListItem(viewer, ownerId, itemId, input, services ?? {}, {refresh: false});
 }
 
 export function refreshListItem(viewer: ListViewer, ownerId: string, itemId: string, services?: ItemServices) {
-  return changeListItem(viewer, ownerId, itemId, {}, services ?? {}, true);
+  return changeListItem(viewer, ownerId, itemId, {}, services ?? {}, {refresh: true});
+}
+
+/**
+ * Reads the store's page for a link saved before it loaded, then fills in its generated details. A
+ * failed read leaves the item as saved, including any uploaded photo, for the owner to refresh later.
+ */
+export async function fillLinkPreview(
+  viewer: ListViewer, ownerId: string, itemId: string, source: string, services: ItemServices = {},
+) {
+  try {
+    await changeListItem(viewer, ownerId, itemId, {}, {...services, later: undefined}, {refresh: true, fill: {source}});
+  } catch (error) {
+    if (!(error instanceof ListError)) {
+      console.warn("Could not finish a link's picture", error instanceof Error ? error.name : "Unknown error");
+    }
+    // Someone who may no longer edit the list leaves the item alone; its wait runs out on its own.
+    if (error instanceof ListError && (error.code === "forbidden" || error.code === "not-found")) return;
+    try {
+      await withFamily(viewer.familyId, (tx) => tx.update(items).set({preview: sql`${items.preview} - 'pending'`})
+        .where(and(eq(items.familyId, viewer.familyId), eq(items.id, itemId), sql`${items.preview} ->> 'pending' is not null`)));
+    } catch {
+      // The wait runs out on its own (PICTURE_WAIT_MS), so the item still settles without a picture.
+    }
+  }
 }
 
 export async function removeListItem(viewer: ListViewer, ownerId: string, itemId: string, services: ItemServices = {}) {

@@ -11,6 +11,7 @@ import {claimCommand, itemCommand, previewItemLink, saveBudget, saveItem, savePr
 import type {FormState, PreviewState} from "../../src/app/[locale]/lists/action-types";
 import {ChecklistTick, ListForm} from "../../src/app/[locale]/lists/controls";
 import {ItemForm} from "../../src/app/[locale]/lists/item-form";
+import {POST as previewRoute} from "../../src/app/[locale]/lists/[personId]/link-preview/route";
 import type {ListItemView} from "../../src/app/[locale]/lists/item-view";
 import {dismissToast, ToastHost} from "../../src/components/ui/toast";
 
@@ -383,7 +384,26 @@ it("retains About me drafts after a rejected autosave and allows retry", async (
   expect(saveProfileField).toHaveBeenCalledTimes(2);
 });
 
+/** The form asks for a preview over the link-preview route, which runs the same server function. */
+function previewOverRoute() {
+  const requests: RequestInit[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit) => {
+    requests.push(init);
+    const url = new URL(path, "https://gift.example");
+    const [, , , personId] = url.pathname.split("/");
+    const reply = previewRoute(new Request(url, {...init, signal: undefined, headers: {...init.headers, origin: url.origin}}), {
+      params: Promise.resolve({personId}),
+    });
+    return new Promise<Response>((resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      reply.then(resolve, reject);
+    });
+  }));
+  return requests;
+}
+
 it("reports a rejected link preview and allows retry", async () => {
+  previewOverRoute();
   const response = Promise.withResolvers<PreviewState>();
   const url = "https://gift.example/tea";
   vi.mocked(previewItemLink).mockReturnValueOnce(response.promise).mockResolvedValueOnce({card: {
@@ -398,4 +418,29 @@ it("reports a rejected link preview and allows retry", async () => {
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(container.querySelector(`section[aria-label="${en.lists.previewTitle}"]`)?.textContent).toContain("gift.example");
   expect(previewItemLink).toHaveBeenCalledTimes(2);
+  expect(previewItemLink).toHaveBeenLastCalledWith(ownerId, url);
+});
+
+it("saves at once while a link preview is still loading, instead of waiting for the store", async () => {
+  const requests = previewOverRoute();
+  const store = Promise.withResolvers<PreviewState>();
+  vi.mocked(previewItemLink).mockReturnValueOnce(store.promise);
+  vi.mocked(saveItem).mockResolvedValue({status: "saved"});
+  await render(<ItemForm ownerId={ownerId} kind="link" />);
+  const field = container.querySelector<HTMLTextAreaElement>('textarea[name="link"]')!;
+  await act(async () => {
+    const paste = new Event("paste", {bubbles: true, cancelable: true});
+    Object.assign(paste, {clipboardData: {getData: () => "https://www.target.com/p/fleece-robe/-/A-12345"}});
+    field.dispatchEvent(paste);
+  });
+  expect(container.textContent).toContain(en.lists.previewLoading);
+  await act(async () => container.querySelector("form")!.requestSubmit());
+  expect(requests[0].signal?.aborted).toBe(true);
+  expect(saveItem).toHaveBeenCalledTimes(1);
+  const form = vi.mocked(saveItem).mock.calls[0][5] as FormData;
+  expect(form.get("link")).toBe("https://www.target.com/p/fleece-robe/-/A-12345");
+  expect(form.get("draft")).toBeNull();
+  expect(container.textContent).not.toContain(en.lists.previewLoading);
+  await act(async () => store.resolve({error: "could-not-save"}));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });

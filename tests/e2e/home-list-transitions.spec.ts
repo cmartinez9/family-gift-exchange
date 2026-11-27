@@ -79,7 +79,7 @@ for (const direction of ["up", "down"] as const) {
 test.describe("removal while another action is pending", () => {
   test.use({serviceWorkers: "block"});
 
-  test("flushes a removal while a link preview remains pending and the page reloads", async ({page}) => {
+  test("flushes a removal while a link save remains pending and the page reloads", async ({page}) => {
     const fixture = await setup(page);
     const holder = new Client({connectionString: process.env.DATABASE_URL!});
     let release!: () => void;
@@ -104,10 +104,11 @@ test.describe("removal while another action is pending", () => {
         await route.continue().catch(() => {});
       });
       await page.getByLabel(lists.url).fill("https://www.pololu.com/product/2133");
-      await page.getByLabel(lists.url).blur();
+      await page.locator("form").filter({has: page.getByLabel(lists.url)}).evaluate((form: HTMLFormElement) => form.requestSubmit());
       await blocked;
-      // The pending preview holds the browser's action queue. The real removal must still reach
-      // PostgreSQL after its Undo timer, where this test deliberately delays its commit.
+      // The pending save holds the browser's action queue (the link preview is a plain request, so it no
+      // longer can). The real removal must still reach PostgreSQL after its Undo timer, where this test
+      // deliberately delays its commit.
       await expect.poll(async () => (await holder.query(
         "SELECT count(*)::int AS count FROM pg_locks WHERE NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))",
       )).rows[0].count, {timeout: 10_000}).toBeGreaterThan(0);

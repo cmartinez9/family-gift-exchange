@@ -189,12 +189,12 @@ test("recovers offline heart, order, item draft, preview, budget and size saves 
     await page.waitForLoadState("networkidle");
     await page.context().setOffline(true);
     await page.getByLabel(lists.url).fill("https://shop.invalid/winter-book");
-    await page.getByLabel(lists.url).blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(lists.feedback["could-not-save"]);
     await shot(page, "offline-preview-feedback");
     await page.context().setOffline(false);
     await page.getByLabel(lists.url).fill(productUrl);
-    await page.getByLabel(lists.url).blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     const preview = page.getByRole("region", {name: lists.previewTitle});
     await expect(preview.getByText("stepper motor driver", {exact: true})).toBeVisible();
     await expect(preview.getByText(lists.noPicture.replace("{store}", "shop.invalid"))).toBeVisible();
