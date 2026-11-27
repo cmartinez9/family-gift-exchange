@@ -17,9 +17,9 @@ import {subscribePush} from "../../src/server/messages/subscriptions";
 vi.mock("server-only", () => ({}));
 
 // 10:00 in Chicago on Dec 10; the next exchange day starts at 06:00 UTC on Dec 11.
-const now = new Date("2032-12-10T16:00:00Z");
-const later = new Date("2032-12-11T02:00:00Z");
-const nextDay = new Date("2032-12-11T16:00:00Z");
+const now = new Date("2033-01-10T16:00:00Z");
+const later = new Date("2033-01-11T02:00:00Z");
+const nextDay = new Date("2033-01-11T16:00:00Z");
 const familyId = randomUUID();
 const otherFamilyId = randomUUID();
 const exchangeId = randomUUID();
@@ -102,7 +102,7 @@ it("lets an organizer nudge someone with an empty list once a day, in their lang
   expect(await nudgedToday(viewers.organizer, exchangeId, later)).toEqual([ids.empty]);
 
   expect(await notices()).toMatchObject([{
-    personId: ids.empty, language: "es", status: "captured", requesterName: null, dedupeKey: nudgeKey(exchangeId, "2032-12-10"),
+    personId: ids.empty, language: "es", status: "captured", requesterName: null, dedupeKey: nudgeKey(exchangeId, "2033-01-10"),
   }]);
   const [inbox] = await listNotifications(viewers.empty);
   expect(inbox).toMatchObject({title: "Tu lista de deseos te espera", isRead: false});
@@ -112,7 +112,7 @@ it("lets an organizer nudge someone with an empty list once a day, in their lang
   expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, nextDay)).toBe("sent");
   expect(await notices()).toHaveLength(2);
   // yesterday's button state is cleared once a new day's nudge is pressed
-  expect((await nudges()).map(({day}) => day)).toEqual(["2032-12-11"]);
+  expect((await nudges()).map(({day}) => day)).toEqual(["2033-01-11"]);
 });
 
 it("nudges only people who can get it and only for organizers acting as themselves", async () => {
@@ -162,7 +162,7 @@ it("turns a giver's visit to an empty list into the same nudge, sent later by th
   expect(await noteEmptyListViewed(viewers.giver, exchangeId, "not-a-person", now)).toBe(false);
 
   const waiting = await nudges();
-  expect(waiting).toEqual([{familyId, exchangeId, personId: ids.empty, kind: "viewed", day: "2032-12-10"}]);
+  expect(waiting).toEqual([{familyId, exchangeId, personId: ids.empty, kind: "viewed", day: "2033-01-10"}]);
   expect(await notices()).toEqual([]);
   // the organizer's board never shows a nudge that came from a giver
   expect(await nudgedToday(viewers.organizer, exchangeId, now)).toEqual([]);
@@ -170,9 +170,14 @@ it("turns a giver's visit to an empty list into the same nudge, sent later by th
   const scoped = await withFamily(familyId, (tx) => tx.execute(sql`SELECT * FROM public.fge_nudge_work()`));
   expect(scoped.rows).toEqual([]);
 
+  // a run on an earlier day leaves the visit waiting
+  await queueViewedNudges(new Date("2033-01-09T17:00:00Z"));
+  expect(await notices()).toEqual([]);
+  expect(await nudges()).toHaveLength(1);
+
   await queueViewedNudges(later);
   const sent = await notices();
-  expect(sent).toMatchObject([{personId: ids.empty, language: "es", dedupeKey: nudgeKey(exchangeId, "2032-12-10")}]);
+  expect(sent).toMatchObject([{personId: ids.empty, language: "es", dedupeKey: nudgeKey(exchangeId, "2033-01-10")}]);
   expect(await nudges()).toEqual([]);
 
   // the organizer's nudge the same day is accepted, but the person still gets one notice

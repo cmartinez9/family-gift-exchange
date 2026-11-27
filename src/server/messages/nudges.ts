@@ -1,5 +1,5 @@
 import "server-only";
-import {and, eq, isNotNull, isNull, lt, ne, notExists, or, sql} from "drizzle-orm";
+import {and, eq, isNotNull, isNull, lt, lte, ne, notExists, or, sql} from "drizzle-orm";
 import type {Viewer} from "../auth";
 import {isManager} from "../auth/access";
 import {pinCredentials} from "../auth/schema";
@@ -126,8 +126,9 @@ export async function queueViewedNudges(now = new Date()) {
 
   for (const {family_id: familyId} of families.rows) {
     await withFamily(familyId, async (tx) => {
+      // only visits up to the job's own day, so a run with an earlier clock leaves later visits waiting
       const viewed = await tx.delete(listNudges)
-        .where(and(eq(listNudges.familyId, familyId), eq(listNudges.kind, "viewed")))
+        .where(and(eq(listNudges.familyId, familyId), eq(listNudges.kind, "viewed"), lte(listNudges.day, day)))
         .returning({exchangeId: listNudges.exchangeId, personId: listNudges.personId});
       await tx.delete(listNudges).where(and(
         eq(listNudges.familyId, familyId), eq(listNudges.kind, "organizer"), lt(listNudges.day, day),
