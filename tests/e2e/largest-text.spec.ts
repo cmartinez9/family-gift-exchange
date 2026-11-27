@@ -10,7 +10,7 @@ import {issueKey} from "../../src/server/auth/access";
 import {authEvents, pinCredentials} from "../../src/server/auth/schema";
 import {hashPin} from "../../src/server/auth/pin";
 import {createSession, digest, secret} from "../../src/server/auth/session";
-import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server/draw/schema";
+import {assignments, drawRuleSnapshots, practiceFamilies, questions} from "../../src/server/draw/schema";
 import {drawSeal, sealText} from "../../src/server/draw/sealing";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {largest, layoutProblems, settle} from "../helpers/largest-text";
@@ -27,7 +27,7 @@ const messages = {en, es} as const;
 const longTitle = "PREMIUM NOISE CANCELLING WIRELESS HEADPHONES WITH RECHARGEABLE BATTERY AND COMFORTABLE EAR CUSHIONS FOR MUSIC MOVIES AND TRAVEL ".repeat(2).slice(0, 200);
 
 /** A family with a drawn exchange (Christian has opened his person, Rosa has not), or one still in setup. */
-async function family(browser: Browser, origin: string, status: "setup" | "drawn") {
+async function family(browser: Browser, origin: string, status: "setup" | "drawn", organizerName = "Christian") {
   const database = connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
   const familyId = randomUUID();
   const exchangeId = randomUUID();
@@ -39,7 +39,7 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
   const joinedAt = new Date(Date.now() - 7 * 86_400_000);
   const helpers: Partial<Record<string, string>> = {[ids.Tito]: ids.Rosa, [ids.Leo]: ids.Ana};
   await database.db.insert(families).values({id: familyId, name: `Martinez family ${familyId.slice(0, 4)}`});
-  await database.db.insert(people).values(names.map((name) => ({familyId, id: ids[name], displayName: name,
+  await database.db.insert(people).values(names.map((name) => ({familyId, id: ids[name], displayName: name === "Christian" ? organizerName : name,
     role: name === "Christian" ? "organizer" as const : "member" as const})));
   for (const [personId, helperId] of Object.entries(helpers)) {
     await runForFamily(database.db, familyId, (tx) => tx.update(people).set({helperId}).where(eq(people.id, personId)));
@@ -64,6 +64,7 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
     {ownerId: ids.Rosa, title: "Wool socks", store: "REI", price: "18.00"},
     {ownerId: ids.Christian, title: "Noise-cancelling headphones", store: "Best Buy", price: "79.99"},
     {ownerId: ids.Christian, title: "A good mystery novel", note: "Anything by Tana French"},
+    {ownerId: ids.Rosa, title: "HEADPHONES"},
   ].map((gift, position) => ({...gift, familyId, id: randomUUID(), kind: "note" as const, position}));
   await database.db.insert(items).values(gifts);
   await database.db.insert(claims).values({familyId, itemId: gifts[1].id, claimerId: ids.Christian, exchangeId});
@@ -102,7 +103,14 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
       issueKey(tx, organizer, ids[name], "share", process.env.E2E_AUTH_SECRET!, new Date())));
     return `${familyId}~${issued.token}`;
   }
-  return {familyId, exchangeId, ids, gifts, open, keyFor, async notice() {
+  return {familyId, exchangeId, ids, gifts, open, keyFor, async answeredQuestion() {
+    const id = randomUUID();
+    const binding = {familyId, exchangeId, giverId: ids.Beto, questionId: id, version: 1};
+    await database.db.insert(questions).values({familyId, exchangeId, id, askerId: ids.Beto, drawVersion: 1,
+      recipientSealed: sealText(key, {...binding, field: "question-recipient"}, ids.Christian),
+      text: sealText(key, {...binding, field: "question-text"}, "Which color?").toString("base64"),
+      answer: sealText(key, {...binding, field: "question-answer"}, "Blue, please.").toString("base64"), answeredAt: new Date()});
+  }, async notice() {
     const session = await runForFamily(database.db, familyId, (tx) => createSession(tx, familyId, ids.Christian, digest(secret()), "computer", new Date()));
     const [event] = await database.db.insert(authEvents).values({familyId, personId: ids.Christian,
       kind: "newDevice", deviceKind: "computer", sessionId: session.id}).returning({id: authEvents.id});
@@ -436,6 +444,71 @@ for (const locale of ["en", "es"] as const) {
         }
       });
     }
+
+    for (const width of [195, 270, 280, 298, 299, 390]) {
+      test(`claimed item keeps its title clear at ${width}px`, async () => {
+        const page = await drawn.open("Christian", {...largest, viewport: {width, height: 844}, reducedMotion: "reduce",
+          locale: locale === "en" ? "en-US" : "es-US"});
+        try {
+          const t = messages[locale];
+          await page.goto(`/${locale}/lists/${drawn.ids.Rosa}`);
+          const item = page.getByRole("article", {name: "HEADPHONES", exact: true});
+          await item.getByRole("button", {name: t.lists.claim, exact: true}).click();
+          await expect(item).toHaveAttribute("data-claim", "mine");
+          await expect(item).toHaveAttribute("aria-busy", "false");
+          await settle(page);
+          const card = item.locator('[data-tone="mine"]');
+          const title = card.getByRole("heading", {name: "HEADPHONES", exact: true});
+          const picture = await card.locator("[data-thumb]").boundingBox();
+          const heading = await title.boundingBox();
+          if (width < 299) {
+            expect(heading!.y).toBeGreaterThanOrEqual(picture!.y + picture!.height);
+            const fullWidth = await title.evaluate((element) => {
+              const card = element.closest("[data-item]")!, style = getComputedStyle(card);
+              const room = card.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+              return Math.abs(element.parentElement!.getBoundingClientRect().width - room) < 1;
+            });
+            expect(fullWidth).toBe(true);
+          } else {
+            expect(heading!.y).toBeLessThan(picture!.y + picture!.height);
+          }
+          const covered = await title.evaluate((element) => {
+            const tag = element.closest("article")!.querySelector("[data-claim-tag]")!.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return [...range.getClientRects()].some((text) => text.left < tag.right && text.right > tag.left
+              && text.top < tag.bottom && text.bottom > tag.top);
+          });
+          expect(covered).toBe(false);
+          await page.screenshot({path: test.info().outputPath(`${locale}-claimed-${width}.png`), fullPage: true});
+          await item.getByRole("button", {name: t.lists.undoClaim, exact: true}).click();
+          await expect(item).toHaveAttribute("data-claim", "open");
+          await expect(item).toHaveAttribute("aria-busy", "false");
+        } finally {
+          await page.context().close();
+        }
+      });
+    }
+
+    test("answered question keeps the recipient name whole", async ({browser, baseURL}) => {
+      const f = await family(browser, new URL(baseURL!).origin, "drawn", "Christopher");
+      try {
+        await f.answeredQuestion();
+        const page = await f.open("Beto", {...largest, reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});
+        await page.goto(`/${locale}/exchanges/${f.exchangeId}`);
+        const t = messages[locale];
+        await page.getByRole("button", {name: t.draw.reveal, exact: true}).click();
+        const answer = page.locator('[data-question="answered"]');
+        await expect(answer).toContainText(t.draw.person.answeredBy.replace("{name}", "Christopher"));
+        await expect(answer).toContainText("Blue, please.");
+        await settle(page);
+        expect(await layoutProblems(page)).toEqual([]);
+        await page.screenshot({path: test.info().outputPath(`${locale}-answered-question.png`), fullPage: true});
+        expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+      } finally {
+        await f.close();
+      }
+    });
 
     test("pending and ready QR fit the phone", async () => {
       const page = await drawn.open("Christian", {...largest, reducedMotion: "reduce", serviceWorkers: "block", locale: locale === "en" ? "en-US" : "es-US"});

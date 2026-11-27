@@ -267,8 +267,8 @@ function QuestionCard({question, name, onAskAnother}: {question: Outgoing; name?
   }
   return (
     <Card className="flex flex-col gap-2" data-question="answered">
-      <p className="flex items-center gap-2 text-card-title"><Icon name="message" size={22} className="text-pine" />
-        {name ? t("person.answeredBy", {name}) : t("person.answeredAnonymous")}</p>
+      <p className={cn("flex items-center gap-2 text-card-title", stackRow)}><Icon name="message" size={22} className="text-pine" />
+        <span className={stackWords}>{name ? t("person.answeredBy", {name}) : t("person.answeredAnonymous")}</span></p>
       <p className="text-body break-words whitespace-pre-wrap text-muted-ink">{t("person.youAsked", {text: question.text})}</p>
       <Track className="text-body-strong break-words whitespace-pre-wrap">{question.answer}</Track>
       {onAskAnother && <Button variant="card" icon="message" className="mt-2" onClick={onAskAnother}>{t("person.askAnother")}</Button>}
