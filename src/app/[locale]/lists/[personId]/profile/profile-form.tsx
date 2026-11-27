@@ -19,10 +19,11 @@ import {sizeLabel} from "../../tabs";
 
 const LETTERS = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 const extraSizes = ["dress", "ring", "hat", "gloves", "other"] as const;
+const adultShoes = sizePresets.shoes.filter((value) => !value.endsWith("Y"));
 
 export const shoeOptions: Record<string, readonly string[]> = {
-  "us-women": Array.from({length: 19}, (_, index) => String(4 + index / 2)),
-  "us-men": Array.from({length: 21}, (_, index) => String(5 + index / 2)),
+  "us-women": adultShoes,
+  "us-men": adultShoes,
   eu: Array.from({length: 35}, (_, index) => String(index + 16)),
   "us-kids": ["1C", "2C", "3C", "4C", "5C", "6C", "7C", "8C", "9C", "10C", "11C", "12C", "13C",
     "1Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y"],
