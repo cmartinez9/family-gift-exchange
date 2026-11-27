@@ -1,5 +1,5 @@
 import {createHash, randomBytes, randomUUID, timingSafeEqual} from "node:crypto";
-import {and, eq, gt, isNull, lt, or} from "drizzle-orm";
+import {and, eq, gt, isNull, lte, or} from "drizzle-orm";
 import {alias} from "drizzle-orm/pg-core";
 import {people} from "../db/schema";
 import type {FamilyTransaction} from "../db/database";
@@ -67,13 +67,12 @@ export async function findViewer(tx: FamilyTransaction, session: NonNullable<Ret
   return row && matchesHash(token, row.tokenHash) ? viewerIdentity(row, familyId, id) : null;
 }
 
-/** "Last used" on Your phones only needs the minute, so a session records a visit at most every few minutes. */
-export const lastUsedGraceMs = 5 * 60_000;
+export const lastUsedGraceMs = 15 * 60_000;
 
 export async function touchSession(tx: FamilyTransaction, viewer: Viewer, now: Date) {
   await tx.update(sessions).set({lastUsedAt: now}).where(and(
     eq(sessions.familyId, viewer.familyId), eq(sessions.id, viewer.sessionId), isNull(sessions.revokedAt),
-    or(isNull(sessions.lastUsedAt), lt(sessions.lastUsedAt, new Date(now.getTime() - lastUsedGraceMs))),
+    or(isNull(sessions.lastUsedAt), lte(sessions.lastUsedAt, new Date(now.getTime() - lastUsedGraceMs))),
   ));
 }
 

@@ -83,28 +83,41 @@ it("names the phone in Spanish", async () => {
   expect(calls.toast).toHaveBeenCalledExactlyOnceWith("Se cerró la sesión en la computadora");
 });
 
-it("is a switch: off removes this phone's Face ID and keeps the PIN", async () => {
+it.each([
+  {
+    locale: "en" as const,
+    on: "On for this iPhone. Turning it off also turns it off on devices sharing this passkey, for example through iCloud Keychain.",
+    off: "Off on this iPhone and on devices sharing this passkey, for example through iCloud Keychain.",
+    toast: "Face ID is off on this iPhone and on devices sharing this passkey. Your PIN hasn't changed.",
+  },
+  {
+    locale: "es" as const,
+    on: "Activado en este iPhone. Al desactivarlo, también se desactiva en los dispositivos que comparten esta clave de acceso, por ejemplo mediante el Llavero de iCloud.",
+    off: "Desactivado en este iPhone y en los dispositivos que comparten esta clave de acceso, por ejemplo mediante el Llavero de iCloud.",
+    toast: "Face ID está desactivado en este iPhone y en los dispositivos que comparten esta clave de acceso. Tu PIN no ha cambiado.",
+  },
+])("explains the switch's effect on shared passkeys in $locale", async (copy) => {
   calls.faceIdOff.mockResolvedValue({success: "faceOff", credentials: []});
-  await render(<FaceIdRow on device="iPhone" />);
+  await render(<FaceIdRow on device="iPhone" />, copy.locale);
   const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
   expect(toggle.getAttribute("aria-checked")).toBe("true");
   expect(toggle.getAttribute("aria-label")).toBe("Face ID");
-  expect(container.textContent).toContain("On for this iPhone");
+  expect(container.textContent).toContain(copy.on);
   await act(async () => toggle.click());
   expect(calls.faceIdOff).toHaveBeenCalledOnce();
   expect(toggle.getAttribute("aria-checked")).toBe("false");
-  expect(container.textContent).toContain("Off on this iPhone");
-  expect(calls.toast).toHaveBeenCalledExactlyOnceWith("Face ID is off on this iPhone. Your PIN still works.");
+  expect(container.textContent).toContain(copy.off);
+  expect(calls.toast).toHaveBeenCalledExactlyOnceWith(copy.toast);
   expect(calls.beginFaceId).not.toHaveBeenCalled();
 });
 
-it("stays on, and says why, while the PIN can't get them back in", async () => {
-  calls.faceIdOff.mockResolvedValue({error: "faceOnlyWay"});
+it("stays on and explains when the signed-in session is unavailable", async () => {
+  calls.faceIdOff.mockResolvedValue({error: "unavailable"});
   await render(<FaceIdRow on device="iPhone" />);
   const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
   await act(async () => toggle.click());
   expect(toggle.getAttribute("aria-checked")).toBe("true");
-  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.faceOnlyWay);
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(en.auth.feedback.unavailable);
   expect(calls.toast).not.toHaveBeenCalled();
 });
 

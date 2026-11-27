@@ -187,7 +187,7 @@ test("Face ID is a switch: off keeps the PIN, on runs the setup", async ({browse
     await shot(page, "f11-11_1");
 
     await toggle.click();
-    await expect(page.getByRole("status").filter({hasText: /^Face ID is off on this .+\. Your PIN still works\.$/})).toBeVisible();
+    await expect(page.getByRole("status").filter({hasText: /^Face ID is off on this .+ and on devices sharing this passkey\. Your PIN hasn't changed\.$/})).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(page.getByText(/^Off on this /)).toBeVisible();
     await page.reload();

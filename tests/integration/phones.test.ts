@@ -9,7 +9,7 @@ import {faceIdOnDevice, familyActivity, signedInDevices} from "../../src/server/
 import {createFamily, saveMember} from "../../src/server/auth/families";
 import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent, endSessions, signOutDevice, turnOffFaceId} from "../../src/server/auth/security";
-import {digest, findViewer, lastUsedGraceMs, parseSession, secret, touchSession} from "../../src/server/auth/session";
+import {digest, findViewer, parseSession, secret, touchSession} from "../../src/server/auth/session";
 
 vi.mock("server-only", () => ({}));
 
@@ -143,7 +143,7 @@ it("leaves sign out everywhere and \"That wasn't me\" as they were", async () =>
   expect(await withFamily(familyId, (t) => signedInDevices(t, rosa.viewer, new Date()))).toEqual([]);
 });
 
-it("turns Face ID off for this phone only, keeping the PIN, sessions and other phones' Face ID", async () => {
+it("turns Face ID off while keeping the PIN, sessions and independent passkeys", async () => {
   const {familyId, rosa, beto, ipad, ipadSession} = await family();
   const here = await enroll(familyId, rosa.personId, rosa.phone);
   const onIpad = await enroll(familyId, rosa.personId, ipad);
@@ -183,16 +183,24 @@ it("turns Face ID off for this phone only, keeping the PIN, sessions and other p
   await expect(withFamily(familyId, (t) => faceIdOnDevice(t, appViewer))).resolves.toBe(true);
 });
 
-it("keeps Face ID on while the PIN can't get the person back in", async () => {
+it.each(["missing", "replacementRequired", "locked"] as const)("turns Face ID off even when the PIN is %s", async (state) => {
   const {familyId, rosa} = await family();
   const here = await enroll(familyId, rosa.personId, rosa.phone);
-  await withFamily(familyId, (t) => t.update(pinCredentials).set({pinHash: null}).where(eq(pinCredentials.personId, rosa.personId)));
-  await expect(withFamily(familyId, (t) => turnOffFaceId(t, rosa.viewer, new Date()))).resolves.toEqual({error: "faceOnlyWay"});
-  await withFamily(familyId, (t) => t.update(pinCredentials).set({pinHash: "kept"}).where(eq(pinCredentials.personId, rosa.personId)));
-  await withFamily(familyId, (t) => t.update(people).set({needsNewKey: true}).where(eq(people.id, rosa.personId)));
-  await expect(withFamily(familyId, (t) => turnOffFaceId(t, rosa.viewer, new Date()))).resolves.toEqual({error: "faceOnlyWay"});
-  expect((await liveCredentials(familyId)).has(here)).toBe(true);
-  expect((await events(familyId, rosa.personId)).some(({kind}) => kind === "faceIdOff")).toBe(false);
+  if (state === "missing") {
+    await withFamily(familyId, (t) => t.update(pinCredentials).set({pinHash: null}).where(eq(pinCredentials.personId, rosa.personId)));
+  } else if (state === "replacementRequired") {
+    await withFamily(familyId, (t) => t.update(people).set({needsNewKey: true}).where(eq(people.id, rosa.personId)));
+  } else {
+    await withFamily(familyId, (t) => t.update(pinCredentials).set({lockedUntil: new Date(Date.now() + 15 * 60_000)})
+      .where(eq(pinCredentials.personId, rosa.personId)));
+  }
+  const [before] = await withFamily(familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, rosa.personId)));
+  await expect(withFamily(familyId, (t) => turnOffFaceId(t, rosa.viewer, new Date()))).resolves.toEqual({credentials: [here]});
+  expect((await liveCredentials(familyId)).has(here)).toBe(false);
+  expect((await events(familyId, rosa.personId)).filter(({kind}) => kind === "faceIdOff")).toHaveLength(1);
+  const [after] = await withFamily(familyId, (t) => t.select().from(pinCredentials).where(eq(pinCredentials.personId, rosa.personId)));
+  expect(after).toEqual(before);
+  await expect(resolve(familyId, rosa.cookie)).resolves.not.toBeNull();
 });
 
 it("refuses a signed-out phone", async () => {
@@ -204,17 +212,22 @@ it("refuses a signed-out phone", async () => {
   expect((await liveCredentials(familyId)).has(onIpad)).toBe(true);
 });
 
-it("shows when each phone was last used, recording a visit at most every few minutes", async () => {
+it("records last use at most once per 15 minutes independently for each session", async () => {
   const {familyId, rosa, ipadSession} = await family();
   const ipadViewer = (await resolve(familyId, ipadSession.cookie))!;
   const later = new Date(Date.now() + 60 * 60_000);
   await withFamily(familyId, (t) => touchSession(t, ipadViewer, later));
-  await withFamily(familyId, (t) => touchSession(t, ipadViewer, new Date(later.getTime() + lastUsedGraceMs - 1000)));
-  const [row] = await withFamily(familyId, (t) => t.select({at: sessions.lastUsedAt}).from(sessions).where(eq(sessions.id, ipadSession.id)));
-  expect(row.at).toEqual(later);
+  for (const elapsed of [5 * 60_000, 10 * 60_000, 15 * 60_000 - 1]) {
+    await withFamily(familyId, (t) => touchSession(t, ipadViewer, new Date(later.getTime() + elapsed)));
+    const [row] = await withFamily(familyId, (t) => t.select({at: sessions.lastUsedAt}).from(sessions).where(eq(sessions.id, ipadSession.id)));
+    expect(row.at).toEqual(later);
+  }
+  const otherVisit = new Date(later.getTime() + 1000);
+  await withFamily(familyId, (t) => touchSession(t, rosa.viewer, otherVisit));
   const phones = await withFamily(familyId, (t) => signedInDevices(t, rosa.viewer, later));
   expect(phones.find(({kind}) => kind === "ipad")?.lastUsed).toEqual(later);
-  await withFamily(familyId, (t) => touchSession(t, ipadViewer, new Date(later.getTime() + lastUsedGraceMs + 1000)));
+  expect(phones.find(({current}) => current)?.lastUsed).toEqual(otherVisit);
+  await withFamily(familyId, (t) => touchSession(t, ipadViewer, new Date(later.getTime() + 15 * 60_000)));
   const [moved] = await withFamily(familyId, (t) => t.select({at: sessions.lastUsedAt}).from(sessions).where(eq(sessions.id, ipadSession.id)));
-  expect(moved.at!.getTime()).toBe(later.getTime() + lastUsedGraceMs + 1000);
+  expect(moved.at!.getTime()).toBe(later.getTime() + 15 * 60_000);
 });

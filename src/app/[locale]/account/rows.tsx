@@ -174,10 +174,6 @@ function forgetCredentials(ids: readonly string[] = []) {
   }
 }
 
-/**
- * Face ID on You (11.1): a switch for this phone. Off removes this phone's passkey and keeps the PIN; on
- * runs the usual Face ID setup. The line under the title says the state in words.
- */
 export function FaceIdRow({on, device, className}: {on: boolean; device: string; className?: string}) {
   const t = useTranslations("getIn.you");
   const auth = useTranslations("auth");

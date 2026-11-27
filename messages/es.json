@@ -186,8 +186,7 @@
       "needsNewKey": "Esta cuenta necesita una llave privada nueva.",
       "operatorRecovery": "Pídele una llave nueva de organizador a la persona que administra esta aplicación.",
       "previewAgain": "Vuelve a verificar tu código antes de continuar.",
-      "repairRequired": "Se guardó tu reporte. El sorteo sigue bloqueado por seguridad. Inténtalo de nuevo o pídele a un organizador que revise el intercambio y confirme un nuevo sorteo.",
-      "faceOnlyWay": "Face ID sigue activado por ahora. Es tu forma de volver a entrar hasta que tengas un PIN otra vez."
+      "repairRequired": "Se guardó tu reporte. El sorteo sigue bloqueado por seguridad. Inténtalo de nuevo o pídele a un organizador que revise el intercambio y confirme un nuevo sorteo."
     },
     "revealActivity": "Tu persona se abrió en otros dispositivos",
     "noRevealActivity": "Tu persona no se ha abierto desde otro inicio de sesión.",
@@ -792,8 +791,8 @@
       "shoesShort": "Zapatos {size}",
       "language": "Idioma",
       "faceId": "Face ID",
-      "faceOn": "Activado en este {device}",
-      "faceOff": "Desactivado en este {device}",
+      "faceOn": "Activado en este {device}. Al desactivarlo, también se desactiva en los dispositivos que comparten esta clave de acceso, por ejemplo mediante el Llavero de iCloud.",
+      "faceOff": "Desactivado en este {device} y en los dispositivos que comparten esta clave de acceso, por ejemplo mediante el Llavero de iCloud.",
       "phones": "Tus teléfonos",
       "phonesSub": "{count, plural, one {# con sesión} other {# con sesión}}",
       "activity": "Actividad de la familia",
@@ -806,7 +805,7 @@
       "signOut": "Cerrar sesión",
       "helping": "Estás ayudando a {name}",
       "stopHelping": "Volver a mí",
-      "faceTurnedOff": "Face ID está desactivado en este {device}. Tu PIN sigue funcionando.",
+      "faceTurnedOff": "Face ID está desactivado en este {device} y en los dispositivos que comparten esta clave de acceso. Tu PIN no ha cambiado.",
       "faceTurnedOn": "Face ID está activado en este {device}"
     },
     "notices": {
@@ -838,7 +837,7 @@
         "resetPrepared": "Porque pediste un PIN nuevo",
         "familyLockdown": "Tu lista y tu persona están a salvo",
         "deviceSignedOut": "Desde Tus teléfonos",
-        "faceIdOff": "Tu PIN sigue funcionando"
+        "faceIdOff": "Tu PIN no ha cambiado"
       },
       "device": {
         "iphone": "un iPhone",
@@ -908,7 +907,7 @@
       "signedOut": "Se cerró la sesión en un teléfono",
       "signedOutSub": "{date} · lo hizo su dueño",
       "faceOff": "Se desactivó Face ID en un teléfono",
-      "faceOffSub": "{date} · su PIN sigue funcionando"
+      "faceOffSub": "{date} · su PIN no ha cambiado"
     },
     "language": {
       "title": "Idioma",

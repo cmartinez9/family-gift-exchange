@@ -69,20 +69,11 @@ export async function signOutDevice(tx: FamilyTransaction, viewer: Viewer, targe
   return {deviceKind: target.deviceKind};
 }
 
-/**
- * The Face ID switch (11.1), off: removes this phone's passkey for this person, the one enrolled here
- * and the one this session signed in with. Other phones' passkeys, every session and the PIN stay.
- * Refused while the PIN cannot sign in, so turning it off never leaves the person without a way back.
- */
 export async function turnOffFaceId(tx: FamilyTransaction, viewer: Viewer, now: Date) {
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
   const current = await revalidateViewer(tx, viewer);
   if (!current) return {error: "unavailable"} as const;
-  const person = await activePerson(tx, familyId, personId);
-  const [pin] = await tx.select({pinHash: pinCredentials.pinHash}).from(pinCredentials)
-    .where(and(eq(pinCredentials.familyId, familyId), eq(pinCredentials.personId, personId)));
-  if (!pin?.pinHash || person?.needsNewKey) return {error: "faceOnlyWay"} as const;
   const [session] = await tx.select({passkeyId: sessions.passkeyId, deviceKind: sessions.deviceKind}).from(sessions)
     .where(and(eq(sessions.familyId, familyId), eq(sessions.id, sessionId)));
   const removed = await tx.update(passkeys).set({revokedAt: now}).where(and(

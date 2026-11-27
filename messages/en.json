@@ -186,8 +186,7 @@
       "needsNewKey": "This account needs a new private key.",
       "operatorRecovery": "Ask the person who runs this app for a new organizer key.",
       "previewAgain": "Check your code again before continuing.",
-      "repairRequired": "Your report was saved. The draw stays locked for safety. Try again, or ask an organizer to review the exchange and confirm a new draw.",
-      "faceOnlyWay": "Face ID stays on for now. It's your way back in until you have a PIN again."
+      "repairRequired": "Your report was saved. The draw stays locked for safety. Try again, or ask an organizer to review the exchange and confirm a new draw."
     },
     "revealActivity": "Your person opened on other devices",
     "noRevealActivity": "Your person has not been opened from another sign-in.",
@@ -792,8 +791,8 @@
       "shoesShort": "Shoes {size}",
       "language": "Language",
       "faceId": "Face ID",
-      "faceOn": "On for this {device}",
-      "faceOff": "Off on this {device}",
+      "faceOn": "On for this {device}. Turning it off also turns it off on devices sharing this passkey, for example through iCloud Keychain.",
+      "faceOff": "Off on this {device} and on devices sharing this passkey, for example through iCloud Keychain.",
       "phones": "Your phones",
       "phonesSub": "{count, plural, one {# signed in} other {# signed in}}",
       "activity": "Family activity",
@@ -806,7 +805,7 @@
       "signOut": "Sign out",
       "helping": "You're helping {name}",
       "stopHelping": "Back to me",
-      "faceTurnedOff": "Face ID is off on this {device}. Your PIN still works.",
+      "faceTurnedOff": "Face ID is off on this {device} and on devices sharing this passkey. Your PIN hasn't changed.",
       "faceTurnedOn": "Face ID is on for this {device}"
     },
     "notices": {
@@ -838,7 +837,7 @@
         "resetPrepared": "Because you asked for a new PIN",
         "familyLockdown": "Your list and your person are safe",
         "deviceSignedOut": "From Your phones",
-        "faceIdOff": "Your PIN still works"
+        "faceIdOff": "Your PIN hasn't changed"
       },
       "device": {
         "iphone": "an iPhone",
@@ -908,7 +907,7 @@
       "signedOut": "A phone was signed out",
       "signedOutSub": "{date} · by its owner",
       "faceOff": "Face ID was turned off on a phone",
-      "faceOffSub": "{date} · their PIN still works"
+      "faceOffSub": "{date} · their PIN hasn't changed"
     },
     "language": {
       "title": "Language",
