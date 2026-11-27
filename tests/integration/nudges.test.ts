@@ -153,12 +153,13 @@ it("reaches a looked-after person through their helper's phone without the detai
 });
 
 it("turns a giver's visit to an empty list into the same nudge, sent later by the daily job", async () => {
-  await noteEmptyListViewed(viewers.giver, exchangeId, ids.empty, now);
-  await noteEmptyListViewed(viewers.giver, exchangeId, ids.empty, later);
-  await noteEmptyListViewed(viewers.giver, exchangeId, ids.started, now);
-  await noteEmptyListViewed(viewers.giver, exchangeId, ids.notJoined, now);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.empty, now)).toBe(true);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.empty, later)).toBe(true);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.started, now)).toBe(false);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.notJoined, now)).toBe(false);
   // a helper is not nudged on their own phone for someone they look after
-  await noteEmptyListViewed(viewers.helper, exchangeId, ids.lookedAfter, now);
+  expect(await noteEmptyListViewed(viewers.helper, exchangeId, ids.lookedAfter, now)).toBe(false);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, "not-a-person", now)).toBe(false);
 
   const waiting = await nudges();
   expect(waiting).toEqual([{familyId, exchangeId, personId: ids.empty, kind: "viewed", day: "2032-12-10"}]);

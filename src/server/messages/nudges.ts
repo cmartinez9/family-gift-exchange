@@ -97,18 +97,20 @@ export async function nudgedToday(viewer: NudgeViewer, exchangeId: string, now =
 /**
  * Someone opened their person and found an empty list. Call only after the draw module revealed
  * `personId` to this viewer. Records nothing about who looked: the daily job sends the nudge.
+ * True when the person will be nudged (today's nudge may already be on its way).
  */
 export async function noteEmptyListViewed(viewer: NudgeViewer, exchangeId: string, personId: string, now = new Date()) {
-  if (!uuid.test(exchangeId) || !uuid.test(personId)) return;
-  if (personId === viewer.personId || personId === viewer.actingAs) return;
+  if (!uuid.test(exchangeId) || !uuid.test(personId)) return false;
+  if (personId === viewer.personId || personId === viewer.actingAs) return false;
   const {familyId} = viewer;
-  await withFamily(familyId, async (tx) => {
+  return withFamily(familyId, async (tx) => {
     const target = await nudgeTarget(tx, familyId, exchangeId, personId);
     // a helper looking for someone they also look after would only be nudging their own phone
-    if (!target || target.helperId === viewer.personId) return;
+    if (!target || target.helperId === viewer.personId) return false;
     await tx.insert(listNudges)
       .values({familyId, exchangeId, personId, kind: "viewed", day: todayInExchangeCalendar(now)})
       .onConflictDoNothing();
+    return true;
   });
 }
 
