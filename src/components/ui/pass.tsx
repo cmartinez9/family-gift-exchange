@@ -24,19 +24,20 @@ export function Pass({name, lead, onlyYou, budget, href, openLabel}: {
 }) {
   const body: ReactNode = (
     <>
-      <span className="flex items-start justify-between">
-        <span className="flex flex-col gap-2.5">
+      <span className="flex items-start justify-between max-[299px]:flex-wrap max-[299px]:gap-y-3">
+        <span className="flex flex-col gap-2.5 max-[299px]:min-w-0 max-[299px]:max-w-full max-[299px]:basis-full">
           <span className="text-body font-semibold text-pale-pine">{lead}</span>
-          <StitchedText text={name} cell={STITCH_CELL.pass} />
+          <StitchedText text={name} cell={STITCH_CELL.pass}
+            className="max-[299px]:max-w-full max-[299px]:[&>svg]:h-auto max-[299px]:[&>svg]:max-w-full" />
         </span>
         {href && (
-          <span aria-hidden="true" className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-snow-white text-pine">
+          <span aria-hidden="true" className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-snow-white text-pine max-[299px]:ml-auto">
             <Icon name="chevron" size={24} strokeWidth={2.6} />
           </span>
         )}
       </span>
       <span className="mt-3.5 flex flex-wrap items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-body font-semibold whitespace-nowrap">
+        <span className="flex items-center gap-2 text-body font-semibold whitespace-nowrap max-[299px]:max-w-full max-[299px]:whitespace-normal">
           <Icon name="lock" size={20} strokeWidth={2.3} />{onlyYou}
         </span>
         {budget && (

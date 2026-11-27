@@ -487,6 +487,47 @@ for (const locale of ["en", "es"] as const) {
       });
     }
 
+    for (const width of [195, 390]) {
+      test(`revealed pass fits Home and Family at ${width}px`, async () => {
+        const page = await drawn.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
+          reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});
+        try {
+          const t = messages[locale];
+          await page.goto(`/${locale}/exchanges/${drawn.exchangeId}`);
+          await page.getByRole("button", {name: t.draw.reveal, exact: true}).click();
+          await expect(page.getByRole("heading", {name: t.draw.person.listTitle.replace("{name}", "Rosa"), exact: true})).toBeVisible();
+          for (const path of ["/", "/lists"]) {
+            await page.goto(`/${locale}${path}`);
+            const pass = page.locator("[data-pass]");
+            await expect(pass).toContainText("Rosa");
+            await expect(pass.getByText(t.lists.onlyYou, {exact: true})).toBeVisible();
+            await settle(page);
+            expect(await layoutProblems(page)).toEqual([]);
+            const name = pass.locator("[data-stitched] > svg");
+            const graphic = (await name.boundingBox())!;
+            const naturalWidth = await name.evaluate((element) => Number(element.getAttribute("width")));
+            const card = (await pass.locator('[data-tone="mine"]').boundingBox())!;
+            const arrow = (await pass.locator('[data-icon="chevron"]').locator("..").boundingBox())!;
+            expect(graphic.x).toBeGreaterThanOrEqual(card.x);
+            expect(graphic.x + graphic.width).toBeLessThanOrEqual(card.x + card.width);
+            if (width === 195) {
+              expect(graphic.width).toBeLessThan(naturalWidth);
+              expect(arrow.y).toBeGreaterThanOrEqual(graphic.y + graphic.height);
+            } else {
+              expect(graphic.width).toBeCloseTo(naturalWidth, 0);
+              expect(arrow.x).toBeGreaterThanOrEqual(graphic.x + graphic.width);
+            }
+            await pass.screenshot({path: test.info().outputPath(`${locale}-pass-${path === "/" ? "home" : "family"}-${width}.png`)});
+            expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+            await pass.click();
+            await expect(page).toHaveURL((url) => url.pathname === `/${locale}/lists/${drawn.ids.Rosa}`);
+          }
+        } finally {
+          await page.context().close();
+        }
+      });
+    }
+
     for (const width of [195, 270, 280, 298, 299, 390]) {
       test(`claimed item keeps its title clear at ${width}px`, async () => {
         const page = await drawn.open("Christian", {...largest, viewport: {width, height: 844}, reducedMotion: "reduce",
