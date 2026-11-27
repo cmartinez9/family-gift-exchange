@@ -287,7 +287,7 @@ test("key printing waits for credentials, prints individual cards and replaces a
     await expect.soft(page.getByRole("link", {name: "Tell the family", exact: true})).toBeHidden();
     await expect.soft(page.getByRole("main")).toHaveCSS("background-color", "rgb(255, 255, 255)");
     await expect(page.getByRole("img", {name: en.auth.keyQr})).toBeVisible();
-    await expect(page.getByRole("region", {name: "Send keys", exact: true})
+    await expect(page.getByRole("dialog", {name: "Send keys", exact: true})
       .getByText(new RegExp(`/en/sign-in\\?family=${family.familyId}`))).toBeVisible();
     await capture(page, info, "individual-print-with-QR-code-and-family-address");
     if (browserName === "chromium") await page.pdf({path: info.outputPath("individual-key-card.pdf"), printBackground: true});
