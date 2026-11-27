@@ -92,3 +92,24 @@ it("returns a real exchange's waiting screen home", async () => {
   expect(container.querySelector("[data-back-row] a")?.getAttribute("href")).toBe("/");
   expect(container.querySelector("[data-back-row]")?.textContent).toContain(en.draw.person.backHome);
 });
+
+it.each([
+  ["en", "answer"], ["es", "answer"], ["en", "fixed"], ["es", "fixed"], ["en", "person"], ["es", "person"],
+] as const)("keeps one practice banner and a Stop action on the %s %s view", async (locale, view) => {
+  settings.locale = locale;
+  practiceMemberView.mockResolvedValue({status: {status: "ready", subjectName: "Pinewisp", seen: view === "person", canReport: false,
+    exchange: {id: "practice", version: 1, budgetAmount: null}},
+    questions: {version: 1, incoming: [{id: "question", text: "Any favorite colors?", answered: false}], outgoing: []}});
+  await render(await PracticePage({searchParams: Promise.resolve({as: "pinewisp",
+    ...(view === "answer" ? {answer: "1"} : view === "fixed" ? {fixed: "1"} : {})})}));
+  const messages = locale === "en" ? en : es;
+  const banners = container.querySelectorAll("[data-mode-banner]");
+  expect(banners).toHaveLength(1);
+  expect(banners[0].textContent).toContain(messages.draw.practiceViewing.replace("{name}", "Pinewisp"));
+  const stop = banners[0].querySelector("a");
+  expect(stop?.textContent).toBe(messages.draw.setup.stop);
+  expect(stop?.getAttribute("href")).toBe("/exchanges/practice");
+  const heading = view === "answer" ? messages.draw.person.incomingTitle
+    : view === "fixed" ? messages.draw.person.fixedTitle : messages.draw.yourPerson;
+  expect(container.querySelector("h1")?.textContent).toBe(heading);
+});

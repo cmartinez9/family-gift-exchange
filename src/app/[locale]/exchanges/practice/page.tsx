@@ -1,4 +1,5 @@
 import {getLocale, getTranslations} from "next-intl/server";
+import type {ReactNode} from "react";
 import {Avatar} from "@/components/ui/avatar";
 import {Card, Chevron, IconDisc, ListRow, Rows} from "@/components/ui/card";
 import {ModeBanner, modeActionClass} from "@/components/ui/mode-banner";
@@ -25,30 +26,41 @@ export default async function PracticePage({searchParams}: {searchParams: Promis
 
   if (as) {
     const result = await drawPage(practiceMemberView(owner, as));
-    if (result instanceof DrawError) return <DrawRecovery error={result} />;
-    const {status, questions} = result;
-    if (status.status !== "ready") {
-      return <PersonStatusScreen status={status.status} details={status.exchange} back={PRACTICE} backLabel={t("practiceTitle")}
-        banner={<ModeBanner icon="user" label={t("setup.mode")}
-          action={<AppLink href={PRACTICE} transition="back" className={modeActionClass}>{t("setup.stop")}</AppLink>}>
-          {t("practiceViewing", {name: status.subjectName})}
-        </ModeBanner>} />;
+    let content: ReactNode;
+    let subjectName: string | undefined;
+    if (result instanceof DrawError) {
+      content = <DrawRecovery error={result} />;
+    } else {
+      const {status, questions} = result;
+      subjectName = status.subjectName;
+      if (status.status !== "ready") {
+        content = <PersonStatusScreen status={status.status} details={status.exchange} back={PRACTICE} backLabel={t("practiceTitle")} />;
+      } else {
+        const context: MemberContext = {id: status.exchange.id, version: status.exchange.version, subject: as, practice: true};
+        const self = `${PRACTICE}?as=${encodeURIComponent(as)}`;
+        const current = questions && questions.version === context.version ? questions : null;
+        if (answer) {
+          content = <AnswerScreen key={`${as}/${context.version}`} context={context} back={self} backLabel={status.subjectName}
+            questions={current?.incoming ?? []} />;
+        } else if (fixed && !status.seen) {
+          content = <FixedScreen href={self} />;
+        } else {
+          content = <MemberPerson key={`${as}/${context.version}`} context={context} seen={status.seen} canReport={status.canReport} canAsk={status.seen}
+            budget={status.exchange.budgetAmount === null ? null : Number(status.exchange.budgetAmount)}
+            outgoing={current && status.seen ? current.outgoing : []}
+            incoming={current ? current.incoming.filter(({answered}) => !answered).map(({text}) => text) : []}
+            back={PRACTICE} backLabel={t("practiceTitle")} answerHref={`${self}&answer=1`} />;
+        }
+      }
     }
-    const context: MemberContext = {id: status.exchange.id, version: status.exchange.version, subject: as, practice: true};
-    const self = `${PRACTICE}?as=${encodeURIComponent(as)}`;
-    const current = questions && questions.version === context.version ? questions : null;
-    if (answer) {
-      return <AnswerScreen key={`${as}/${context.version}`} context={context} back={self} backLabel={status.subjectName}
-        questions={current?.incoming ?? []} />;
-    }
-    if (fixed && !status.seen) return <FixedScreen href={self} />;
     return (
-      <MemberPerson key={`${as}/${context.version}`} context={context} seen={status.seen} canReport={status.canReport} canAsk={status.seen}
-        budget={status.exchange.budgetAmount === null ? null : Number(status.exchange.budgetAmount)}
-        outgoing={current && status.seen ? current.outgoing : []}
-        incoming={current ? current.incoming.filter(({answered}) => !answered).map(({text}) => text) : []}
-        back={PRACTICE} backLabel={t("practiceTitle")} answerHref={`${self}&answer=1`}
-        helping={{label: t("practiceViewing", {name: status.subjectName}), href: PRACTICE, action: t("setup.stop")}} />
+      <div className="flex flex-1 flex-col [&_.fge-screen]:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-56px)]">
+        <ModeBanner icon="user" label={t("setup.mode")}
+          action={<AppLink href={PRACTICE} transition="back" className={modeActionClass}>{t("setup.stop")}</AppLink>}>
+          {subjectName ? t("practiceViewing", {name: subjectName}) : t("setup.practiceBanner")}
+        </ModeBanner>
+        {content}
+      </div>
     );
   }
 

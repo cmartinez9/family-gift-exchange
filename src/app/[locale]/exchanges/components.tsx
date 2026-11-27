@@ -41,14 +41,13 @@ export async function DrawRecovery({error, manageId}: {error: DrawError; manageI
 }
 
 /** Your person before there is one to open: names not drawn, not taking part, or closed. */
-export async function PersonStatusScreen({status, details, back = "/", backLabel, banner}: {
+export async function PersonStatusScreen({status, details, back = "/", backLabel}: {
   status: "waiting" | "notParticipating" | "closed"; details?: ExchangeDetails;
-  back?: string; backLabel?: string; banner?: ReactNode;
+  back?: string; backLabel?: string;
 }) {
   const t = await getTranslations("draw");
   return (
     <Screen back={back}>
-      {banner}
       <BackRow href={back} parent={backLabel ?? t("person.backHome")} backLabel={(await getTranslations("ui"))("back")} />
       <PageTitle title={t("yourPerson")} />
       <div className="flex flex-col items-center gap-6 px-edge pt-8">

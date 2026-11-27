@@ -99,6 +99,21 @@ it("keeps synthetic practice reveals inside practice", async () => {
   expect(container.querySelector('a[href^="/lists/"]')).toBeNull();
 });
 
+it.each([false, true])("recovers a reveal after a transport rejection (seen: %s)", async (seen) => {
+  reveal.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({personName: "Alex", personId: secondAlexId,
+    list: {items: [], sizes: null, likes: null}});
+  await act(async () => root.render(page("en", seen)));
+  await act(async () => button(seen ? en.draw.reveal : en.draw.person.revealTap).click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(en.draw.errors.unavailable);
+  expect(container.querySelector('a[href^="/lists/"]')).toBeNull();
+  if (!seen) await act(async () => button(en.draw.person.tryAgain).click());
+  await act(async () => button(seen ? en.draw.reveal : en.draw.person.revealTap).click());
+  if (!seen) await act(async () => button(en.draw.person.seePage.replace("{name}", "Alex")).click());
+  expect(reveal).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('a[href^="/lists/"]')?.getAttribute("href")).toBe(`/lists/${secondAlexId}`);
+});
+
 it("keeps Ask open when reopened after a successful question", async () => {
   const animations: Array<{onfinish: (() => void) | null}> = [];
   vi.spyOn(Element.prototype, "animate").mockImplementation(() => {

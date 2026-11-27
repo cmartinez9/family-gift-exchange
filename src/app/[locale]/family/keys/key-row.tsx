@@ -84,9 +84,12 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
   const [feedback, setFeedback] = useState<Record<string, AuthResult>>({});
   const [sent, setSent] = useState<Set<string>>(() => new Set(people.filter(({sent}) => sent).map(({id}) => id)));
   const [reset, setReset] = useState<KeyPerson | null>(null);
-  const [qr, setQr] = useState<number | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
   const [printBatch, setPrintBatch] = useState<Array<{person: KeyPerson; prepared?: Prepared}> | null>(null);
   const waiting = people.filter(({joined}) => !joined);
+  const qrIndex = people.findIndex(({id}) => id === qr);
+  const qrPerson = people[qrIndex];
+  const nextQr = qrPerson && people.slice(qrIndex + 1).find(({joined}) => !joined);
   const printReady = !pending && !!printBatch?.length && printBatch.every(({prepared}) =>
     prepared?.key?.qr && prepared.key.code && prepared.key.familyAddress);
 
@@ -128,13 +131,12 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
     });
   }
 
-  async function showQr(index: number) {
-    const person = waiting[index];
+  function showQr(person: KeyPerson | undefined) {
     if (!person) {
       setQr(null);
       return;
     }
-    setQr(index);
+    setQr(person.id);
     prepare(person, "qr", "overlay");
   }
 
@@ -239,25 +241,25 @@ export function KeysList({people, helped}: {people: KeyPerson[]; helped: Array<{
         </Card>
         {waiting.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="small" icon="qr" className="bg-snow-white! text-ink!" onClick={() => showQr(0)}>{t("showQr")}</Button>
+            <Button variant="small" icon="qr" className="bg-snow-white! text-ink!" onClick={() => showQr(waiting[0])}>{t("showQr")}</Button>
             <Button variant="small" icon="print" className="bg-snow-white! text-ink!" disabled={pending} onClick={printAll}>{k("printCards")}</Button>
           </div>
         )}
       </KnitIn>
       </div>
 
-      {qr !== null && waiting[qr] && (
+      {qrPerson && (
         <Overlay onClose={() => setQr(null)} backLabel={t("sendKeys")}
-          action={<Button icon="arrow" onClick={() => showQr(qr + 1)}>{qr + 1 < waiting.length ? k("nextPerson") : k("done")}</Button>}>
-          <PageTitle title={k("qrTitle", {name: waiting[qr].name})} lead={k("qrLead")} as="h2" />
+          action={<Button icon="arrow" onClick={() => showQr(nextQr)}>{nextQr ? k("nextPerson") : k("done")}</Button>}>
+          <PageTitle title={k("qrTitle", {name: qrPerson.name})} lead={k("qrLead")} as="h2" />
           <div className="px-edge pt-6">
             <Card className="flex flex-col items-center gap-4 py-6">
-              {shown[waiting[qr].id]?.key?.qr ? (
-                <Image unoptimized src={shown[waiting[qr].id]!.key!.qr!} width={240} height={240} alt={t("keyQr")} className="rounded-[18px]" />
-              ) : shown[waiting[qr].id]?.error ? <Feedback state={shown[waiting[qr].id]} /> : (
+              {shown[qrPerson.id]?.key?.qr ? (
+                <Image unoptimized src={shown[qrPerson.id]!.key!.qr!} width={240} height={240} alt={t("keyQr")} className="rounded-[18px]" />
+              ) : shown[qrPerson.id]?.error ? <Feedback state={shown[qrPerson.id]} /> : (
                 <div className="size-[240px] animate-pulse rounded-[18px] bg-card-track" aria-busy="true" />
               )}
-              <p className="flex items-center gap-2.5 text-row-title"><Avatar name={waiting[qr].name} size={40} />{k("keyFor", {name: waiting[qr].name})}</p>
+              <p className="flex items-center gap-2.5 text-row-title"><Avatar name={qrPerson.name} size={40} />{k("keyFor", {name: qrPerson.name})}</p>
             </Card>
           </div>
         </Overlay>

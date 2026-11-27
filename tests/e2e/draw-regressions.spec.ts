@@ -77,9 +77,11 @@ for (const drawn of [false, true]) {
       if (drawn) await expect(page.getByRole("heading", {name: en.draw.season.whosIn, exact: true})).toBeVisible();
       else await expect(page.getByRole("checkbox")).toHaveCount(4);
       await page.goto(family.manage);
-      await page.locator("summary").filter({hasText: /^Close exchange$/}).click();
-      await page.getByRole("button", {name: en.draw.closeConfirm, exact: true}).click();
-      await expect(page.getByText(en.draw.closed, {exact: true})).toBeVisible();
+      await page.getByRole("button", {name: en.draw.close, exact: true}).click();
+      const confirmation = page.getByRole("dialog", {name: "Close Snowfall Christmas?", exact: true});
+      await confirmation.getByRole("button", {name: "Close Snowfall Christmas", exact: true}).click();
+      await expect(page).toHaveURL(new RegExp(`/en/exchanges/${family.exchangeId}$`));
+      await expect(page.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
       for (const locale of ["en", "es"] as const) {
         const messages = locale === "en" ? en : es;
         for (const route of ["details", "people", "draw"]) {
@@ -148,9 +150,11 @@ test("unfinished onboarding returns to step one, practice keeps its return path,
     await back.click();
     await expect(page.getByRole("button", {name: "Draw names", exact: true})).toBeVisible();
     await page.goto(family.manage);
-    await page.locator("summary").filter({hasText: /^Close exchange$/}).click();
-    await page.getByRole("button", {name: "Yes, close exchange"}).click();
-    await expect(page.getByText(en.draw.closed, {exact: true})).toBeVisible();
+    await page.getByRole("button", {name: en.draw.close, exact: true}).click();
+    const confirmation = page.getByRole("dialog", {name: "Close Snowfall Christmas?", exact: true});
+    await confirmation.getByRole("button", {name: "Close Snowfall Christmas", exact: true}).click();
+    await expect(page).toHaveURL(new RegExp(`/en/exchanges/${family.exchangeId}$`));
+    await expect(page.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
     await page.goto(`${family.manage}/draw`);
     await expect(page.getByText(en.draw.closed, {exact: true})).toBeVisible();
     await expect(page.getByRole("heading", {name: "Names are drawn"})).toHaveCount(0);

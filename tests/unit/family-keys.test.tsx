@@ -195,3 +195,35 @@ it.each([
   expect(container.querySelector("dialog")).toBeNull();
   expect(document.activeElement).toBe(opener);
 });
+
+it("keeps the displayed QR with its person when they join, then prepares the next person", async () => {
+  prepareKey.mockImplementation(async (id: string) => key(id));
+  await act(async () => button(en.auth.showQr).click());
+  const dialog = container.querySelector("dialog[open]")!;
+  expect(dialog.querySelector("img")?.getAttribute("src")).toBe(key("alex").key!.qr);
+  await render([{...people[0], joined: true}, people[1]]);
+  expect(dialog.querySelector("h2")?.textContent).toBe(en.draw.keys.qrTitle.replace("{name}", "Alex"));
+  expect(dialog.querySelector("img")?.getAttribute("src")).toBe(key("alex").key!.qr);
+  expect(prepareKey).toHaveBeenCalledOnce();
+  await act(async () => button(en.draw.keys.nextPerson, dialog).click());
+  expect(prepareKey).toHaveBeenLastCalledWith("sam", "qr");
+  expect(dialog.querySelector("h2")?.textContent).toBe(en.draw.keys.qrTitle.replace("{name}", "Sam"));
+  expect(dialog.querySelector("img")?.getAttribute("src")).toBe(key("sam").key!.qr);
+  expect(dialog.querySelector('[aria-busy="true"]')).toBeNull();
+  await act(async () => button(en.draw.keys.done, dialog).click());
+  expect(container.querySelector("dialog")).toBeNull();
+});
+
+it("keeps the current QR open when an earlier person joins during a roster refresh", async () => {
+  prepareKey.mockImplementation(async (id: string) => key(id));
+  await act(async () => button(en.auth.showQr).click());
+  await act(async () => button(en.draw.keys.nextPerson).click());
+  await render([{...people[0], joined: true}, people[1]]);
+  const dialog = container.querySelector("dialog[open]")!;
+  expect(dialog).not.toBeNull();
+  expect(dialog.querySelector("h2")?.textContent).toBe(en.draw.keys.qrTitle.replace("{name}", "Sam"));
+  expect(dialog.querySelector("img")?.getAttribute("src")).toBe(key("sam").key!.qr);
+  expect(prepareKey).toHaveBeenCalledTimes(2);
+  await act(async () => button(en.draw.keys.done, dialog).click());
+  expect(container.querySelector("dialog")).toBeNull();
+});

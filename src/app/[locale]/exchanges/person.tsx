@@ -65,7 +65,12 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
     asked.current = true;
     setError(null);
     startReveal(async () => {
-      const result: RevealState = await reveal(context);
+      let result: RevealState;
+      try {
+        result = await reveal(context);
+      } catch {
+        result = {error: t("errors.unavailable")};
+      }
       if (result.error || !result.personName || !result.personId) {
         asked.current = false;
         setError(result.error ?? t("errors.unavailable"));
