@@ -10,6 +10,7 @@ import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {claims, exchanges, families, items, outbox, people} from "../../src/server/db/schema";
 import {tomorrowInExchangeCalendar} from "../../src/server/messages/calendar";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const execute = promisify(execFile);
 const pin = "4268";
@@ -41,6 +42,7 @@ for (const language of ["en", "es"] as const) {
       await page.getByRole("button", {name: auth.createFamily}).click();
       await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
       await page.getByRole("link", {name: auth.notNow}).click();
+      await openFamilyAfterDetails(page, language);
       familyId = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
       const scoped = <T,>(fn: Parameters<typeof runForFamily<T>>[2]) => runForFamily(db, familyId!, fn);
 

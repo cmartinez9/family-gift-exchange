@@ -6,13 +6,13 @@ import {afterEach, expect, it, vi} from "vitest";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
 import type {FamilyTransaction} from "../../src/server/db/database";
-import {claims, families, households, people} from "../../src/server/db/schema";
+import {claims, families, households, participants, people} from "../../src/server/db/schema";
 import {addListItem, getWishlist} from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
 import {
   allowCodeTry, disputeUsedKey, inspectKey, issueKey, lockFamily, markKeySent, redeemKey, requestPinReset, signInWithPin, type Device
 } from "../../src/server/auth/access";
-import {createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, removeMember} from "../../src/server/auth/families";
+import {addMembers, createFamily, saveMember, readiness, signInFamily, changeCoOrganizer, saveHousehold, removeMember} from "../../src/server/auth/families";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessionDisputes, sessions} from "../../src/server/auth/schema";
 import {findViewer, parseSession, digest, secret} from "../../src/server/auth/session";
 import {account, actFor, disputeEvent, disputeSession, endSessions, listKeyDisputes, listSessionDisputes} from "../../src/server/auth/security";
@@ -67,6 +67,28 @@ afterEach(async () => {
     await tx(familyId, (t) => t.delete(families).where(eq(families.id, familyId)).execute());
   }
   cleanup.clear();
+});
+
+it("creates distinct people and participants for two Alex names in one batch", async () => {
+  const f = await fixture();
+  await expect(tx(f.familyId, (t) => addMembers(t, f.viewer, ["Alex", "Alex"], "en"))).resolves.toBeNull();
+  const added = await tx(f.familyId, (t) => t.select({id: people.id}).from(people)
+    .where(and(eq(people.familyId, f.familyId), eq(people.displayName, "Alex"))));
+  expect(added).toHaveLength(2);
+  expect(new Set(added.map(({id}) => id)).size).toBe(2);
+  const roster = await tx(f.familyId, (t) => t.select().from(participants));
+  for (const {id} of added) expect(roster.some(({personId}) => personId === id)).toBe(true);
+});
+
+it("rejects an oversized batch without adding people or participants", async () => {
+  const f = await fixture();
+  await tx(f.familyId, (t) => t.insert(people).values(Array.from({length: 57}, (_, index) => ({familyId: f.familyId, displayName: `Person ${index}`}))));
+  const before = await tx(f.familyId, (t) => t.select().from(participants));
+  await expect(tx(f.familyId, (t) => addMembers(t, f.viewer, ["Alex", "Alex"], "en"))).resolves.toBe("familyFull");
+  expect(await tx(f.familyId, (t) => t.select().from(people))).toHaveLength(59);
+  expect(await tx(f.familyId, (t) => t.select().from(participants))).toEqual(before);
+  await expect(tx(f.familyId, (t) => addMembers(t, f.viewer, ["Alex"], "en"))).resolves.toBeNull();
+  expect(await tx(f.familyId, (t) => t.select().from(people))).toHaveLength(60);
 });
 
 it("requires a personal key, stores hashes, and redeems a link or its code only once across concurrent attempts", async () => {

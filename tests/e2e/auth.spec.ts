@@ -6,6 +6,7 @@ import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families} from "../../src/server/db/schema";
 import {pushSubscriptions} from "../../src/server/messages/schema";
 import {settled, signInWithPin, signOut, typePin} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 
@@ -45,14 +46,14 @@ test("sets up the family, joins by key, switches devices, disputes a session and
   const other = await browser.newContext({...device, ignoreHTTPSErrors: true});
   try {
     await page.getByRole("link", {name: "Not now"}).click();
-    await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
+    await openFamilyAfterDetails(page);
     await page.locator("summary").filter({hasText: /^Add a person$/}).click();
     await page.getByRole("textbox", {name: "Name or nickname"}).fill("Snowbit");
     await page.getByRole("button", {name: "Add a person"}).click();
     await expect(page.getByRole("heading", {name: "Snowbit"})).toBeVisible();
 
     await page.getByRole("link", {name: "Send keys"}).click();
-    await page.getByRole("button", {name: "Prepare message"}).click();
+    await page.getByRole("button", {name: "Send", exact: true}).click();
     const message = page.getByText("Hi Snowbit! This is your private key", {exact: false});
     await expect(message).toBeVisible();
     const url = (await message.innerText()).split(" ").at(-1)!;
@@ -127,7 +128,8 @@ test("registers a discoverable credential and signs in from the bare app address
   const familyId = await startFamily(page, `Icicle ${randomUUID().slice(0, 6)}`);
   try {
     await page.getByRole("button", {name: "Yes, use Face ID"}).click();
-    await expect(page.getByRole("heading", {name: "Who's ready"})).toBeVisible();
+    await openFamilyAfterDetails(page);
+    await expect(page.getByRole("link", {name: "Send keys"})).toBeVisible();
     await page.context().clearCookies();
     await page.goto("/en");
     await page.getByRole("button", {name: "Sign in with Face ID"}).click();
@@ -157,6 +159,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
   const guest = await browser.newContext({...device, ignoreHTTPSErrors: true, locale: "es-US"});
   try {
     await page.getByRole("link", {name: "Not now"}).click();
+    await openFamilyAfterDetails(page);
     await page.locator("summary").filter({hasText: /^Add a person$/}).click();
     await page.getByRole("textbox", {name: "Name or nickname"}).fill("Pino");
     const add = page.locator("details[open]").filter({has: page.getByRole("button", {name: "Add a person"})});
@@ -164,7 +167,8 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await add.getByRole("button", {name: "Add a person"}).click();
     await expect(page.getByRole("heading", {name: "Pino"})).toBeVisible();
     await page.getByRole("link", {name: "Send keys"}).click();
-    await page.getByRole("button", {name: "Prepare a key card"}).click();
+    await page.getByRole("button", {name: "Send", exact: true}).click();
+    await page.getByRole("button", {name: "Print a card"}).click();
     await expect(page.getByRole("img", {name: "Scan to open your private key"})).toBeVisible();
     const message = page.getByText(/^¡Hola, Pino!/);
     await expect(message).toBeVisible();
@@ -192,7 +196,7 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await guestPage.getByRole("button", {name: "¿Lo olvidaste?"}).click();
     await guestPage.getByRole("button", {name: "Pedirle una llave nueva a Northstar"}).click();
     await expect(guestPage.getByRole("status").filter({hasText: "Ya le avisamos a Northstar"})).toBeVisible();
-    await page.getByRole("link", {name: "Go back"}).click();
+    await page.goto("/en/family");
     const row = page.getByRole("listitem").filter({has: page.getByRole("heading", {name: "Pino"})});
     await expect(row.getByText(/Asked for a new key on/)).toBeVisible();
     await page.getByRole("link", {name: "Notifications (1 unread)"}).click();

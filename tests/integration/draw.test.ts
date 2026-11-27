@@ -23,6 +23,8 @@ import {readiness, removeMember} from "../../src/server/auth/families";
 import {addListItem, getListExchangeCard, getWishlist} from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
 import {renderServerTree} from "../helpers/render-server";
+import enMessages from "../../messages/en.json";
+import esMessages from "../../messages/es.json";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
 import * as repair from "../../src/server/draw/repair";
@@ -50,14 +52,17 @@ vi.mock("next-intl/server", async () => {
     getTranslations: async (namespace: "auth" | "draw") => createTranslator({
       locale: signedIn.locale, messages: signedIn.locale === "es" ? es : en, namespace,
     }),
-    getFormatter: async () => ({dateTime: (date: Date) => date.toISOString()}),
+    getFormatter: async () => ({
+      dateTime: (date: Date) => date.toISOString(),
+      number: (value: number, options?: Intl.NumberFormatOptions) => new Intl.NumberFormat("en-US", options).format(value),
+    }),
   };
 });
 vi.mock("@/i18n/navigation", async () => {
   const {createElement} = await import("react");
   return {
     Link: ({href, children}: {href: string; children: import("react").ReactNode}) => createElement("a", {href}, children),
-    useRouter: () => ({push: vi.fn()}),
+    useRouter: () => ({push: vi.fn(), replace: vi.fn(), back: vi.fn()}),
   };
 });
 vi.mock("../../src/app/[locale]/sign-in/controls", async () => {
@@ -93,6 +98,14 @@ vi.mock("@/server/auth", async (original) => ({
   requireViewer: async () => signedIn.viewer!,
   getViewer: async () => signedIn.viewer,
 }));
+
+/** Renders a resolved page as the browser would get it, client components included. */
+function markup(node: import("react").ReactNode) {
+  const Provider = NextIntlClientProvider as unknown as import("react").FC<{locale: string; messages: object; timeZone: string}>;
+  return renderToStaticMarkup(createElement(Provider, {
+    locale: signedIn.locale, messages: signedIn.locale === "es" ? esMessages : enMessages, timeZone: "UTC",
+  }, node));
+}
 
 const databaseUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("The draw integration tests need a disposable Postgres database");
@@ -622,7 +635,7 @@ it("loads and starts isolated practice while the real family has an unresolved r
   vi.spyOn(repair, "repairDraw").mockImplementation(() => { throw new DrawError("checkTimedOut"); });
   await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "checkTimedOut"});
   signedIn.viewer = f.organizer;
-  const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(renderToStaticMarkup);
+  const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(markup);
   expect(await practiceSeason(f.organizer)).toBeNull();
   expect(await page()).toContain("Start practice");
   await startPractice(f.organizer, "en");
@@ -694,7 +707,8 @@ it("carries the exact wishlist identity through a reveal when two relatives are 
     const viewer = f.viewers[index];
     signedIn.viewer = viewer;
     const result = await revealAction({id: f.exchangeId, subject: viewer.actingAs, version: 1});
-    expect(result).toEqual({personName: "Alex", personId: f.ids[index + 1]});
+    expect(result).toMatchObject({personName: "Alex", personId: f.ids[index + 1]});
+    expect(result.list?.items.map(({title: item}) => item)).toEqual([title]);
     const list = await getWishlist(viewer, result.personId!);
     expect(list.owner).toMatchObject({id: result.personId, name: "Alex"});
     expect(list.items.map((item) => item.title)).toEqual([title]);
@@ -1309,12 +1323,12 @@ it.each(["en", "es"] as const)("renders localized recovery on member and sealed-
   const messages = locale === "es" ? (await import("../../messages/es.json")).default
     : (await import("../../messages/en.json")).default;
   const params = Promise.resolve({exchangeId: f.exchangeId});
-  const memberHtml = renderToStaticMarkup(await renderServerTree(await MemberExchangePage({params})));
+  const memberHtml = markup(await renderServerTree(await MemberExchangePage({params, searchParams: Promise.resolve({})})));
   expect(memberHtml).toContain(messages.draw.errors.checkTimedOut);
   expect(memberHtml).toContain('role="alert"');
   expect(memberHtml).toContain('href="/account"');
   signedIn.viewer = f.organizer;
-  const manageHtml = renderToStaticMarkup(await renderServerTree(await ManagePage({params, searchParams: Promise.resolve({check: "1"})})));
+  const manageHtml = markup(await renderServerTree(await ManagePage({params, searchParams: Promise.resolve({check: "1"})})));
   expect(manageHtml).toContain(messages.draw.errors.checkTimedOut);
   expect(manageHtml).toContain('href="/account"');
   expect(manageHtml).toContain(`href="/exchanges/${f.exchangeId}/manage"`);

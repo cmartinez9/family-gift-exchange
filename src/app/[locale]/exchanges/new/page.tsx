@@ -1,21 +1,23 @@
 import {getTranslations} from "next-intl/server";
 import {notFound} from "next/navigation";
-import {Link} from "@/i18n/navigation";
+import {BackRow, PageTitle} from "@/components/ui/page-header";
 import {requireViewer} from "@/server/auth";
 import {create} from "../actions";
 import {DetailsFields} from "../components";
-import {DrawForm} from "../form";
-import {heading, link, screen} from "../styles";
+import {FormScreen} from "../form";
+import {SetupSteps} from "../setup";
 
 export default async function NewExchangePage() {
   const viewer = await requireViewer();
   if (!viewer.isOrganizer || viewer.actingAs !== viewer.personId) notFound();
-  const t = await getTranslations("draw");
+  const [t, ui] = await Promise.all([getTranslations("draw"), getTranslations("ui")]);
   return (
-    <main className={screen}>
-      <Link className={link} href="/exchanges">{t("back")}</Link>
-      <h1 className={heading}>{t("new")}</h1>
-      <DrawForm action={create} label={t("create")}><DetailsFields /></DrawForm>
-    </main>
+    <FormScreen action={create} label={t("setup.nextPeople")} back="/exchanges" top={<>
+      <BackRow href="/exchanges" parent={t("title")} backLabel={ui("back")} />
+      <SetupSteps step={1} />
+      <PageTitle title={t("setup.exchangeTitle")} lead={t("setup.exchangeLead")} />
+    </>}>
+      <DetailsFields />
+    </FormScreen>
   );
 }

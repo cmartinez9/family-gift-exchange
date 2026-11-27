@@ -4,14 +4,21 @@ import {getLocale, getTranslations} from "next-intl/server";
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {requireViewer, type Viewer} from "@/server/auth";
+import {getWishlist} from "@/server/lists";
+import {sizeKinds, sizePresets} from "@/server/lists/validation";
 import {
   answerQuestion, askYourPerson, changeParticipation, closeExchange, createExchange, DrawError, dryRunDraw,
-  editExchange, practiceCommand, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
+  editExchange, practiceCommand, reportPair, revealMyPerson, runDraw, setParticipants, startPractice,
   type ExchangeDetails,
 } from "@/server/draw";
 
 export type FormState = {error?: string; feedback?: string};
-export type RevealState = {error?: string; personName?: string; personId?: string};
+export type PersonItem = {
+  id: string; title: string; store: string | null; price: string | null; photo: string | null; note: string | null; starred: boolean;
+};
+/** What your person's page shows after the reveal: their list, sizes and likes. */
+export type PersonList = {items: PersonItem[]; sizes: string | null; likes: string | null};
+export type RevealState = {error?: string; personName?: string; personId?: string; list?: PersonList};
 
 async function drawAction<T>(operation: () => Promise<T>): Promise<T | {error: string}> {
   const t = await getTranslations("draw");
@@ -54,12 +61,31 @@ export async function create(_previous: FormState, data: FormData): Promise<Form
   if ("error" in result) return result;
   const locale = await getLocale();
   revalidatePath(`/${locale}/exchanges`, "layout");
-  redirect(`/${locale}/exchanges/${result.id}/manage`);
+  redirect(`/${locale}/exchanges/${result.id}/manage/people`);
+}
+
+/** Setup step 1: save the exchange, then on to who's in. */
+export async function saveDetailsAndContinue(id: string, _previous: FormState, data: FormData): Promise<FormState> {
+  const viewer = await requireViewer();
+  const result = await drawAction(() => editExchange(viewer, id, details(data)));
+  if (result && typeof result === "object" && "error" in result) return result;
+  const locale = await getLocale();
+  revalidatePath(`/${locale}/exchanges`, "layout");
+  redirect(`/${locale}/exchanges/${encodeURIComponent(id)}/manage/people`);
+}
+
+/** Setup step 2: save who's taking part, then on to who lives where. */
+export async function saveRosterAndContinue(id: string, _previous: FormState, data: FormData): Promise<FormState> {
+  const viewer = await requireViewer();
+  const result = await drawAction(() => setParticipants(viewer, id, selected(data)));
+  if (result && typeof result === "object" && "error" in result) return result;
+  const locale = await getLocale();
+  revalidatePath(`/${locale}/exchanges`, "layout");
+  redirect(`/${locale}/family`);
 }
 
 type Management =
-  | {kind: "edit" | "roster" | "ruleAdd" | "dryRun" | "close"}
-  | {kind: "ruleRemove"; first: string; second: string}
+  | {kind: "edit" | "dryRun" | "close"}
   | {kind: "draw"; expectedVersion: number; allowSelection?: boolean}
   | {kind: "participation"; personId: string; status: "in" | "out"; expectedVersion: number};
 
@@ -72,21 +98,6 @@ export async function manage(id: string, request: Management, _previous: FormSta
       case "edit": {
         await editExchange(viewer, id, details(data));
         feedback = t("detailsSaved");
-        break;
-      }
-      case "roster": {
-        await setParticipants(viewer, id, selected(data));
-        feedback = t("rosterSaved");
-        break;
-      }
-      case "ruleAdd": {
-        await setKeepApart(viewer, id, field(data, "first"), field(data, "second"), "custom");
-        feedback = t("ruleSaved");
-        break;
-      }
-      case "ruleRemove": {
-        await setKeepApart(viewer, id, request.first, request.second, null);
-        feedback = t("ruleRemoved");
         break;
       }
       case "draw": {
@@ -170,6 +181,36 @@ function checkSubject(viewer: Viewer, context: MemberContext) {
   if (!context.practice && viewer.actingAs !== context.subject) throw new DrawError("drawChanged");
 }
 
+/** Your person's list, sizes and likes for their page. A practice person has no list. */
+async function personList(viewer: Viewer, personId: string): Promise<PersonList | undefined> {
+  let list;
+  try {
+    list = await getWishlist(viewer, personId);
+  } catch {
+    return undefined;
+  }
+  const t = await getTranslations("lists");
+  const sizes = new Map(list.sizes.map((size) => [size.kind, size.value]));
+  const system = sizePresets.shoeSystem.find((preset) => preset === sizes.get("shoeSystem"));
+  const shown = list.owner.noClothes ? [t("noClothes")] : sizeKinds.flatMap((kind) => {
+    const value = sizes.get(kind);
+    if (!value || kind === "shoeSystem" || kind === "other") return [];
+    return [`${t(`size.${kind}`)} ${value}${kind === "shoes" && system ? ` (${t(`shoe.${system}`)})` : ""}`];
+  });
+  return {
+    sizes: shown.length ? shown.join(" · ") : null,
+    likes: list.about.likes,
+    items: list.items.map((item) => ({
+      id: item.id, title: item.title, store: item.store, price: item.price, note: item.note, starred: item.starred,
+      photo: item.hasPhoto ? "photo" : item.hasIcon ? "icon" : null,
+    })),
+  };
+}
+
+export async function readPersonList(personId: string): Promise<PersonList | undefined> {
+  return personList(await requireViewer(), personId);
+}
+
 export async function reveal(context: MemberContext): Promise<RevealState> {
   const viewer = await requireViewer();
   return drawAction(async () => {
@@ -178,7 +219,8 @@ export async function reveal(context: MemberContext): Promise<RevealState> {
       ? await practiceCommand(viewer, {kind: "reveal", as: context.subject, expectedVersion: context.version}, context.id)
       : await revealMyPerson(viewer, context.id, context.version);
     await refreshDrawPages();
-    return {personName: person.displayName, personId: person.id};
+    const list = context.practice ? undefined : await personList(viewer, person.id);
+    return {personName: person.displayName, personId: person.id, list};
   });
 }
 
@@ -189,7 +231,7 @@ export async function memberAction(
 ): Promise<FormState> {
   const viewer = await requireViewer();
   const t = await getTranslations("draw");
-  return drawAction(async () => {
+  const result = await drawAction(async () => {
     checkSubject(viewer, context);
     const {id, subject, version, practice} = context;
     const text = field(data, "text");
@@ -215,4 +257,12 @@ export async function memberAction(
     await refreshDrawPages();
     return {feedback};
   });
+  // a fixed match: say what happened quietly, then open the new person
+  if (request.kind === "report" && !("error" in result)) {
+    const locale = await getLocale();
+    redirect(context.practice
+      ? `/${locale}/exchanges/practice?as=${encodeURIComponent(context.subject)}&fixed=1`
+      : `/${locale}/exchanges/${encodeURIComponent(context.id)}?fixed=1`);
+  }
+  return result;
 }
