@@ -12,7 +12,7 @@ import {
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
-import {appOrigin, requestDevice, setSession} from "@/server/auth/request";
+import {appOrigin, currentDeviceKind, requestDevice, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {createCodePreview} from "@/server/auth/code-preview";
 import {pinAttemptState} from "@/server/auth/account";
@@ -92,7 +92,8 @@ export async function enterPin(familyId: string, personId: string, _: AuthResult
 
 export async function forgotPin(familyId: string, personId: string): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || !uuidPattern.test(personId)) return {error: "unavailable"};
-  const device = await requestDevice();
+  // Help only records the device kind. Setting a cookie here refreshes an expired key's screen and loses its confirmation.
+  const device = {kind: await currentDeviceKind()};
   return withFamily(familyId, async (tx) => {
     const result = await requestPinReset(tx, familyId, personId, device, new Date());
     if (result.success) await notify.requestPinReset({familyId, personId}, tx);

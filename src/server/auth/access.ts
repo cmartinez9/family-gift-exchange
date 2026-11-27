@@ -309,7 +309,7 @@ export async function signInWithPin(
  * the "Ask the organizer for help" link.
  */
 export async function requestPinReset(
-  tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date,
+  tx: FamilyTransaction, familyId: string, personId: string, device: Pick<Device, "kind">, now: Date,
 ) {
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
   const person = await activePerson(tx, familyId, personId);

@@ -302,7 +302,7 @@ test("home and the name picker ask for the right person and share the daily limi
     ]);
     await page.goto("/en");
     await page.getByRole("button", {name: "Ask Christian for help"}).click();
-    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Christian has been asked. Watch your chat.");
     await shot(page, "home-help-asked");
 
     await page.goto(`/en/sign-in?family=${f.familyId}&all=1`);
@@ -312,19 +312,19 @@ test("home and the name picker ask for the right person and share the daily limi
     expect(await inFamily(f.familyId, (t) => t.select().from(pinResetRequests))).toHaveLength(1);
     await shot(page, "name-picker-help-choice");
     await choice.getByRole("button", {name: "Tito", exact: true}).click();
-    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Christian has been asked. Watch your chat.");
 
     await page.context().clearCookies();
     await page.context().addCookies([{name: "__Host-fge-family", value: f.familyId, url: origin, secure: true, httpOnly: true, sameSite: "Lax"}]);
     await page.goto("/es");
     await page.getByRole("button", {name: "Pedirle ayuda a Christian"}).click();
     await page.getByRole("dialog", {name: es.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
-    await expect(page.getByRole("status")).toHaveText("Ya le avisamos a Christian. Revisa tu chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Ya le avisamos a Christian. Revisa tu chat.");
 
     await page.goto(`/en/sign-in?family=${f.familyId}&all=1`);
     await page.getByRole("button", {name: "Ask Christian for help"}).click();
     await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
-    await expect(page.getByRole("status")).toHaveText("Christian was already asked today. Watch your chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Christian was already asked today. Watch your chat.");
     const requests = await inFamily(f.familyId, (t) => t.select().from(pinResetRequests));
     expect(requests).toHaveLength(3);
     expect(requests.every(({personId}) => personId === f.ids.Tito)).toBe(true);
@@ -349,7 +349,8 @@ test("the key's helper branch asks without opening the key", async ({page}) => {
   expect(after.sessions).toEqual(before.sessions);
   expect(after.pins).toEqual(before.pins);
   expect(after.requests).toHaveLength(before.requests.length + 1);
-  expect(after.requests.filter(({personId}) => personId === family.ids.Marta)).toHaveLength(2);
+  expect(after.requests.filter(({personId}) => personId === family.ids.Marta))
+    .toHaveLength(before.requests.filter(({personId}) => personId === family.ids.Marta).length + 1);
 });
 
 test("code entry and a paused family share help requests and the existing limit", async ({page}) => {
@@ -369,13 +370,13 @@ test("code entry and a paused family share help requests and the existing limit"
       if (invalidCode) {
         await page.getByLabel(en.auth.keyCode).fill("000000");
         await page.getByRole("button", {name: en.auth.checkCode}).click();
-        await expect(page.getByRole("alert")).toHaveText(en.auth.feedback.unavailable);
+        await expect(page.getByRole("alert").filter({hasText: en.auth.feedback.unavailable})).toHaveText(en.auth.feedback.unavailable);
         await expect(help).toBeVisible();
       }
       if (index === 1) await shot(page, "code-entry-invalid-help");
       await help.click();
       await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
-      await expect(page.getByRole("status")).toHaveText(index < 3
+      await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText(index < 3
         ? "Christian has been asked. Watch your chat." : "Christian was already asked today. Watch your chat.");
     }
     const after = await keyState(f.familyId);
@@ -408,15 +409,15 @@ test("an invited member can ask after a failed code or expired key on someone el
     await page.getByRole("link", {name: en.getIn.who.ownKey}).click();
     await page.getByLabel(en.auth.keyCode).fill("000000");
     await page.getByRole("button", {name: en.auth.checkCode}).click();
-    await expect(page.getByRole("alert")).toHaveText(en.auth.feedback.unavailable);
+    await expect(page.getByRole("alert").filter({hasText: en.auth.feedback.unavailable})).toHaveText(en.auth.feedback.unavailable);
     await page.getByRole("button", {name: "Ask Christian for help"}).click();
     await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Rosa", exact: true}).click();
-    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Christian has been asked. Watch your chat.");
     for (let request = 2; request <= 4; request++) {
       await page.goto(f.keys.Rosa);
       await expect(page.getByRole("heading", {name: en.getIn.other.missing})).toBeVisible();
       await page.getByRole("button", {name: "Ask Christian for help"}).click();
-      await expect(page.getByRole("status")).toHaveText(request <= 3
+      await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText(request <= 3
         ? "Christian has been asked. Watch your chat." : "Christian was already asked today. Watch your chat.");
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
@@ -460,8 +461,17 @@ for (const screen of ["welcome", "PIN", "helper"] as const) {
         .where(eq(personalKeys.id, qr.id)));
       const before = await keyState(f.familyId);
       await help.click();
-      await expect(page.getByRole("status").filter({hasText: "Christian has been asked. Watch your chat."})).toBeVisible();
-      await expect(page).toHaveURL(new URL(path, origin).toString());
+      await page.waitForLoadState("networkidle");
+      await shot(page, `expired-qr-${screen}-after-help`);
+      const persisted = await keyState(f.familyId);
+      await test.info().attach("expired-qr-help-effects", {contentType: "application/json", body: JSON.stringify({
+        screen,
+        requests: persisted.requests.map(({personId}) => ({person: personId === f.ids.Rosa ? "Rosa" : personId})),
+        notices: persisted.outbox.filter(({template}) => template === "pin-reset-request").map(({personId, requesterName}) => ({
+          recipient: personId === f.organizerId ? "Christian" : personId === f.ids.Ana ? "Ana" : personId, requesterName,
+        })),
+        pageText: await page.locator("main").innerText(),
+      }, null, 2)});
       const after = await keyState(f.familyId);
       expect(after.requests).toEqual([expect.objectContaining({personId: f.ids.Rosa})]);
       expect(after.keys).toEqual(before.keys);
@@ -470,6 +480,8 @@ for (const screen of ["welcome", "PIN", "helper"] as const) {
       const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
       expect(notices.map(({personId, requesterName}) => [personId, requesterName]).toSorted())
         .toEqual([[f.ids.Ana, "Rosa"], [f.organizerId, "Rosa"]].toSorted());
+      await expect(page.getByRole("status").filter({hasText: "Christian has been asked. Watch your chat."})).toBeVisible();
+      await expect(page).toHaveURL(new URL(path, origin).toString());
     } finally {
       await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
     }
@@ -499,7 +511,7 @@ test("organizer recovery gives guidance when alone and notifies an available co-
     });
     await page.goto(`/en/sign-in?family=${f.familyId}&person=${f.organizerId}`);
     await page.getByRole("button", {name: "Ask Ana for help", exact: true}).click();
-    await expect(page.getByRole("status")).toHaveText("Ana has been asked. Watch your chat.");
+    await expect(page.getByRole("status").filter({hasText: /Christian|Ana/})).toHaveText("Ana has been asked. Watch your chat.");
     const after = await keyState(f.familyId);
     expect(after.requests).toEqual([expect.objectContaining({personId: f.organizerId})]);
     expect(after.outbox.filter(({template}) => template === "pin-reset-request"))
