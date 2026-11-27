@@ -3,7 +3,8 @@
 import {useLayoutEffect, useRef, useState, useTransition, type ReactNode} from "react";
 import {useFormatter, useTranslations} from "next-intl";
 import {Button, TextButton} from "@/components/ui/button";
-import {Track} from "@/components/ui/card";
+import {Track, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {ItemCard} from "@/components/ui/item-card";
 import {DURATION, EASE} from "@/components/ui/motion/easing";
@@ -150,9 +151,9 @@ function ChangeLines({change}: {change: ItemChange}) {
   const format = useFormatter();
   if (change.field === "photo") {
     return (
-      <div className="flex items-start gap-2 text-body-strong" data-changed="photo">
+      <div className={cn("flex items-start gap-2 text-body-strong", stackRow)} data-changed="photo">
         <Icon name="arrow" size={20} strokeWidth={2.2} className="mt-[2.5px]" />
-        <span className="min-w-0 break-words">{t(change.hasPhoto ? "newPicture" : "pictureRemoved")}</span>
+        <span className={cn("min-w-0 break-words", stackWords)}>{t(change.hasPhoto ? "newPicture" : "pictureRemoved")}</span>
       </div>
     );
   }
@@ -174,9 +175,9 @@ function ChangeLines({change}: {change: ItemChange}) {
       <del className="text-body font-medium whitespace-pre-wrap break-words text-[var(--fg-muted)] line-through decoration-[1.5px]">
         <span className="sr-only">{t("was")} </span>{value("before")}
       </del>
-      <ins className="flex items-start gap-2 text-body-strong no-underline">
+      <ins className={cn("flex items-start gap-2 text-body-strong no-underline", stackRow)}>
         <Icon name="arrow" size={20} strokeWidth={2.2} className="mt-[2.5px]" />
-        <span className="min-w-0 whitespace-pre-wrap break-words">
+        <span className={cn("min-w-0 whitespace-pre-wrap break-words", stackWords)}>
           <span className="sr-only">{t("now")} </span>
           {change.field === "link" && change.url
             ? <a href={change.url} target="_blank" rel="noreferrer" className="underline underline-offset-4">{after}</a>

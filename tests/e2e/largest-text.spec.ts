@@ -118,6 +118,11 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
   }, async installHome() {
     await database.db.update(outbox).set({readAt: new Date()}).where(eq(outbox.personId, ids.Christian));
     return "/";
+  }, async changedGift() {
+    const gift = gifts[1];
+    await database.db.update(claims).set({seen: {title: gift.title, note: null, url: null, store: gift.store!,
+      price: gift.price!, imageKey: "previous-photo.jpg"}}).where(eq(claims.itemId, gift.id));
+    await database.db.update(items).set({title: "headphones", updatedAt: new Date()}).where(eq(items.id, gift.id));
   }, async loadingList() {
     await database.db.insert(items).values({familyId, ownerId: ids.Ana, kind: "link", title: "Wool socks", store: "Target",
       position: 0, url: "https://www.target.com/p/wool-socks/-/A-12345",
@@ -488,6 +493,86 @@ for (const locale of ["en", "es"] as const) {
     }
 
     for (const width of [195, 390]) {
+      test(`notification installation steps fit at ${width}px`, async () => {
+        const page = await drawn.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
+          reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});
+        try {
+          const t = messages[locale].notify.install;
+          await page.goto(`/${locale}/notifications`);
+          await page.getByRole("button", {name: t.prompt, exact: true}).click();
+          for (const phone of ["iphone", "android"] as const) {
+            const title = phone === "iphone" ? t.iphoneTitle : t.androidTitle;
+            if (!await page.getByRole("dialog", {name: title, exact: true}).count()) {
+              await page.getByRole("button", {name: phone === "iphone" ? t.haveIphone : t.haveAndroid, exact: true}).click();
+            }
+            await expect(page.getByRole("dialog", {name: title, exact: true})).toBeVisible();
+            await settle(page);
+            const steps = await page.getByRole("list", {name: t.steps, exact: true}).locator("li").evaluateAll((elements) =>
+              elements.map((element) => {
+                const row = element.getBoundingClientRect(), words = element.querySelector("p")!.getBoundingClientRect();
+                const number = element.firstElementChild!.getBoundingClientRect(), picture = element.lastElementChild!.getBoundingClientRect();
+                return {width: row.width, wordsWidth: words.width, wordsLeft: words.left, wordsTop: words.top,
+                  rowLeft: row.left, numberRight: number.right, numberBottom: number.bottom,
+                  pictureLeft: picture.left, pictureBottom: picture.bottom, wordsRight: words.right};
+              }));
+            expect(steps).toHaveLength(3);
+            for (const step of steps) {
+              if (width === 195) {
+                expect(step.wordsWidth).toBeCloseTo(step.width, 0);
+                expect(step.wordsLeft).toBeCloseTo(step.rowLeft, 0);
+                expect(step.wordsTop).toBeGreaterThanOrEqual(Math.max(step.numberBottom, step.pictureBottom));
+              } else {
+                expect(step.wordsLeft).toBeGreaterThan(step.numberRight);
+                expect(step.wordsRight).toBeLessThan(step.pictureLeft);
+              }
+            }
+            expect(await layoutProblems(page)).toEqual([]);
+            expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+            await page.getByRole("list", {name: t.steps, exact: true}).locator("li").first()
+              .screenshot({path: test.info().outputPath(`${phone}-${width}px.png`)});
+          }
+        } finally {
+          await page.context().close();
+        }
+      });
+
+      test(`changed gift values fit at ${width}px`, async ({browser, baseURL}) => {
+        const f = await family(browser, new URL(baseURL!).origin, "drawn");
+        const page = await f.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
+          reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});
+        try {
+          const t = messages[locale].lists.changed;
+          await f.changedGift();
+          await page.goto(`/${locale}/lists/getting`);
+          await expect(page.locator('[data-changed="title"] ins')).toHaveText(`${t.now} headphones`);
+          await expect(page.locator('[data-changed="photo"]')).toHaveText(t.pictureRemoved);
+          await settle(page);
+          for (const row of [page.locator('[data-changed="title"] ins'), page.locator('[data-changed="photo"]')]) {
+            const bounds = await row.evaluate((element) => {
+              const row = element.getBoundingClientRect(), arrow = element.querySelector("svg")!.getBoundingClientRect();
+              const words = element.querySelector(":scope > span")!.getBoundingClientRect();
+              return {rowWidth: row.width, wordsWidth: words.width, wordsTop: words.top,
+                wordsLeft: words.left, arrowRight: arrow.right, arrowBottom: arrow.bottom};
+            });
+            if (width === 195) {
+              expect(bounds.wordsWidth).toBeCloseTo(bounds.rowWidth, 0);
+              expect(bounds.wordsTop).toBeGreaterThanOrEqual(bounds.arrowBottom);
+            } else {
+              expect(bounds.wordsLeft).toBeGreaterThan(bounds.arrowRight);
+            }
+          }
+          expect(await layoutProblems(page)).toEqual([]);
+          expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+          await page.screenshot({path: test.info().outputPath(`changed-gift-${width}px.png`), fullPage: true});
+          await page.getByRole("button", {name: t.keep, exact: true}).click();
+          await expect(page.locator("[data-changed]")).toHaveCount(0);
+          await expect(page.getByRole("article", {name: "headphones", exact: true})
+            .getByRole("checkbox", {name: messages[locale].lists.bought, exact: true})).toBeVisible();
+        } finally {
+          await f.close();
+        }
+      });
+
       test(`revealed pass fits Home and Family at ${width}px`, async () => {
         const page = await drawn.open("Christian", {...largest, viewport: {width, height: width === 195 ? 422 : 844},
           reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US"});

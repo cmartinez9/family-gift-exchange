@@ -4,7 +4,7 @@ import Image from "next/image";
 import {useTranslations} from "next-intl";
 import {useState, type ReactNode} from "react";
 import {Button, TextButton} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
 import {cn} from "@/components/ui/cn";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {Sheet} from "@/components/ui/sheet";
@@ -27,11 +27,11 @@ function SystemButton({icon}: {icon: IconName}) {
 
 function Step({number, children, picture}: {number: number; children: ReactNode; picture: ReactNode}) {
   return (
-    <li className="flex items-center gap-3.5">
+    <li className={cn("flex items-center gap-3.5", stackRow)}>
       <span aria-hidden="true" className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-sweater-red text-body-strong text-snow-white">
         {number}
       </span>
-      <p className="min-w-0 flex-1 text-body">{children}</p>
+      <p className={cn("min-w-0 flex-1 text-body", stackWords)}>{children}</p>
       {picture}
     </li>
   );
