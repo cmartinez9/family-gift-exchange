@@ -54,6 +54,7 @@ export async function closeExchange(viewer: DrawViewer, id: string) {
   return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
+    if (exchange.status === "closed") return;
     await tx.update(exchanges).set({status: "closed"}).where(exchangeScope(familyId, exchange.id));
     // A closed exchange retains its details and seal, with no pairing history.
     await tx.delete(assignments).where(assignmentScope(familyId, exchange.id));
@@ -62,7 +63,7 @@ export async function closeExchange(viewer: DrawViewer, id: string) {
     await tx.delete(drawRuleSnapshots).where(and(
       eq(drawRuleSnapshots.familyId, familyId), eq(drawRuleSnapshots.exchangeId, exchange.id),
     ));
-  });
+  }, "update");
 }
 
 export async function listExchanges(viewer: DrawViewer) {
