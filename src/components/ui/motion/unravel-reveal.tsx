@@ -139,7 +139,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     const k = Math.floor(s.p * ROWS + 1e-6);
     qa<SVGGElement>(".fge-kr").forEach((row, index) => row.setAttribute("data-gone", String(index < k)));
     if (ring.current) ring.current.style.opacity = s.p > 0 ? "0" : "1";
-    progress.current?.setAttribute("aria-valuenow", String(Math.round(s.p * 100)));
+    progress.current?.setAttribute("aria-valuenow", String(Math.floor(s.p * 100)));
     if (k > s.row) {
       s.row = k;
       haptic("tick");

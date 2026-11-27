@@ -17,6 +17,7 @@ import {StitchedText} from "@/components/ui/knit/stitched-text";
 import {ModeBanner} from "@/components/ui/mode-banner";
 import {ClaimCard} from "@/components/ui/motion/claim";
 import {EdgeSwipeBack} from "@/components/ui/motion/edge-swipe";
+import {DURATION} from "@/components/ui/motion/easing";
 import {HAPTIC_PATTERNS, haptic} from "@/components/ui/motion/haptic";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {UnravelReveal, type RevealLabels} from "@/components/ui/motion/unravel-reveal";
@@ -409,5 +410,41 @@ describe("motion and feedback", () => {
     expect(progress.getAttribute("aria-valuenow")).toBe("100");
     expect(container.querySelectorAll(".fge-nm[data-on='true']").length).toBeGreaterThan(0);
     expect(container.textContent).toContain("You're giving to BETO");
+  });
+
+  it("reports 100% only when releasing the hold can no longer pause the reveal", async () => {
+    vi.useFakeTimers();
+    const onRevealed = vi.fn();
+    const labels: RevealLabels = {
+      ready: "Your person is ready", readyHint: "Press and hold the gift.", holding: "Keep holding", holdingHint: "Coming undone.",
+      holdLonger: "Hold a little longer.", letGo: "Let go any time.", watching: "Keep watching", watchingHint: "Knitting a name.",
+      tapToOpen: "Or tap here to open it", gift: "The knitted gift", progress: "Unravelling", lead: "You're giving to", onlyYou: "Only you can see this",
+    };
+    await render(<UnravelReveal name="Snowquill" labels={labels} next={<button type="button">Next</button>} onRevealed={onRevealed} />);
+    const gift = container.querySelector<HTMLButtonElement>("button[aria-label='The knitted gift']")!;
+    const progress = container.querySelector("[role=progressbar]")!;
+    const key = async (type: string) => act(async () => {
+      gift.dispatchEvent(new KeyboardEvent(type, {key: " ", bubbles: true}));
+    });
+
+    await key("keydown");
+    // The last animation frame before completion falls within the rounding gap (99.5–100%).
+    const beforeCompletion = Math.floor(DURATION.unravelPerGift / 16) * 16;
+    await act(async () => vi.advanceTimersByTime(beforeCompletion));
+    expect(progress.getAttribute("aria-valuenow")).toBe("99");
+    await key("keyup");
+    expect(container.textContent).toContain(labels.letGo);
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(progress.getAttribute("aria-valuenow")).toBe("99");
+    expect(onRevealed).not.toHaveBeenCalled();
+
+    await key("keydown");
+    await act(async () => vi.advanceTimersByTime(16));
+    expect(progress.getAttribute("aria-valuenow")).toBe("100");
+    await key("keyup");
+    await act(async () => vi.advanceTimersByTime(10_000));
+    expect(container.textContent).toContain("You're giving to Snowquill");
+    expect(container.querySelector("[data-reveal-next]")?.hasAttribute("inert")).toBe(false);
+    expect(onRevealed).toHaveBeenCalledOnce();
   });
 });
