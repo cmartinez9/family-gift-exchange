@@ -18,10 +18,24 @@ const NAMES = ["Rosa", "Tito", "Ana", "Beto", "Leo"] as const;
 async function closeKeyOverlayWithKeyboard(page: Page, opener: Locator) {
   const dialog = page.getByRole("dialog", {name: "Send keys"});
   await expect(dialog.getByRole("button", {name: "Send keys", exact: true})).toBeFocused();
+  const focusHistory = [];
   for (const key of ["Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
     await page.keyboard.press(key);
-    await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    const focus = await dialog.evaluate((element) => ({
+      inDialog: element.contains(document.activeElement),
+      activeTag: document.activeElement?.tagName,
+      activeText: document.activeElement?.textContent?.slice(0, 100),
+      hasFocus: document.hasFocus(),
+    }));
+    focusHistory.push({key, ...focus});
+    // Native modal dialogs allow Tab into browser chrome, but covered page controls stay inert.
+    expect(focus.inDialog || (focus.activeTag === "BODY" && !focus.hasFocus), JSON.stringify(focus)).toBe(true);
   }
+  await test.info().attach("key-overlay-keyboard-focus", {body: JSON.stringify(focusHistory), contentType: "application/json"});
+  await page.locator("#family-address").focus();
+  await expect(page.locator("#family-address")).not.toBeFocused();
+  await page.getByRole("link", {name: "Tell the family", exact: true}).focus();
+  await expect(page.getByRole("link", {name: "Tell the family", exact: true})).not.toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
@@ -188,6 +202,7 @@ test("send keys, show a code, print cards, tell the family", async () => {
   const printOpener = page.getByRole("button", {name: "Print cards"});
   await printOpener.click();
   await expect(page.getByRole("heading", {name: "Print key cards"})).toBeVisible();
+  await expect(page.getByRole("dialog", {name: "Send keys"}).getByRole("button", {name: "Send keys", exact: true})).toBeFocused();
   await expect(page.getByRole("img", {name: "Scan to open your private key"})).toHaveCount(3);
   await shot(page, "f7-7_15-print-key-cards");
   await page.emulateMedia({media: "print"});
@@ -195,6 +210,8 @@ test("send keys, show a code, print cards, tell the family", async () => {
   await expect(printed).toHaveCount(3);
   for (const card of await printed.all()) await expect(card).toBeVisible();
   await page.emulateMedia({media: "screen"});
+  // Print media hid the focused back button; resume the keyboard check inside the dialog.
+  await page.getByRole("dialog", {name: "Send keys"}).getByRole("button", {name: "Send keys", exact: true}).focus();
   await closeKeyOverlayWithKeyboard(page, printOpener);
   await page.getByRole("link", {name: "Tell the family"}).click();
   await expect(page.getByRole("region", {name: "Names are drawn!"})).toBeVisible();

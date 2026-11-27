@@ -30,7 +30,7 @@ After opening your person, use **Ask {name} a question** to send an anonymous qu
 
 Organizers can open **Practice exchange** to try draws, reveals, questions, repairs, and redraws with a private fictional family. This mode shows all fictional pairings and lets its owner view each participant. It is separate from the real exchange, including any pending recovery there.
 
-Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings and questions, retaining the exchange details and seal, and opens **That's a wrap**. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
+Matches remain available after gift day and January 1 until an organizer chooses **Close exchange** and confirms in the sheet; **Not yet** leaves it open. Closing clears pairings and questions, retaining the exchange details and seal, and opens **That's a wrap**. The closed exchange's management pages show its saved details without setup or editing controls. Wishlists remain available for adding gifts throughout the year. There is no later reveal of everyone's pairings.
 
 ## Wishlists and gifts
 

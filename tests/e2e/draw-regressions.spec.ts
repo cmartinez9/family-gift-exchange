@@ -8,6 +8,7 @@ import {createSession, digest, secret} from "../../src/server/auth/session";
 import {practiceFamilies} from "../../src/server/draw/schema";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
+import {openKey} from "../helpers/pin-pad";
 
 test.setTimeout(120_000);
 const database = () => connectDatabase((process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL)!);
@@ -45,6 +46,57 @@ async function cleanup(familyId: string) {
 async function add(page: Page, names: string) {
   await page.getByLabel("Add a name").fill(names);
   await page.getByRole("button", {name: "Add", exact: true}).click();
+}
+
+for (const drawn of [false, true]) {
+  test(`closed ${drawn ? "drawn" : "undrawn"} exchange shows saved facts instead of management editors in both languages`, async ({page}, info) => {
+    const family = await create(page);
+    try {
+      await page.getByLabel("Gift day", {exact: true}).fill("2026-12-24");
+      await page.getByLabel("Gift time at the location").fill("19:30");
+      await page.getByLabel("Place").fill("Community Hall");
+      await page.getByLabel("List deadline").fill("2026-12-05");
+      await page.getByRole("button", {name: en.draw.setup.nextPeople, exact: true}).click();
+      await add(page, "Alex, Blake, Casey");
+      await expect(page.getByRole("checkbox", {name: "Casey", exact: true})).toBeChecked();
+      if (drawn) {
+        await page.getByRole("button", {name: en.draw.setup.nextHouses, exact: true}).click();
+        await page.getByRole("link", {name: en.draw.setup.nextDraw, exact: true}).click();
+        await page.getByRole("button", {name: "Draw names", exact: true}).click();
+        await page.getByRole("button", {name: "Skip the animation"}).click();
+        await expect(page.getByRole("heading", {name: "Names are drawn"})).toBeVisible();
+      }
+      await page.goto(`${family.manage}/details`);
+      await expect(page.getByLabel(en.draw.place, {exact: true})).toHaveValue("Community Hall");
+      await page.getByLabel(en.draw.place, {exact: true}).fill("Winter Community Hall");
+      await page.getByRole("button", {name: en.draw.saveDetails, exact: true}).click();
+      await expect(page.getByRole("status")).toContainText(en.draw.detailsSaved);
+      await page.reload();
+      await expect(page.getByLabel(en.draw.place, {exact: true})).toHaveValue("Winter Community Hall");
+      await page.goto(`${family.manage}/people`);
+      if (drawn) await expect(page.getByRole("heading", {name: en.draw.season.whosIn, exact: true})).toBeVisible();
+      else await expect(page.getByRole("checkbox")).toHaveCount(4);
+      await page.goto(family.manage);
+      await page.locator("summary").filter({hasText: /^Close exchange$/}).click();
+      await page.getByRole("button", {name: en.draw.closeConfirm, exact: true}).click();
+      await expect(page.getByText(en.draw.closed, {exact: true})).toBeVisible();
+      for (const locale of ["en", "es"] as const) {
+        const messages = locale === "en" ? en : es;
+        for (const route of ["details", "people", "draw"]) {
+          await page.goto(`/${locale}/exchanges/${family.exchangeId}/manage/${route}`);
+          await expect(page.getByText(messages.draw.closed, {exact: true})).toBeVisible();
+          await expect(page.getByText("Winter Community Hall", {exact: true})).toBeVisible();
+          await expect(page.locator('time[datetime="2026-12-24"]')).toBeVisible();
+          await expect(page.locator('time[datetime="19:30"]')).toBeVisible();
+          await expect(page.locator('time[datetime="2026-12-05"]')).toBeVisible();
+          await expect(page.getByRole("main").locator("form,input,select,textarea")).toHaveCount(0);
+          await expect(page.getByRole("button", {name: messages.draw.saveDetails, exact: true})).toHaveCount(0);
+          await expect(page.locator("[data-back-row] a").first()).toHaveAttribute("href", `/${locale}/exchanges/${family.exchangeId}/manage`);
+          await capture(page, info, `${locale}-closed-${drawn ? "drawn" : "undrawn"}-${route}`);
+        }
+      }
+    } finally { await cleanup(family.familyId); }
+  });
 }
 
 test("two Alex relatives remain distinct and an over-capacity pasted batch leaves no partial addition", async ({page}, info) => {
@@ -294,12 +346,7 @@ test("key printing waits for credentials, prints individual cards and replaces a
     await page.emulateMedia({media: "screen"});
     await page.getByRole("button", {name: "Send keys", exact: true}).click();
     const gp = await guest.newPage();
-    await gp.goto(invitation);
-    await gp.getByRole("button", {name: "Yes, I'm Alex", exact: true}).click();
-    await gp.getByLabel("4-digit PIN").fill("4268");
-    await gp.getByLabel("Type the PIN again").fill("4268");
-    await gp.getByRole("button", {name: "Save PIN", exact: true}).click();
-    await expect(gp.getByRole("heading", {name: "Use Face ID next time?"})).toBeVisible();
+    await openKey(gp, invitation, "4268");
     await row.getByRole("button", {name: "Mark as sent", exact: true}).click();
     await row.getByRole("button", {name: "Reset PIN", exact: true}).click();
     await row.getByRole("button", {name: "Reset and send a new key", exact: true}).click();
