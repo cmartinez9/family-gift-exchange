@@ -185,8 +185,14 @@ test("a giver who finds an empty list sees the nudge line, and the daily job sen
   // find whoever gives to Beto; Beto's list is empty and he has a phone
   let giver: Page | undefined;
   let giverName = "";
-  for (const name of ["Christian", "Rosa", "Ana", "Tito", "Leo"]) {
-    const page = name === "Christian" ? state.organizer! : await memberPage(browser, baseURL!, name);
+  // Always exercise the looked-after giver through their helper's authorized session.
+  for (const name of ["Tito", "Christian", "Rosa", "Ana", "Leo"]) {
+    const page = name === "Christian" ? state.organizer! : await memberPage(browser, baseURL!, name === "Tito" ? "Rosa" : name);
+    if (name === "Tito") {
+      await page.goto("/en/account");
+      await page.getByRole("button", {name: "Help Tito", exact: true}).click();
+      await expect(page).toHaveURL(/\/en\/helping$/);
+    }
     await page.goto(`/en/exchanges/${state.exchangeId}`);
     if (await openPerson(page) === "Beto") {
       giver = page;
