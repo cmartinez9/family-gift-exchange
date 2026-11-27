@@ -15,6 +15,7 @@ export const sessions = pgTable("sessions", {
   lastUsedAt: instant("last_used_at"),
   expiresAt: instant("expires_at").notNull(),
   revokedAt: instant("revoked_at"),
+  resetNoticeEligible: boolean("reset_notice_eligible").default(false).notNull(),
   trusted: boolean("trusted").default(true).notNull(),
   hadOrganizerAccess: boolean("had_organizer_access").default(false).notNull(),
 }, (table) => [

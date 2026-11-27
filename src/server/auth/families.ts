@@ -170,7 +170,7 @@ export async function removeMember(tx: FamilyTransaction, viewer: Viewer, person
   await tx.update(personalKeys).set({revokedAt: now}).where(and(
     eq(personalKeys.familyId, familyId), eq(personalKeys.personId, personId), isNull(personalKeys.revokedAt),
   ));
-  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, personId)));
+  await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(eq(sessions.familyId, familyId), eq(sessions.personId, personId)));
   await tx.update(passkeys).set({revokedAt: now}).where(and(eq(passkeys.familyId, familyId), eq(passkeys.personId, personId)));
   return null;
 }

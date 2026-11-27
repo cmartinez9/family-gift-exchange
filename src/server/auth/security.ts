@@ -42,7 +42,7 @@ export async function endSessions(tx: FamilyTransaction, viewer: Viewer, now: Da
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
   if (!await revalidateViewer(tx, viewer)) return false;
-  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false} : {revokedAt: now}).where(and(
+  await tx.update(sessions).set(all ? {revokedAt: now, trusted: false, resetNoticeEligible: false} : {revokedAt: now, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), all ? undefined : eq(sessions.id, sessionId),
   ));
   return true;
@@ -53,13 +53,13 @@ export async function signOutDevice(tx: FamilyTransaction, viewer: Viewer, targe
   const {familyId, personId, sessionId} = viewer;
   await lockFamily(tx, familyId);
   if (!await revalidateViewer(tx, viewer) || targetId === sessionId) return null;
-  const [target] = await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+  const [target] = await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.id, targetId),
     isNull(sessions.revokedAt), gt(sessions.expiresAt, now),
   )).returning({deviceHash: sessions.deviceHash, deviceKind: sessions.deviceKind});
   if (!target) return null;
   // that phone's earlier sessions would otherwise still vouch for it
-  await tx.update(sessions).set({trusted: false}).where(and(
+  await tx.update(sessions).set({trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), eq(sessions.personId, personId), eq(sessions.deviceHash, target.deviceHash),
     ne(sessions.id, sessionId),
   ));
@@ -200,7 +200,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   await tx.update(passkeys).set({revokedAt: now}).where(and(
     eq(passkeys.familyId, familyId), inArray(passkeys.id, [...credentialIds]),
   ));
-  await tx.update(sessions).set({revokedAt: now, trusted: false}).where(and(
+  await tx.update(sessions).set({revokedAt: now, trusted: false, resetNoticeEligible: false}).where(and(
     eq(sessions.familyId, familyId), inArray(sessions.id, [...sessionIds]), ne(sessions.id, sessionId),
   ));
   return true;
@@ -214,7 +214,7 @@ async function lockDownFamily(
     eq(sessions.familyId, sessionDisputes.familyId), eq(sessions.id, sessionDisputes.disputedSessionId),
   )).where(eq(sessionDisputes.familyId, familyId)).orderBy(asc(sessions.createdAt)).limit(1);
   const since = earliest && earliest.at < implicatedAt ? earliest.at : implicatedAt;
-  await tx.update(sessions).set({revokedAt: now}).where(eq(sessions.familyId, familyId));
+  await tx.update(sessions).set({revokedAt: now, resetNoticeEligible: false}).where(eq(sessions.familyId, familyId));
   await tx.update(personalKeys).set({revokedAt: now}).where(and(eq(personalKeys.familyId, familyId), isNull(personalKeys.usedAt)));
   await tx.update(people).set({role: "member", coOrganizerGrantedAt: null}).where(and(
     eq(people.familyId, familyId), eq(people.role, "co_organizer"), gte(people.coOrganizerGrantedAt, since),

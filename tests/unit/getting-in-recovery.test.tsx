@@ -90,11 +90,28 @@ it("reuses an opening identity when React repeats the notice effect", async () =
   expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
 });
 
+it("keeps the opening identity and notice lifecycle through a wrong PIN and recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("1357");
+  await advance(260);
+  await type("4");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed: false, openingId});
+  expect(button("2").disabled).toBe(false);
+});
+
 it.each([true, false])("switches a stale welcome to PIN entry without recording the opening twice (typed: %s)", async (typed) => {
   vi.useFakeTimers();
-  actions.useKey.mockResolvedValue({error: "usedKey", usedAt: "2030-12-24", noticeQueued: true});
+  const openingId = crypto.randomUUID();
+  actions.useKey.mockResolvedValue({error: "usedKey", usedAt: "2030-12-24", noticeQueued: true, openingId});
+  actions.enterPin.mockResolvedValue({error: "invalidPin", triesLeft: 4});
   await render(<KeyWelcome familyId="family" value="token" typed={typed}
-    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: null, available: true, preview: "preview"}}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: null, available: true, preview: "preview", openingId}}
     sender={null} organizer="Ana" />);
   await click(en.getIn.hello.yes);
   await type("4268");
@@ -104,6 +121,9 @@ it.each([true, false])("switches a stale welcome to PIN entry without recording 
   expect(actions.useKey).toHaveBeenCalledOnce();
   expect(container.textContent).toContain(en.getIn.used.title);
   expect(container.textContent).toContain(en.getIn.used.told.replace("{name}", "Rosa"));
+  await type("4268");
+  await advance(260);
+  expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed, openingId});
   expect(actions.noticeUsedKeyLink).not.toHaveBeenCalled();
 });
 
@@ -317,6 +337,12 @@ it.each(["returning", "used-key"])("counts down a %s lock and restores PIN entry
   await type("4268");
   await advance(260);
   expect(actions.enterPin).toHaveBeenCalledTimes(2);
+  if (entry === "used-key") {
+    expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+    const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+    expect(actions.enterPin.mock.calls.map((call) => call[4]))
+      .toEqual(Array.from({length: 2}, () => ({value: "key", typed: false, openingId})));
+  }
 });
 
 it.each([

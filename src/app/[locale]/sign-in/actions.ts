@@ -10,6 +10,7 @@ import {getViewer, requireViewer} from "@/server/auth";
 import {
   allowCodeTry, describeKey, disputeUsedKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
   redeemKey, requestPinReset, signInWithPin,
+  type KeyOpening,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
@@ -23,7 +24,7 @@ import {
   authenticationFinish, authenticationStart, changePinAfterFaceId, registrationFinish, registrationStart,
 } from "@/server/auth/webauthn";
 
-export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number; usedAt?: string; noticeQueued?: boolean};
+export type AuthResult = {error?: string; success?: string; triesLeft?: number; minutes?: number; usedAt?: string; noticeQueued?: boolean; openingId?: string};
 
 function field(data: FormData, key: string) {
   const value = data.get(key);
@@ -74,13 +75,14 @@ export async function openFamily(_: AuthResult, data: FormData): Promise<AuthRes
   redirect(`/${locale}/sign-in?family=${familyId}`);
 }
 
-export async function enterPin(familyId: string, personId: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+export async function enterPin(familyId: string, personId: string, _: AuthResult, data: FormData, opening?: KeyOpening): Promise<AuthResult> {
   if (!uuidPattern.test(familyId) || !uuidPattern.test(personId)) return {error: "unavailable"};
   const viewer = await getViewer();
   if (viewer) return {error: "otherPerson"};
   const pin = field(data, "pin");
   const device = await requestDevice();
-  const result = await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, authenticatorSecret(), device, new Date()));
+  const result = await withFamily(familyId, (tx) => signInWithPin(tx, familyId, personId, pin, authenticatorSecret(), device, new Date(), opening));
+  if (result.queued) schedulePushDelivery(familyId);
   if (!result.session) {
     const error = result.error ?? "unavailable";
     if (error !== "invalidPin" && error !== "pinLocked") return {error};
@@ -124,7 +126,7 @@ export async function noticeUsedKeyLink(raw: string, openingId: string): Promise
 }
 
 export type CodeResult = AuthResult & {
-  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string};
+  key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string; openingId?: string};
 };
 
 export async function previewCode(familyId: string, code: string): Promise<CodeResult> {
@@ -138,7 +140,8 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
     const pepper = authenticatorSecret();
     const match = await lookupKey(tx, familyId, pepper, code, true);
     if (!match) return {result: {error: "unavailable"}};
-    const notice = await recordUsedKeyOpening(tx, match, viewer, now);
+    const openingId = randomUUID();
+    const notice = await recordUsedKeyOpening(tx, match, viewer, now, openingId);
     const key = await describeKey(tx, match, now);
     if (!key || (!key.available && !key.usedAt)) return {result: {error: "unavailable"}, queued: notice?.queued};
     if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) {
@@ -146,7 +149,7 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
     }
     return {
       queued: notice?.queued,
-      result: {noticeQueued: notice?.canConfirm, key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
+      result: {noticeQueued: notice?.canConfirm, key: {...key, openingId, usedAt: key.usedAt?.toISOString() ?? null,
         preview: createCodePreview(pepper, familyId, key, code, device.hash)}},
     };
   });
@@ -154,19 +157,20 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
   return result;
 }
 
-export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, _: AuthResult, data: FormData): Promise<AuthResult> {
-  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean") return {error: "unavailable"};
+export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, openingId: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean"
+    || typeof openingId !== "string" || !uuidPattern.test(openingId)) return {error: "unavailable"};
   const currentViewer = await getViewer();
   const device = await requestDevice();
   // a first key starts onboarding; a reset key only replaces the PIN
   const kind = await withFamily(familyId, async (tx) => (await lookupKey(tx, familyId, authenticatorSecret(), value, typed))?.kind);
   const result = await withFamily(familyId, (tx) => redeemKey(tx, {
-    familyId, value, typed, preview, device, currentViewer,
+    familyId, value, typed, preview, device, currentViewer, openingId,
     pin: field(data, "pin"), confirmation: field(data, "confirmation"),
     pepper: authenticatorSecret(), now: new Date(),
   }));
   if (result.queued) schedulePushDelivery(familyId);
-  if (!result.session) return {error: result.error ?? "unavailable", usedAt: result.usedAt, noticeQueued: result.noticeQueued};
+  if (!result.session) return {error: result.error ?? "unavailable", usedAt: result.usedAt, noticeQueued: result.noticeQueued, openingId: result.openingId};
   await setSession(familyId, result.session.cookie);
   redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
 }

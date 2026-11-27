@@ -28,7 +28,7 @@ import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
 import {AskForHelp, OrganizerRecovery, useHelpContact} from "./ask-for-help";
-import {UsedKeyOpening} from "./used-key-opening";
+import {useUsedKeyOpening} from "./used-key-opening";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -199,13 +199,14 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
   const t = useTranslations("getIn.hello");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
   const [used, setUsed] = useState<AuthResult | null>(null);
+  const [openingId] = useState(() => entry.openingId ?? crypto.randomUUID());
   const help = <AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />;
 
   if (used?.usedAt) return <KeyAlreadyOpened familyId={familyId} value={value} typed={typed}
-    entry={{...entry, usedAt: used.usedAt, available: false}} organizer={organizer} noticeQueued={used.noticeQueued} />;
+    entry={{...entry, usedAt: used.usedAt, available: false, openingId: used.openingId}} organizer={organizer} noticeQueued={used.noticeQueued} />;
 
   if (phase === "pin") {
-    const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);
+    const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null, openingId);
     return (
       <Screen>
         <MakePin top={<WelcomeSteps step={1} />} save={async (pin) => {
@@ -271,6 +272,8 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noti
   const [resetRequested, setResetRequested] = useState(false);
   const [keyReported, setKeyReported] = useState(false);
   const [pending, start] = useTransition();
+  const [openingId] = useState(() => entry.openingId ?? crypto.randomUUID());
+  const confirmed = useUsedKeyOpening({link: typed ? undefined : `${familyId}~${value}`, openingId, queued: noticeQueued});
   const recipient = useHelpContact(organizer)(entry.personId);
   const helper = recipient || organizer;
   const recovery = recipient === null || result.error === "organizerRecovery";
@@ -281,10 +284,10 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noti
   return (
     <Screen>
       <EnterPin title={t("title")} lead={t("lead", {name: entry.name})} organizer={organizer} onLocked={setLocked} suspended={open}
-        submit={(data) => enterPin(familyId, entry.personId, {}, data)}
+        submit={(data) => enterPin(familyId, entry.personId, {}, data, {value, typed, openingId})}
         note={result.success
           ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>
-          : <UsedKeyOpening link={typed ? undefined : `${familyId}~${value}`} name={entry.name} queued={noticeQueued} />}
+          : confirmed ? <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote> : null}
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>}
         footer={<AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
