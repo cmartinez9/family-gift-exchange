@@ -99,10 +99,11 @@ export async function itemCommand(
 }
 
 export async function claimCommand(
-  itemId: string, command: "claim" | "undo" | "bought" | "wrapped", checked: boolean,
+  actingAs: string, itemId: string, command: "claim" | "undo" | "bought" | "wrapped", checked: boolean,
 ): Promise<FormState> {
   const viewer = await requireViewer();
   try {
+    if (viewer.actingAs !== actingAs) throw new ListError("forbidden");
     if (command === "claim") await claimItem(viewer, itemId);
     else if (command === "undo") await undoClaim(viewer, itemId);
     else if (command === "bought" || command === "wrapped") await setClaimTick(viewer, itemId, command, checked);

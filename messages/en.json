@@ -55,7 +55,6 @@
     "isYourPhone": "Hi {name}! Is this your phone?",
     "yesMe": "Yes, I'm {name}",
     "helping": "I'm helping {name}",
-    "helperInstructions": "Open this key on the phone or tablet {name} will use. If they don't have one, ask the organizer to set you up as their helper.",
     "keyForSomeoneElse": "This link is for {name}. This phone is signed in as {current}.",
     "openAccount": "Open my account",
     "startFamily": "Start a family exchange",
@@ -351,25 +350,28 @@
     },
     "install": {
       "prompt": "Put this on your home screen? Show me how",
-      "iphone": "iPhone Safari",
-      "iphoneOpen": "Open this page in Safari.",
-      "iphoneShare": "Tap the Share button.",
-      "iphoneAdd": "Tap Add to Home Screen, then tap Add.",
-      "iphoneLaunch": "Open the app from its new icon. Home-screen notifications need iOS 16.4 or later.",
-      "android": "Android Chrome",
-      "androidOpen": "Open this page in Chrome.",
-      "androidMenu": "Tap the three dots in the top-right corner.",
-      "androidAdd": "Tap Add to home screen or Install app, then follow the prompts.",
-      "androidLaunch": "Open the app from its new icon."
+      "iphoneShare": "Tap Share. On newer iPhones it is under the ••• button.",
+      "iphoneAdd": "Tap “Add to Home Screen”.",
+      "androidMenu": "Tap ⋮ at the top right.",
+      "androidAdd": "Tap “Add to home screen” or “Install app”.",
+      "iphoneTitle": "On your iPhone",
+      "androidTitle": "On your Android phone",
+      "iphoneInApp": "Opened inside WhatsApp? Tap ••• at the top, then “Open in Safari” first.",
+      "androidInApp": "Opened inside WhatsApp? Tap ⋮ at the top, then “Open in Chrome” first.",
+      "steps": "Steps",
+      "iphoneDone": "Tap “Add”. Look for the gift on a green background.",
+      "androidDone": "Tap “Install” or “Add”. Look for the gift on a green background.",
+      "opens": "The icon opens straight to Face ID or your PIN.",
+      "gotIt": "Got it",
+      "haveAndroid": "I have an Android phone",
+      "haveIphone": "I have an iPhone"
     },
     "groupChat": {
       "wishlists": "Come add your wishlist for our gift exchange! {address}",
       "draw": "Names are drawn! Open the app to see your person. {address}",
       "giftDay": "Gift day is tomorrow! Check the app for details and bring your gift. {address}",
       "title": "Messages for the family chat",
-      "back": "Back to my family",
       "copy": "Copy message",
-      "share": "Share",
       "whatsapp": "Share on WhatsApp",
       "copied": "Message copied.",
       "copyError": "Couldn't copy. Select the message text to copy it.",
@@ -378,17 +380,33 @@
         "wishlists": "Wishlist reminder",
         "draw": "Names are drawn!",
         "giftDay": "Gift day tomorrow"
-      }
+      },
+      "heading": "Tell the family",
+      "lead": "A ready-made message for your family chat. It never says who has whom.",
+      "parent": "My family",
+      "which": "Which message?",
+      "edit": "Edit",
+      "doneEditing": "Done",
+      "field": "Message",
+      "shareGroup": "Share to the group chat",
+      "chip": {
+        "wishlists": "Lists",
+        "draw": "The draw",
+        "giftDay": "Gift day"
+      },
+      "copyShort": "Copy"
     },
     "inbox": {
       "title": "Notifications",
       "bellUnread": "Notifications ({count, plural, one {# unread} other {# unread}})",
-      "back": "Back to my account",
       "empty": "No notifications yet.",
       "read": "Read",
       "unread": "Unread",
       "markRead": "Mark as read",
-      "resetRequests": "View PIN reset requests"
+      "resetRequests": "View PIN reset requests",
+      "heading": "Notices",
+      "lead": "Also on your lock screen, once the app is on your home screen.",
+      "you": "You"
     },
     "device": {
       "title": "Home-screen notifications",
@@ -399,7 +417,8 @@
       "denied": "Allow notifications in your device or browser settings, then try again.",
       "error": "We couldn't update notifications. Try again.",
       "unsupported": "Open the app from your home screen to turn on notifications.",
-      "unavailable": "Device notifications are unavailable right now."
+      "unavailable": "Device notifications are unavailable right now.",
+      "lead": "Get these notices on this phone, even when the app is closed."
     }
   },
   "draw": {
@@ -879,5 +898,43 @@
       "en": "English",
       "es": "Español"
     }
+  },
+  "helping": {
+    "banner": "You're helping {name}",
+    "label": "Helping mode",
+    "done": "Done",
+    "keyTitle": "Helping {name}?",
+    "keyLead": "Thank you. This key is just for {name}. Only {name} makes the PIN and sees who they're giving to.",
+    "sendTitle": "Send it to {name}'s phone",
+    "sendSub": "Best: then it lives on {name}'s phone",
+    "hereTitle": "{name} is here with me",
+    "hereSub": "Hand {name} this phone for the PIN",
+    "noPhoneTitle": "{name} doesn't have a phone",
+    "noPhoneSub": "Ask the organizer to make you {name}'s helper",
+    "noPhoneBody": "Ask the organizer to set you up as {name}'s helper. Then you help {name} from your own account, and hand {name} your phone to open their person.",
+    "copied": "Link copied. Send it to {name} in a private chat.",
+    "shareError": "Couldn't share. Copy the link from the address bar instead.",
+    "handTitle": "Hand this phone to",
+    "handPin": "Only {name} makes the PIN. Look away for that.",
+    "handFace": "If it asks about Face ID, tap “{notNow}”: this is your phone, not {name}'s.",
+    "handSignOut": "When {name} is done, tap “{signOut}” so this phone forgets {name}.",
+    "handReady": "{name} has the phone",
+    "readyTitle": "{name}'s person is ready",
+    "readyLead": "Hand {name} your phone. Tap “Show {name}”, then {name} taps “Open your person”. You can look away.",
+    "show": "Show {name}",
+    "later": "Later"
+  },
+  "season": {
+    "closeTitle": "Close {name}?",
+    "closeLists": "Everyone's lists stay. They can keep adding for birthdays.",
+    "closeSealed": "The draw stays sealed for good. Nobody, you included, can open it.",
+    "closeQuestions": "This year's questions to and from each person are cleared.",
+    "closeConfirm": "Close {name}",
+    "notYet": "Not yet",
+    "stitched": "MERRY",
+    "wrapTitle": "That's a wrap",
+    "wrapLead": "{name} is closed. Thank you for taking part!",
+    "wrapList": "Your list stays. Add to it any time, for birthdays too.",
+    "wrapSealed": "The draw stays sealed for good. Nobody can open it."
   }
 }

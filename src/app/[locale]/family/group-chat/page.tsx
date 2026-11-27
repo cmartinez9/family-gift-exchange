@@ -1,27 +1,38 @@
 import {getLocale, getTranslations} from "next-intl/server";
 import {notFound} from "next/navigation";
-import {Link} from "@/i18n/navigation";
+import {BackRow, PageTitle} from "@/components/ui/page-header";
+import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
 import {appOrigin} from "@/server/auth/request";
+import {DrawError, listExchanges} from "@/server/draw";
 import {groupChatMessages} from "@/server/messages/group-chat";
 import {ShareMessage} from "./share-message";
+
+/** The message that fits the season: the draw's news once names are drawn, otherwise the wishlist nudge. */
+async function seasonTopic(viewer: Awaited<ReturnType<typeof requireViewer>>) {
+  try {
+    const exchanges = await listExchanges(viewer);
+    return exchanges.some(({status}) => status === "drawn" || status === "locked") ? "draw" : "wishlists";
+  } catch (error) {
+    if (error instanceof DrawError) return "wishlists";
+    throw error;
+  }
+}
 
 export default async function GroupChatPage() {
   const viewer = await requireViewer();
   if (!viewer.isOrganizer || viewer.personId !== viewer.actingAs) notFound();
-  const [locale, t] = await Promise.all([getLocale(), getTranslations("notify.groupChat")]);
-  const messages = groupChatMessages(locale, appOrigin().href, viewer.familyId);
+  const [locale, t, ui, topic] = await Promise.all([
+    getLocale(), getTranslations("notify.groupChat"), getTranslations("ui"), seasonTopic(viewer),
+  ]);
+  const messages = groupChatMessages(locale, appOrigin().href, viewer.familyId)
+    .map(({id, text}) => ({id, text, topic: t(`topic.${id}`), chip: t(`chip.${id}`)}));
 
   return (
-    <main className="mx-auto max-w-xl space-y-5 p-6 text-lg">
-      <h1 className="text-2xl font-semibold">{t("title")}</h1>
-      <Link href="/family" className="inline-flex min-h-12 items-center underline">{t("back")}</Link>
-      {messages.map(({id, text, whatsapp}) => (
-        <section key={id} className="space-y-2 border-b border-current/25 pb-3" aria-labelledby={id}>
-          <h2 id={id} className="text-xl font-semibold">{t(`topic.${id}`)}</h2>
-          <ShareMessage text={text} whatsapp={whatsapp} />
-        </section>
-      ))}
-    </main>
+    <Screen back="/family">
+      <BackRow href="/family" parent={t("parent")} backLabel={ui("back")} />
+      <PageTitle title={t("heading")} lead={t("lead")} />
+      <ShareMessage messages={messages} initial={topic} />
+    </Screen>
   );
 }

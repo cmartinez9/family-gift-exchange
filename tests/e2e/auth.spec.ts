@@ -196,30 +196,35 @@ test("a Spanish member requests a PIN reset and the organizer reads it and share
     await page.getByRole("link", {name: "Notifications (1 unread)"}).click();
     await expect(page.getByText("Pino asked for a PIN reset.")).toBeVisible();
     await page.screenshot({path: test.info().outputPath("pin-reset-inbox.png"), fullPage: true});
+    // Notices arrive with a short rise and fade; check contrast once they have settled.
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await page.getByRole("button", {name: "Mark as read"}).click();
-    await expect(page.getByText(/ · Read$/)).toBeVisible();
+    await expect(page.getByRole("button", {name: "Mark as read"})).toHaveCount(0);
+    await expect(page.locator('[data-notice="read"]')).toHaveCount(1);
     await page.getByRole("link", {name: "View PIN reset requests"}).click();
     await expect(page.getByRole("link", {name: "Notifications", exact: true})).toBeVisible();
 
     await page.getByRole("link", {name: "Messages for the family chat"}).click();
+    await expect(page.getByRole("region", {name: "Wishlist reminder"})).toBeVisible();
+    await page.getByText("The draw", {exact: true}).click();
     const draw = page.getByRole("region", {name: "Names are drawn!"});
     await draw.getByRole("button", {name: "Copy message"}).click();
-    await expect(draw.getByRole("status")).toHaveText("Message copied.");
+    await expect(page.getByRole("status").filter({hasText: "Message copied."})).toBeVisible();
     const copied = await page.evaluate(() => sessionStorage.getItem("notification-copy"));
     const chatAddress = new URL(address);
     chatAddress.pathname = "/en/sign-in";
     expect(copied).toContain(chatAddress.href);
     expect(copied).not.toContain(code);
-    await draw.getByRole("button", {name: "Share", exact: true}).click();
+    await page.getByRole("button", {name: "Share to the group chat", exact: true}).click();
     expect(await page.evaluate(() => sessionStorage.getItem("notification-share"))).toBe(copied);
-    const whatsapp = new URL((await draw.getByRole("link", {name: "Share on WhatsApp"}).getAttribute("href"))!);
+    const whatsapp = new URL((await page.getByRole("link", {name: "Share on WhatsApp"}).getAttribute("href"))!);
     expect(whatsapp.origin).toBe("https://wa.me");
     expect(whatsapp.searchParams.get("text")).toBe(copied);
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 
     await page.goto("/es/family/group-chat");
-    await expect(page.getByRole("heading", {name: "Mensajes para el chat familiar"})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "Avísale a la familia"})).toBeVisible();
     await page.screenshot({path: test.info().outputPath("family-chat-message-es.png"), fullPage: true});
   } finally {
     await guest.close();

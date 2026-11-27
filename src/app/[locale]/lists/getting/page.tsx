@@ -19,9 +19,9 @@ export default async function GettingPage() {
             <h2 className="break-words text-xl font-semibold">{title}</h2>
             <Link className={linkClass} href={`/lists/${ownerId}`}>{t("gettingFor", {name: ownerName})}</Link>
             <ChecklistTick key={`bought-${bought}`} label={t("bought")} checked={bought}
-              action={claimCommand.bind(null, itemId, "bought")} />
+              action={claimCommand.bind(null, viewer.actingAs, itemId, "bought")} />
             <ChecklistTick key={`wrapped-${wrapped}`} label={t("wrapped")} checked={wrapped}
-              action={claimCommand.bind(null, itemId, "wrapped")} />
+              action={claimCommand.bind(null, viewer.actingAs, itemId, "wrapped")} />
           </li>
         ))}
       </ul>

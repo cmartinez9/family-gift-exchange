@@ -55,7 +55,6 @@
     "isYourPhone": "¡Hola, {name}! ¿Es este tu teléfono?",
     "yesMe": "Sí, soy {name}",
     "helping": "Estoy ayudando a {name}",
-    "helperInstructions": "Abre esta llave en el teléfono o la tableta que usará {name}. Si no tiene uno, pídele al organizador que te permita ayudarle.",
     "keyForSomeoneElse": "Este enlace es para {name}. En este teléfono inició sesión {current}.",
     "openAccount": "Abrir mi cuenta",
     "startFamily": "Crear un intercambio familiar",
@@ -351,25 +350,28 @@
     },
     "install": {
       "prompt": "¿Quieres poner la aplicación en tu pantalla de inicio? Ver cómo",
-      "iphone": "Safari en iPhone",
-      "iphoneOpen": "Abre esta página en Safari.",
-      "iphoneShare": "Toca el botón Compartir.",
-      "iphoneAdd": "Toca Agregar a pantalla de inicio y luego toca Agregar.",
-      "iphoneLaunch": "Abre la aplicación desde el ícono nuevo. Las notificaciones requieren iOS 16.4 o una versión posterior.",
-      "android": "Chrome en Android",
-      "androidOpen": "Abre esta página en Chrome.",
-      "androidMenu": "Toca los tres puntos de la esquina superior derecha.",
-      "androidAdd": "Toca Agregar a pantalla de inicio o Instalar aplicación y sigue los pasos.",
-      "androidLaunch": "Abre la aplicación desde el ícono nuevo."
+      "iphoneShare": "Toca Compartir. En los iPhone más nuevos está dentro del botón •••.",
+      "iphoneAdd": "Toca “Agregar a pantalla de inicio”.",
+      "androidMenu": "Toca ⋮ arriba a la derecha.",
+      "androidAdd": "Toca “Agregar a pantalla de inicio” o “Instalar aplicación”.",
+      "iphoneTitle": "En tu iPhone",
+      "androidTitle": "En tu teléfono Android",
+      "iphoneInApp": "¿Lo abriste dentro de WhatsApp? Primero toca ••• arriba y luego “Abrir en Safari”.",
+      "androidInApp": "¿Lo abriste dentro de WhatsApp? Primero toca ⋮ arriba y luego “Abrir en Chrome”.",
+      "steps": "Pasos",
+      "iphoneDone": "Toca “Agregar”. Busca el regalo sobre fondo verde.",
+      "androidDone": "Toca “Instalar” o “Agregar”. Busca el regalo sobre fondo verde.",
+      "opens": "El ícono abre directo con Face ID o tu PIN.",
+      "gotIt": "Entendido",
+      "haveAndroid": "Tengo un teléfono Android",
+      "haveIphone": "Tengo un iPhone"
     },
     "groupChat": {
       "wishlists": "¡Agrega tu lista de deseos para nuestro intercambio! {address}",
       "draw": "¡Ya se hizo el sorteo! Abre la aplicación para ver a quién le darás un regalo. {address}",
       "giftDay": "¡Mañana es el intercambio! Revisa los detalles en la aplicación y trae tu regalo. {address}",
       "title": "Mensajes para el chat familiar",
-      "back": "Volver a mi familia",
       "copy": "Copiar mensaje",
-      "share": "Compartir",
       "whatsapp": "Compartir por WhatsApp",
       "copied": "Mensaje copiado.",
       "copyError": "No se pudo copiar. Selecciona el texto del mensaje para copiarlo.",
@@ -378,17 +380,33 @@
         "wishlists": "Recordatorio de listas de deseos",
         "draw": "¡Ya se hizo el sorteo!",
         "giftDay": "Mañana es el intercambio"
-      }
+      },
+      "heading": "Avísale a la familia",
+      "lead": "Un mensaje listo para el chat familiar. Nunca dice a quién le toca quién.",
+      "parent": "Mi familia",
+      "which": "¿Qué mensaje?",
+      "edit": "Editar",
+      "doneEditing": "Listo",
+      "field": "Mensaje",
+      "shareGroup": "Compartir en el chat familiar",
+      "chip": {
+        "wishlists": "Listas",
+        "draw": "El sorteo",
+        "giftDay": "El día"
+      },
+      "copyShort": "Copiar"
     },
     "inbox": {
       "title": "Notificaciones",
       "bellUnread": "Notificaciones ({count, plural, one {# sin leer} other {# sin leer}})",
-      "back": "Volver a mi cuenta",
       "empty": "Todavía no hay notificaciones.",
       "read": "Leída",
       "unread": "Sin leer",
       "markRead": "Marcar como leída",
-      "resetRequests": "Ver solicitudes para restablecer el PIN"
+      "resetRequests": "Ver solicitudes para restablecer el PIN",
+      "heading": "Avisos",
+      "lead": "También en tu pantalla bloqueada, cuando la aplicación esté en tu pantalla de inicio.",
+      "you": "Tú"
     },
     "device": {
       "title": "Notificaciones de la pantalla de inicio",
@@ -399,7 +417,8 @@
       "denied": "Permite las notificaciones en la configuración del dispositivo o del navegador y vuelve a intentarlo.",
       "error": "No pudimos cambiar las notificaciones. Vuelve a intentarlo.",
       "unsupported": "Abre la aplicación desde tu pantalla de inicio para activar las notificaciones.",
-      "unavailable": "Las notificaciones en el dispositivo no están disponibles en este momento."
+      "unavailable": "Las notificaciones en el dispositivo no están disponibles en este momento.",
+      "lead": "Recibe estos avisos en este teléfono, aunque la aplicación esté cerrada."
     }
   },
   "draw": {
@@ -879,5 +898,43 @@
       "en": "English",
       "es": "Español"
     }
+  },
+  "helping": {
+    "banner": "Estás ayudando a {name}",
+    "label": "Modo de ayuda",
+    "done": "Listo",
+    "keyTitle": "¿Ayudas a {name}?",
+    "keyLead": "Gracias. Esta llave es solo para {name}. Solo {name} crea el PIN y ve a quién le regala.",
+    "sendTitle": "Mandarla al teléfono de {name}",
+    "sendSub": "Lo mejor: así se queda en su teléfono",
+    "hereTitle": "{name} está aquí conmigo",
+    "hereSub": "Pásale este teléfono para el PIN",
+    "noPhoneTitle": "{name} no tiene teléfono",
+    "noPhoneSub": "Pídele al organizador que te deje ayudar a {name}",
+    "noPhoneBody": "Pídele al organizador que te deje ayudar a {name}. Así le ayudas desde tu propia cuenta y le pasas tu teléfono para que vea a su persona.",
+    "copied": "Enlace copiado. Mándaselo a {name} en un chat privado.",
+    "shareError": "No se pudo compartir. Copia el enlace de la barra de direcciones.",
+    "handTitle": "Pásale este teléfono a",
+    "handPin": "Solo {name} crea el PIN. No mires mientras tanto.",
+    "handFace": "Si pregunta por Face ID, toca “{notNow}”: es tu teléfono, no el de {name}.",
+    "handSignOut": "Cuando {name} termine, toca “{signOut}” para que este teléfono no guarde su sesión.",
+    "handReady": "{name} ya tiene el teléfono",
+    "readyTitle": "La persona de {name} está lista",
+    "readyLead": "Pásale tu teléfono a {name}. Toca “Mostrar a {name}”; después, {name} toca “Descubrir a tu persona”. Tú puedes mirar hacia otro lado.",
+    "show": "Mostrar a {name}",
+    "later": "Más tarde"
+  },
+  "season": {
+    "closeTitle": "¿Cerrar {name}?",
+    "closeLists": "Las listas de todos se quedan. Pueden seguir agregando cosas para los cumpleaños.",
+    "closeSealed": "El sorteo queda sellado para siempre. Nadie, ni tú, puede abrirlo.",
+    "closeQuestions": "Se borran las preguntas de este año entre cada quien y su persona.",
+    "closeConfirm": "Cerrar {name}",
+    "notYet": "Todavía no",
+    "stitched": "LISTO",
+    "wrapTitle": "Y eso es todo",
+    "wrapLead": "{name} terminó. ¡Gracias por participar!",
+    "wrapList": "Tu lista se queda. Agrégale cosas cuando quieras, también para cumpleaños.",
+    "wrapSealed": "El sorteo queda sellado para siempre. Nadie puede abrirlo."
   }
 }

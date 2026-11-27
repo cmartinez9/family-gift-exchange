@@ -11,10 +11,11 @@ import {linkClass, panelClass} from "../styles";
 type Item = Awaited<ReturnType<typeof getWishlist>>["items"][number];
 
 export async function ItemCard({
-  item, ownerId, canEdit, canClaim, first, last, budget,
+  item, ownerId, actingAs, canEdit, canClaim, first, last, budget,
 }: {
   item: Item;
   ownerId: string;
+  actingAs: string;
   canEdit: boolean;
   canClaim: boolean;
   first: boolean;
@@ -45,9 +46,9 @@ export async function ItemCard({
       {canClaim && (item.claim === "someone" ? <p>{t("someone")}</p> : item.claim === "mine" ? (
         <div>
           <p>{t("mine")}</p>
-          <ListForm action={claimCommand.bind(null, item.id, "undo", false)} label={t("undoClaim")} secondary />
+          <ListForm action={claimCommand.bind(null, actingAs, item.id, "undo", false)} label={t("undoClaim")} secondary />
         </div>
-      ) : <ListForm action={claimCommand.bind(null, item.id, "claim", true)} label={t("claim")} />)}
+      ) : <ListForm action={claimCommand.bind(null, actingAs, item.id, "claim", true)} label={t("claim")} />)}
       {canEdit && (
         <>
           {item.kind === "link" && !item.hasPhoto && <Link className={linkClass} href={edit}>{t("photoFallback")}</Link>}

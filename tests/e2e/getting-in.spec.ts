@@ -139,7 +139,7 @@ test("first visit: Marta opens her own key, makes a PIN, and is set up", async (
   await shot(page, "f1-1_2");
 
   await page.getByRole("button", {name: "No, I'm helping Marta"}).click();
-  await expect(page.getByRole("heading", {name: "Open it on Marta's phone"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Helping Marta?"})).toBeVisible();
   await page.getByRole("button", {name: t.hello.helperBack}).click();
 
   await page.getByRole("button", {name: t.hello.yes}).click();
@@ -546,6 +546,7 @@ test("regression: another tab switching to Help Leo rejects Ana's old draft and 
     await other.goto("/en/account");
     await other.getByRole("button", {name: "Help Leo", exact: true}).click();
     await expect(other.getByText("You're helping Leo", {exact: true})).toBeVisible();
+    await other.getByRole("link", {name: en.lists.account, exact: true}).click();
     await expect(other.getByRole("link", {name: /^My sizes/})).toContainText(t.you.sizesNone);
     await other.goto("/en/welcome/sizes");
     await other.getByRole("group", {name: t.sizes.tops}).getByText("M", {exact: true}).click();
@@ -565,7 +566,7 @@ test("regression: another tab switching to Help Leo rejects Ana's old draft and 
     await expect(page.getByLabel(t.add.what)).toHaveValue("Ana's private draft");
     expect(await storedItems(f.familyId)).toEqual([]);
     await shot(page, "stale-owner-draft-rejected");
-    await other.getByRole("button", {name: t.you.stopHelping}).click();
+    await other.getByRole("region", {name: en.helping.label}).getByRole("button", {name: en.helping.done, exact: true}).click();
     await expect(other.getByRole("link", {name: /^My sizes/})).toContainText("Tops S");
     await other.close();
     await page.getByRole("button", {name: t.add.add, exact: true}).click();
@@ -609,7 +610,7 @@ test("regression: Forgot suspends the pending PIN and correcting a digit submits
   }
 });
 
-test("account settings change language, explain installation, and sign out both phones", async ({page, browser}) => {
+test("account settings change language, explain installation, and sign out both phones", async ({page, browser, browserName}) => {
   const f = await seed(origin);
   const other = await browser.newContext({viewport: phone, reducedMotion: "reduce", ignoreHTTPSErrors: true});
   try {
@@ -619,9 +620,13 @@ test("account settings change language, explain installation, and sign out both 
     await ipad.goto("/en/account");
     await expect(ipad.getByRole("heading", {name: "Rosa", exact: true})).toBeVisible();
     await page.goto("/en/account");
-    await page.getByRole("button", {name: t.you.homeScreen, exact: true}).click();
-    await expect(page.getByRole("dialog").getByRole("heading", {name: en.notify.install.iphone, exact: true})).toBeVisible();
-    await expect(page.getByRole("dialog").getByRole("heading", {name: en.notify.install.android, exact: true})).toBeVisible();
+    await page.getByRole("button", {name: en.notify.install.prompt, exact: true}).click();
+    const [ownPhone, otherPhone] = browserName === "chromium"
+      ? [en.notify.install.androidTitle, en.notify.install.iphoneTitle]
+      : [en.notify.install.iphoneTitle, en.notify.install.androidTitle];
+    await expect(page.getByRole("dialog").getByRole("heading", {name: ownPhone, exact: true})).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", {name: /^I have an (iPhone|Android phone)$/}).click();
+    await expect(page.getByRole("dialog").getByRole("heading", {name: otherPhone, exact: true})).toBeVisible();
     await shot(page, "account-home-screen-instructions");
     await page.getByRole("button", {name: en.ui.close, exact: true}).click();
     await page.getByRole("button", {name: /^Language/}).click();

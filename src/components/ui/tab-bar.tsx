@@ -14,6 +14,7 @@ const ICONS: Readonly<Record<TabKey, IconName>> = {home: "home", list: "list", f
 /**
  * The floating pill tab bar: Home, My list, Family. An ink pill, 72px, 16px from each side and 26px
  * from the bottom; the active tab is a white pill that springs across in 340ms. Tabs crossfade.
+ * At the largest text size (the phone under 300 CSS pixels wide) each icon stacks over its label.
  */
 export function TabBar({items, active, label}: {items: readonly TabItem[]; active: TabKey | null; label: string}) {
   const bar = useRef<HTMLElement>(null);
@@ -45,8 +46,8 @@ export function TabBar({items, active, label}: {items: readonly TabItem[]; activ
 
   return (
     <nav ref={bar} aria-label={label} data-ready={ready}
-      className="fge-tabbar fixed inset-x-4 bottom-[calc(26px+var(--safe-bottom))] z-30 mx-auto flex h-[72px] max-w-[448px] items-center gap-1 rounded-[36px] bg-ink p-2">
-      <span aria-hidden="true" className="fge-tab-pill absolute top-2 left-0 h-14 rounded-[28px] bg-snow-white"
+      className="fge-tabbar fixed inset-x-4 bottom-[calc(26px+var(--safe-bottom))] z-30 mx-auto flex h-[72px] max-w-[448px] items-center gap-1 rounded-[36px] bg-ink p-2 max-[299px]:inset-x-2 max-[299px]:h-[88px] max-[299px]:rounded-[44px]">
+      <span aria-hidden="true" className="fge-tab-pill absolute top-2 left-0 h-14 rounded-[28px] bg-snow-white max-[299px]:h-[72px] max-[299px]:rounded-[36px]"
         style={pill ? {width: pill.width, transform: `translateX(${pill.x}px)`} : {opacity: 0}} />
       {items.map((item) => {
         const on = item.key === shown;
@@ -58,6 +59,7 @@ export function TabBar({items, active, label}: {items: readonly TabItem[]; activ
               setPressed(item.key);
             }}
             className={cn("fge-tab relative flex h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[28px] text-tab",
+              "max-[299px]:h-[72px] max-[299px]:flex-col max-[299px]:gap-0.5 max-[299px]:rounded-[36px]",
               on ? "font-bold text-ink" : "text-snow-white")}>
             <Icon name={item.icon} size={22} strokeWidth={2.3} />
             <span className="truncate">{item.label}</span>

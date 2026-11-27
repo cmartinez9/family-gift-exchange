@@ -13,7 +13,8 @@ const EXIT = {"fge-push": "fge-push-out", "fge-back": "fge-back-out", "fge-tab":
  *
  * - `tab` marks a tab root (Home, My list, Family): the shared tab bar shows, and the content stays clear of it.
  * - `back` marks a pushed page: swiping from the left edge goes back to it.
- * - `actions` sit 34px above the bottom, over the home indicator; toasts float above them.
+ * - `actions` sit 34px above the bottom, over the home indicator; toasts float above them. At the largest
+ *   text size they follow the content instead, so they never cover half the screen.
  *
  * Navigations tagged push, back or tab (see AppLink) animate this container as a view transition.
  */
@@ -35,7 +36,7 @@ export function Screen({ground = "red", tab, tabHrefs, back, actions, children, 
       {tab && <TabRoot active={tab} hrefs={tabHrefs} />}
       <div className="flex flex-1 flex-col">{children}</div>
       {actions && (
-        <div data-actions="" className={cn("sticky bottom-0 z-10 flex flex-col gap-2 px-edge pt-4 pb-[34px]",
+        <div data-actions="" className={cn("sticky bottom-0 z-10 flex flex-col gap-2 px-edge pt-4 pb-[34px] max-[299px]:static",
           ground === "pine" ? "bg-pine" : "bg-sweater-red")}>
           {actions}
         </div>

@@ -226,11 +226,20 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
+    /* At the largest text size and in Spanish a long word wraps instead of running off the screen */
+    overflow-wrap: anywhere;
   }
 
   /* a tab root keeps its content clear of the floating tab bar, from the first paint */
   body:has([data-screen="tab"]) {
     padding-bottom: calc(var(--space-tab-bar-clearance) + var(--safe-bottom));
+  }
+
+  /* at the largest text size the tabs stack, so the bar is taller */
+  @media (max-width: 299px) {
+    body:has([data-screen="tab"]) {
+      padding-bottom: calc(var(--space-tab-bar-clearance) + 16px + var(--safe-bottom));
+    }
   }
 
   /* focus and scrolling keep things clear of the floating tab bar */

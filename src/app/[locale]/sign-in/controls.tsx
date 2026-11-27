@@ -1,9 +1,19 @@
 "use client";
 
-import {useActionState, type ReactNode} from "react";
+import {useActionState, useEffect, type ReactNode} from "react";
 import {useTranslations} from "next-intl";
+import {useRouter} from "@/i18n/navigation";
 import type {AuthResult} from "./actions";
 import {buttonClass, inputClass} from "./styles";
+
+export function RefreshSession() {
+  const router = useRouter();
+  useEffect(() => {
+    // Sign-out already revalidates the layout; refresh only if a cached mode banner survived rejection.
+    if (document.querySelector("[data-mode-banner]")) router.refresh();
+  }, [router]);
+  return null;
+}
 
 export function AuthFeedback({state}: {state: AuthResult}) {
   const t = useTranslations("auth");

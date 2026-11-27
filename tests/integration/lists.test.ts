@@ -358,4 +358,17 @@ describe("list editing", () => {
     expect(await getListExchangeCard(buyer)).toMatchObject({budgetAmount: null});
     expect(events.budgetChanged).toHaveBeenCalledTimes(2);
   });
+
+  it.each(["50", "75"])("rejects a stale budget save of %s after the exchange closes", async (value) => {
+    const id = randomUUID();
+    await withFamily(familyId, async (tx) => {
+      await tx.insert(exchanges).values({familyId, id, name: "Closed budget", status: "drawn", budgetAmount: "50"});
+      await tx.update(exchanges).set({status: "closed"}).where(eq(exchanges.id, id));
+    });
+    const events: ListEvents = {claimedItemChanged: vi.fn(), budgetChanged: vi.fn()};
+    await expect(setExchangeBudget(organizer, id, value, events)).rejects.toMatchObject({code: "closed"});
+    const [stored] = await withFamily(familyId, (tx) => tx.select().from(exchanges).where(eq(exchanges.id, id)));
+    expect(stored).toMatchObject({status: "closed", budgetAmount: "50.00"});
+    expect(events.budgetChanged).not.toHaveBeenCalled();
+  });
 });
