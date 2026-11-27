@@ -142,9 +142,8 @@ test("an organizer nudges Beto from Who's in, once a day, without naming anyone"
   await expect(row("Tito").getByText("Rosa filled it in")).toBeVisible();
   await expect(row("Beto").getByText("No list yet")).toBeVisible();
   await expect(row("Leo").getByText("Not started")).toBeVisible();
-  // only someone a notice can reach gets a Nudge
-  await expect(page.getByRole("button", {name: /^Nudge /})).toHaveCount(1);
-  await expect(row("Leo").getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: /^Nudge /})).toHaveCount(5);
+  await expect(row("Leo").getByRole("button", {name: "Nudge Leo", exact: true})).toBeVisible();
   await expect(page.getByText("A nudge is a notice on their phone. It never says who has them.")).toBeVisible();
   await shot(page, "f8-8_3-whos-in-nudge");
 

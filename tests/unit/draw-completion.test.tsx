@@ -21,6 +21,8 @@ vi.mock("@/server/auth/families", () => ({readiness}));
 vi.mock("@/server/db/client", () => ({withFamily: async (_id: string, action: (tx: object) => unknown) => action({})}));
 vi.mock("@/server/draw", () => ({organizerExchange, drawFeasibility, DrawError: class extends Error {}}));
 vi.mock("@/server/lists", () => ({listFamilyWishlists}));
+vi.mock("@/server/messages", () => ({nudgedToday: async () => [], nudgeablePeople: async () => ["Alex", "Leo"]}));
+vi.mock("../../src/app/[locale]/exchanges/nudge-actions", () => ({nudgePerson: vi.fn()}));
 vi.mock("../../src/app/[locale]/exchanges/actions", () => ({manage: vi.fn(), saveRosterAndContinue: vi.fn()}));
 vi.mock("../../src/app/[locale]/family/actions", () => ({addNames: vi.fn()}));
 vi.mock("@/i18n/navigation", () => ({
@@ -132,9 +134,16 @@ it("keeps the roster setup available before an active exchange is drawn", async 
 });
 
 it("keeps the active drawn roster available for list readiness", async () => {
+  listFamilyWishlists.mockResolvedValue([{id: "Alex", itemCount: 2, ready: true}]);
   await render("drawn", 1, true, PeoplePage);
   expect(container.querySelector("h1")?.textContent).toBe(en.draw.season.whosIn);
   expect(container.textContent).toContain("Alex");
   expect(container.querySelector("form")).toBeNull();
   expect(listFamilyWishlists).toHaveBeenCalledWith(viewer);
+  const alex = [...container.querySelectorAll("li")].find((row) => row.textContent?.includes("Alex"))!;
+  expect(alex.textContent).toContain(en.draw.season.listReady);
+  expect(alex.querySelector("button")?.getAttribute("aria-label")).toBe("Nudge Alex");
+  const leo = [...container.querySelectorAll("li")].find((row) => row.textContent?.includes("Leo"))!;
+  expect(leo.textContent).toContain(en.draw.season.notStarted);
+  expect(leo.querySelector("button")?.getAttribute("aria-label")).toBe("Nudge Leo");
 });

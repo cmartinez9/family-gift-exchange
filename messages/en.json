@@ -443,6 +443,10 @@
       "list-nudge": {
         "title": "Your wishlist is waiting",
         "body": "Add a gift idea or two so your family knows what you’d like."
+      },
+      "person-nudge": {
+        "title": "Your person is waiting",
+        "body": "Open the app to see your person for this exchange."
       }
     },
     "privatePush": {

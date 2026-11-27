@@ -34,7 +34,7 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
         pushAttempts: outbox.pushAttempts,
         helperId: people.helperId,
         removedAt: people.removedAt,
-        reminderTtl: sql<number | null>`CASE WHEN ${outbox.template} IN ('gift-day-reminder', 'list-reminder')
+        reminderTtl: sql<number | null>`CASE WHEN ${outbox.template} IN ('gift-day-reminder', 'list-reminder', 'list-nudge', 'person-nudge')
           THEN CASE WHEN ${outbox.createdAt} < (${startOfDay} AT TIME ZONE ${exchangeTimeZone}::text) THEN 0
           ELSE floor(extract(epoch FROM (
             ((${startOfDay} + interval '1 day') AT TIME ZONE ${exchangeTimeZone}::text) - now()

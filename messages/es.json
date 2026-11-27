@@ -443,6 +443,10 @@
       "list-nudge": {
         "title": "Tu lista de deseos te espera",
         "body": "Agrega una o dos ideas de regalos para que tu familia sepa qué te gustaría recibir."
+      },
+      "person-nudge": {
+        "title": "Tu persona te espera",
+        "body": "Abre la aplicación para descubrir a tu persona en este intercambio."
       }
     },
     "privatePush": {

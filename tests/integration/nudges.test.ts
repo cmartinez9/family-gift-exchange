@@ -9,7 +9,7 @@ import {withFamily} from "../../src/server/db/client";
 import {exchanges, families, items, outbox, participants, people} from "../../src/server/db/schema";
 import {deliverPendingPushForFamily} from "../../src/server/messages/delivery";
 import {listNotifications} from "../../src/server/messages/inbox";
-import {noteEmptyListViewed, nudgedToday, nudgeKey, nudgeList, queueViewedNudges} from "../../src/server/messages/nudges";
+import {noteEmptyListViewed, nudgeablePeople, nudgedToday, nudgeKey, nudgeList, queueViewedNudges} from "../../src/server/messages/nudges";
 import type {PushSender} from "../../src/server/messages/push";
 import {listNudges} from "../../src/server/messages/schema";
 import {subscribePush} from "../../src/server/messages/subscriptions";
@@ -55,7 +55,7 @@ async function signIn(personId: string, actingAs = personId, tenant = familyId) 
 }
 
 const nudges = () => withFamily(familyId, (tx) => tx.select().from(listNudges));
-const notices = () => withFamily(familyId, (tx) => tx.select().from(outbox).where(eq(outbox.template, "list-nudge")));
+const notices = () => withFamily(familyId, (tx) => tx.select().from(outbox));
 
 beforeEach(async () => {
   vi.stubEnv("NODE_ENV", "development");
@@ -77,6 +77,7 @@ beforeEach(async () => {
     await tx.insert(exchanges).values({familyId, id: exchangeId, name: "Winter", status: "locked", drawVersion: 1});
     await tx.insert(participants).values(Object.entries(ids).filter(([key]) => key !== "outsider").map(([key, personId]) => ({
       familyId, exchangeId, personId, status: key === "out" ? "out" as const : "in" as const,
+      seenVersion: key === "started" ? 1 : null,
     })));
     await tx.insert(items).values({familyId, ownerId: ids.started, kind: "note", title: "Wool socks"});
   });
@@ -126,7 +127,7 @@ it("nudges only people who can get it and only for organizers acting as themselv
   expect(await nudgeList(asOther, exchangeId, ids.empty, now)).toBe("forbidden");
   await withFamily(familyId, (tx) => tx.update(people).set({helperId: null}).where(eq(people.id, ids.notJoined)));
 
-  for (const personId of [ids.organizer, ids.started, ids.notJoined, ids.out, ids.outsider, "not-a-person"]) {
+  for (const personId of [ids.organizer, ids.started, ids.out, ids.outsider, "not-a-person"]) {
     expect(await nudgeList(viewers.organizer, exchangeId, personId, now)).toBe("unavailable");
   }
   expect(await nudgeList(viewers.organizer, otherExchangeId, ids.empty, now)).toBe("unavailable");
@@ -136,6 +137,80 @@ it("nudges only people who can get it and only for organizers acting as themselv
   expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, now)).toBe("unavailable");
   expect(await notices()).toEqual([]);
   expect(await nudgedToday(viewers.giver, exchangeId, now)).toEqual([]);
+});
+
+it.each(["en", "es"] as const)("nudges an unopened person with a started list privately in %s", async (language) => {
+  await withFamily(familyId, async (tx) => {
+    await tx.update(people).set({language}).where(eq(people.id, ids.started));
+    await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.started));
+  });
+  expect(await nudgeablePeople(viewers.organizer, exchangeId)).toContain(ids.started);
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.started, now)).toBe(false);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, now)).toBe("sent");
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, later)).toBe("already");
+  expect(await notices()).toMatchObject([{
+    personId: ids.started, language, template: "person-nudge", requesterName: null, dedupeKey: nudgeKey(exchangeId, "2033-01-10"),
+  }]);
+  const [notice] = await listNotifications(await signIn(ids.started));
+  expect(notice.title).toBe(language === "es" ? "Tu persona te espera" : "Your person is waiting");
+  for (const identity of [...Object.values(names), ...Object.values(ids)]) {
+    expect(`${notice.title} ${notice.body}`).not.toContain(identity);
+  }
+  await withFamily(familyId, (tx) => tx.update(participants).set({seenVersion: 1}).where(eq(participants.personId, ids.started)));
+  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.started);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, nextDay)).toBe("unavailable");
+  await withFamily(familyId, (tx) => tx.update(exchanges).set({drawVersion: 2}).where(eq(exchanges.id, exchangeId)));
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, nextDay)).toBe("sent");
+});
+
+it("requires a draw before reminding someone to open their person", async () => {
+  await withFamily(familyId, async (tx) => {
+    await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.started));
+    await tx.update(exchanges).set({status: "open", drawVersion: 0}).where(eq(exchanges.id, exchangeId));
+  });
+  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.started);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, now)).toBe("unavailable");
+});
+
+it("keeps a Not started participant's nudge in their inbox until they join", async () => {
+  expect(await nudgeablePeople(viewers.organizer, exchangeId)).toContain(ids.notJoined);
+  expect(await nudgeablePeople(viewers.giver, exchangeId)).toEqual([]);
+  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.out);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.notJoined, now)).toBe("sent");
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.notJoined, later)).toBe("already");
+  await withFamily(familyId, (tx) => tx.insert(pinCredentials).values({familyId, personId: ids.notJoined, joinedAt: new Date()}));
+  const inbox = await listNotifications(await signIn(ids.notJoined));
+  expect(inbox).toMatchObject([{title: "Your wishlist is waiting"}]);
+});
+
+it("shares one daily limit when an empty-list participant starts a list before opening their person", async () => {
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, now)).toBe("sent");
+  await withFamily(familyId, (tx) => tx.insert(items).values({familyId, ownerId: ids.empty, kind: "note", title: "A scarf"}));
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, later)).toBe("already");
+  expect(await notices()).toMatchObject([{template: "list-nudge"}]);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, nextDay)).toBe("sent");
+  expect((await notices()).map(({template}) => template).sort()).toEqual(["list-nudge", "person-nudge"]);
+});
+
+it.each(["list-nudge", "person-nudge"] as const)("expires yesterday's retried %s before delivering today's nudge", async (template) => {
+  vi.stubEnv("VERCEL_ENV", "production");
+  await subscribePush(viewers.empty, browserSubscription());
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  const [{id}] = await withFamily(familyId, (tx) => tx.insert(outbox).values({
+    familyId, personId: ids.empty, channel: "push", language: "es", template, status: "pending",
+    dedupeKey: nudgeKey(exchangeId, "yesterday"), pushAttempts: 1,
+    createdAt: new Date(Date.now() - 48 * 60 * 60_000),
+  }).returning({id: outbox.id}));
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty)).toBe("sent");
+  await deliverPendingPushForFamily(familyId, sender);
+  expect(sender).toHaveBeenCalledOnce();
+  expect(sender.mock.calls[0][1].tag).not.toBe(id);
+  expect(sender.mock.calls[0][2]).toBeGreaterThan(0);
+  expect(sender.mock.calls[0][2]).toBeLessThanOrEqual(25 * 60 * 60);
+  const rows = await notices();
+  expect(rows.find((row) => row.id === id)).toMatchObject({status: "skipped", pushAttempts: 2});
+  expect(rows.find((row) => row.id !== id)).toMatchObject({status: "sent"});
+  expect(await listNotifications(viewers.empty)).toHaveLength(2);
 });
 
 it("reaches a looked-after person through their helper's phone without the details", async () => {

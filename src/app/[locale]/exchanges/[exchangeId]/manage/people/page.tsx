@@ -11,7 +11,8 @@ import {readiness} from "@/server/auth/families";
 import {withFamily} from "@/server/db/client";
 import {DrawError, organizerExchange} from "@/server/draw";
 import {listFamilyWishlists} from "@/server/lists";
-import {nudgedToday} from "@/server/messages";
+import {nudgeablePeople, nudgedToday} from "@/server/messages";
+import {todayInExchangeCalendar} from "@/server/messages/calendar";
 import {saveRosterAndContinue} from "../../../actions";
 import {DrawRecovery, drawPage, PersonStatusScreen} from "../../../components";
 import {FormScreen} from "../../../form";
@@ -20,11 +21,6 @@ import {AddNames} from "../../../../family/add-names";
 import {RosterFields} from "../../../roster";
 import {SetupSteps} from "../../../setup";
 
-/**
- * Who's in. In setup (step 2) it is the roster: add names, tick who takes part. After the draw it is
- * who has a ready list, without ever hinting at who has whom. Someone signed up (or looked after) with
- * nothing on their list gets a Nudge: one plain notice a day that never says who has them.
- */
 export default async function PeoplePage({params}: {params: Promise<{exchangeId: string}>}) {
   const viewer = await requireViewer();
   const {exchangeId} = await params;
@@ -52,10 +48,13 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
     );
   }
 
-  const [board, lists, nudged] = await Promise.all([
-    withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date())),
+  const now = new Date();
+  const day = todayInExchangeCalendar(now);
+  const [board, lists, nudged, eligible] = await Promise.all([
+    withFamily(viewer.familyId, (tx) => readiness(tx, viewer, now)),
     listFamilyWishlists(viewer).catch(() => []),
-    nudgedToday(viewer, id),
+    nudgedToday(viewer, id, now),
+    nudgeablePeople(viewer, id),
   ]);
   const byId = new Map(lists.map((list) => [list.id, list]));
   const members = new Map((board?.members ?? []).map((member) => [member.id, member]));
@@ -70,11 +69,7 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
     if (member?.joinedAt || helper) return t("season.noList");
     return board?.sent.some((key) => key.personId === personId) ? t("season.keySent") : t("season.notStarted");
   };
-  // the server checks the same things again: in the exchange, reachable, and nothing on the list
-  const canNudge = (personId: string) => {
-    const member = members.get(personId);
-    return personId !== viewer.personId && !byId.get(personId)?.itemCount && Boolean(member?.joinedAt || member?.helperId);
-  };
+  const canNudge = (personId: string) => eligible.includes(personId);
   const anyNudge = taking.some(({id: personId}) => canNudge(personId));
   return (
     <Screen back={hub} actions={<ButtonLink href="/family/group-chat" transition="push" icon="share">{t("season.remindChat")}</ButtonLink>}>
@@ -97,7 +92,7 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
                     <span className="text-body text-muted-ink">{you ? `${t("setup.youCap")} · ${status(personId)}` : status(personId)}</span>
                   </span>
                   {canNudge(personId)
-                    ? <NudgeButton exchangeId={id} personId={personId} name={displayName} nudged={nudged.includes(personId)} />
+                    ? <NudgeButton exchangeId={id} personId={personId} name={displayName} day={day} nudged={nudged.includes(personId)} />
                     : <Tick done={ready} label={ready ? t("season.listReady") : t("season.listNotReady")} />}
                 </li>
               );
