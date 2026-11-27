@@ -149,6 +149,7 @@ describe("wishlist access and claims", () => {
     expect(await getGettingList(winner)).toContainEqual({
       itemId: item.id, title: item.title, ownerId, ownerName: "Frostpaw", kind: item.kind, price: item.price,
       store: item.store, hasPhoto: false, updatedAt: item.updatedAt, bought: true, wrapped: true,
+      changes: [], version: expect.any(String),
     });
     expect((await getGettingList(other)).some((entry) => entry.itemId === item.id)).toBe(false);
     await undoClaim(winner, item.id);
@@ -171,7 +172,7 @@ describe("wishlist access and claims", () => {
       await release.promise;
     });
     void revoking.catch(ready.reject);
-    let mutation: Promise<void> | undefined;
+    let mutation: Promise<unknown> | undefined;
     try {
       const revokerPid = await ready.promise;
       mutation = command === "claim" ? claimItem(actor, item.id)

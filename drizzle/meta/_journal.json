@@ -131,15 +131,22 @@
     {
       "idx": 18,
       "version": "7",
-      "when": 1795752718544,
-      "tag": "0018_list-nudges",
+      "when": 1795751120731,
+      "tag": "0018_claim-seen",
       "breakpoints": true
     },
     {
       "idx": 19,
       "version": "7",
-      "when": 1795752720002,
-      "tag": "0019_list-nudge-permissions",
+      "when": 1795756542973,
+      "tag": "0019_list-nudges",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795756543588,
+      "tag": "0020_list-nudge-permissions",
       "breakpoints": true
     }
   ]
