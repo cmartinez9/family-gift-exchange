@@ -50,7 +50,7 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
     revealOnBorrowedPhone(exchange.id, exchange.version).then((result) => {
       if (result.name) setPerson(result.name);
       else {
-        if (result.error === "drawChanged") router.refresh();
+        if (result.error === "refresh") router.refresh();
         asked.current = false;
         setFailed(true);
       }

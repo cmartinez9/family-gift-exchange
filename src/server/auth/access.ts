@@ -262,6 +262,7 @@ export async function redeemKey(
 ) {
   const {familyId, value, typed, pepper, pin, confirmation, device, currentViewer, now} = input;
   const openingId = input.openingId ?? randomUUID();
+  if (currentViewer?.borrowed) return {error: "otherPerson"} as const;
   const problem = pinProblem(pin, confirmation);
   if (problem) return {error: problem};
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;

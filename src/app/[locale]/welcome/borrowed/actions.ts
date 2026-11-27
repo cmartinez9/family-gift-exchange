@@ -7,7 +7,7 @@ import {clearBorrowedSession} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {DrawError, revealMyPerson} from "@/server/draw";
 
-export type BorrowedReveal = {name?: string; error?: "unavailable" | "drawChanged"};
+export type BorrowedReveal = {name?: string; error?: "unavailable" | "refresh"};
 
 /** Opening your own person on someone else's phone (9.3): the same reveal as on your own, and only there. */
 export async function revealOnBorrowedPhone(exchangeId: string, version: number): Promise<BorrowedReveal> {
@@ -17,7 +17,9 @@ export async function revealOnBorrowedPhone(exchangeId: string, version: number)
     const {person} = await revealMyPerson(viewer, exchangeId, version);
     return {name: person.displayName};
   } catch (error) {
-    if (error instanceof DrawError) return {error: error.code === "drawChanged" ? "drawChanged" : "unavailable"};
+    if (error instanceof DrawError) return {
+      error: ["drawChanged", "closed", "notFound", "forbidden"].includes(error.code) ? "refresh" : "unavailable",
+    };
     throw error;
   }
 }

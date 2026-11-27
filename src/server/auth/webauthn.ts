@@ -108,6 +108,7 @@ export async function authenticationStart(device: Device) {
 }
 
 export async function authenticationFinish(device: Device, response: AuthenticationResponseJSON, current: Viewer | null, opening?: KeyOpening) {
+  if (current?.borrowed) return null;
   const challenge = await takeChallenge(device, "sign-in");
   const ids = userIds(response?.response?.userHandle);
   if (!challenge || !ids || (current && (current.personId !== ids.personId || current.familyId !== ids.familyId))) return null;

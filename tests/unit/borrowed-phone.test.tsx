@@ -11,14 +11,14 @@ import {SizesStep} from "../../src/app/[locale]/welcome/steps";
 import {BorrowedAllSet, HandBack} from "../../src/app/[locale]/welcome/borrowed/hand-back";
 
 const borrowed = vi.hoisted(() => ({returnPhone: vi.fn(), hideOnBorrowedPhone: vi.fn(), revealOnBorrowedPhone: vi.fn()}));
-const drawState = vi.hoisted(() => ({version: 1}));
+const drawState = vi.hoisted(() => ({version: 1, status: "drawn"}));
 vi.mock("@/server/auth", () => ({requireViewer: async () => ({familyId: "family", personId: "rosa", borrowed: {hidden: false}})}));
 vi.mock("@/server/auth/access", () => ({activePerson: async () => ({displayName: "Rosa"})}));
 vi.mock("@/server/auth/borrowed", () => ({phoneOwnerName: async () => "Ana"}));
 vi.mock("@/server/db/client", () => ({withFamily: (_family: string, action: () => unknown) => action()}));
 vi.mock("@/server/draw", () => ({
   DrawError: class extends Error {},
-  listExchanges: async () => [{id: "christmas", status: "drawn"}],
+  listExchanges: async () => [{id: "christmas", status: drawState.status}],
   memberDrawStatus: async () => ({status: "ready", exchange: {id: "christmas", version: drawState.version}}),
 }));
 vi.mock("next-intl/server", () => ({getLocale: async () => "en", getTranslations: vi.fn()}));
@@ -39,6 +39,7 @@ let root: Root;
 beforeEach(() => {
   vi.resetAllMocks();
   drawState.version = 1;
+  drawState.status = "drawn";
   borrowed.hideOnBorrowedPhone.mockResolvedValue({hidden: true});
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: true, addEventListener() {}, removeEventListener() {}}));
@@ -116,7 +117,7 @@ it("waits for sealing before handing back a phone with no drawn person", async (
 });
 
 it("refreshes a changed draw and opens the new version on retry", async () => {
-  borrowed.revealOnBorrowedPhone.mockResolvedValueOnce({error: "drawChanged"}).mockResolvedValueOnce({name: "Beto"});
+  borrowed.revealOnBorrowedPhone.mockResolvedValueOnce({error: "refresh"}).mockResolvedValueOnce({name: "Beto"});
   await render(await BorrowedPhonePage());
   await click(en.draw.person.revealTap);
   expect(router.refresh).toHaveBeenCalledOnce();
@@ -125,6 +126,20 @@ it("refreshes a changed draw and opens the new version on retry", async () => {
   await click(en.draw.person.revealTap);
   expect(borrowed.revealOnBorrowedPhone).toHaveBeenLastCalledWith("christmas", 2);
   expect(container.textContent).toContain("Hide Beto");
+});
+
+it("refreshes a closed exchange into the no-person hand-back flow", async () => {
+  borrowed.revealOnBorrowedPhone.mockResolvedValue({error: "refresh"});
+  await render(await BorrowedPhonePage());
+  await click(en.draw.person.revealTap);
+  expect(router.refresh).toHaveBeenCalledOnce();
+  drawState.status = "closed";
+  await render(await BorrowedPhonePage());
+  expect(borrowed.hideOnBorrowedPhone).toHaveBeenCalledOnce();
+  expect(container.querySelector("h1")?.textContent).toBe("Hand this phone back to Ana");
+  expect(container.textContent).toContain("There's no person to open yet");
+  await click("Ana has the phone");
+  expect(router.replace).toHaveBeenCalledWith("/welcome/sizes");
 });
 
 it("clears the displayed person once an expired borrowed session is safely closed", async () => {

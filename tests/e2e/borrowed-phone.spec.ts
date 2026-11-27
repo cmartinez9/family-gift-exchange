@@ -89,11 +89,16 @@ async function family(browser: Browser, {drawn = true} = {}) {
       .where(and(eq(participants.familyId, familyId), eq(participants.personId, ids[name])));
     return row?.version ?? null;
   }
-  return {familyId, exchangeId, ids, signedIn, keyFor, sessionsOf, seen, async close() {
-    await Promise.allSettled(contexts.map((context) => context.close()));
-    await database.db.delete(families).where(eq(families.id, familyId));
-    await database.close();
-  }};
+  return {familyId, exchangeId, ids, signedIn, keyFor, sessionsOf, seen,
+    expireRosa: () => database.db.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
+      .where(and(eq(sessions.familyId, familyId), eq(sessions.personId, ids.Rosa))),
+    closeDraw: () => database.db.update(exchanges).set({status: "closed"})
+      .where(and(eq(exchanges.familyId, familyId), eq(exchanges.id, exchangeId))),
+    async close() {
+      await Promise.allSettled(contexts.map((context) => context.close()));
+      await database.db.delete(families).where(eq(families.id, familyId));
+      await database.close();
+    }};
 }
 
 /** Waits for arrivals to settle, checks the screen for overflow and axe, then saves it. */
@@ -256,6 +261,58 @@ test("More sizes cannot lead a borrowed session into My list, Family, or the len
       await expect(page.getByRole("button", {name: "Sign Rosa out of this phone"})).toBeVisible();
       await expect(page.locator("body")).not.toContainText("Beto");
     }
+  } finally {
+    await f.close();
+  }
+});
+
+test("expired borrowed sizes onboarding returns to Ana before selecting a new list", async ({browser}) => {
+  const f = await family(browser);
+  try {
+    const ana = await f.signedIn("Ana");
+    const {page} = ana;
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await handOver(page, await f.keyFor("Rosa"), "en");
+    await page.getByRole("button", {name: en.draw.person.revealTap}).click();
+    await page.getByRole("button", {name: "Hide Beto"}).click();
+    await page.getByRole("button", {name: "Ana has the phone"}).click();
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes$/);
+    await f.expireRosa();
+    await page.getByRole("button", {name: en.getIn.sizes.next}).click();
+    await expect(page).toHaveURL(/\/en$/);
+    for (const path of ["sizes", "sizes/more", "list", "done"]) {
+      await page.goto(`/en/welcome/${path}`);
+      await expect(page).toHaveURL(/\/en$/);
+    }
+    await page.goto("/en/account");
+    await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
+    const cookies = await page.context().cookies();
+    expect(cookies.find(({name}) => name === "__Host-fge-session")?.value).toBe(ana.sessionCookie);
+  } finally {
+    await f.close();
+  }
+});
+
+test("closing the exchange before a borrowed reveal still allows hand-back and sign-out", async ({browser}) => {
+  const f = await family(browser);
+  try {
+    const ana = await f.signedIn("Ana");
+    const {page} = ana;
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await handOver(page, await f.keyFor("Rosa"), "en");
+    await f.closeDraw();
+    await page.getByRole("button", {name: en.draw.person.revealTap}).click();
+    await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toBeVisible();
+    const [session] = await f.sessionsOf("Rosa");
+    expect(session.personHiddenAt).not.toBeNull();
+    await page.getByRole("button", {name: "Ana has the phone"}).click();
+    await page.getByRole("button", {name: en.getIn.sizes.next}).click();
+    await page.getByRole("link", {name: en.getIn.add.later}).click();
+    await page.getByRole("button", {name: "Sign Rosa out of this phone"}).click();
+    await expect(page).toHaveURL(/\/en$/);
+    const cookies = await page.context().cookies();
+    expect(cookies.find(({name}) => name === "__Host-fge-session")?.value).toBe(ana.sessionCookie);
+    expect(cookies.find(({name}) => name === "__Host-fge-borrowed")).toBeUndefined();
   } finally {
     await f.close();
   }

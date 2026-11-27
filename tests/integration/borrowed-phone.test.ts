@@ -284,3 +284,42 @@ it("hides claims on both the borrower's and lender's lists after hand-back", asy
   await expect(claimItem(withoutMetadata, anaItem.id)).rejects.toMatchObject({code: "forbidden"});
   await expect(getGettingList(withoutMetadata)).resolves.toEqual([]);
 });
+
+
+it("refuses replacing a hidden borrowed session with the same person's reset key", async () => {
+  const f = await fixture();
+  const cookie = (await f.lend(await f.key("Rosa"), f.ana)).session!.cookie;
+  const rosa = (await resolve(cookie))!;
+  await revealMyPerson(rosa, f.exchangeId, 1);
+  await tx(f.familyId, (t) => hideBorrowedPerson(t, rosa, new Date()));
+  const reset = await f.key("Rosa", "reset");
+  await expect(f.lend(reset, (await resolve(cookie))!, f.anaPhone, false)).resolves.toEqual({error: "otherPerson"});
+  expect((await resolve(cookie))?.borrowed?.hidden).toBe(true);
+  expect(await resolve(f.anaSession.cookie)).toEqual(f.ana);
+  expect(await refused(revealMyPerson(rosa, f.exchangeId, 1))).toBe("forbidden");
+  const rows = await tx(f.familyId, (t) => t.select().from(sessions)
+    .where(and(eq(sessions.familyId, f.familyId), eq(sessions.personId, f.ids.Rosa))));
+  expect(rows).toHaveLength(1);
+  expect(rows[0].trusted).toBe(false);
+  expect((await f.lend(reset, null, phone(), false)).session).toBeDefined();
+});
+
+it("returns expired borrowed onboarding to the owner's Home without losing the owner", async () => {
+  const f = await fixture({draw: false});
+  const cookie = (await f.lend(await f.key("Rosa"), f.ana)).session!.cookie;
+  const rosa = (await resolve(cookie))!;
+  await tx(f.familyId, (t) => hideBorrowedPerson(t, rosa, new Date()));
+  await tx(f.familyId, (t) => t.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
+    .where(and(eq(sessions.familyId, f.familyId), eq(sessions.id, rosa.sessionId))));
+  jar.clear();
+  jar.set("__Host-fge-session", f.anaSession.cookie);
+  jar.set("__Host-fge-borrowed", cookie);
+  try {
+    const {getViewer, requireViewer} = await import("../../src/server/auth");
+    expect(await getViewer()).toEqual(f.ana);
+    await expect(requireViewer({borrowed: "help"})).rejects.toThrow(/^redirect:\/en$/);
+    expect(await resolve(f.anaSession.cookie)).toEqual(f.ana);
+  } finally {
+    jar.clear();
+  }
+});
