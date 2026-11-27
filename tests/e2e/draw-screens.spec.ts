@@ -290,7 +290,9 @@ test("your person: the reveal, their page, asking, answering and something wrong
 
   const answerer = pages[person] ?? await memberPage(browser, baseURL!, person);
   await answerer.goto(member);
-  await answerer.getByRole("link", {name: /A question for you/}).click();
+  // Before someone opens their own person, the question is in a banner with an Answer link.
+  await answerer.getByRole("link", {name: /A question for you/})
+    .or(answerer.getByRole("link", {name: "Answer", exact: true})).click();
   await expect(answerer.getByText("Which color skillet would you like, black or red?")).toBeVisible();
   await shot(answerer, "f6-6_6-a-question-for-you");
   await answerer.getByLabel("Your answer").fill("Black, please. The red ones chip.");

@@ -231,7 +231,8 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
       if (svg && host && needle.length) {
         const box = svg.getBoundingClientRect(), origin = host.getBoundingClientRect();
         const at = needle[Math.min(n, needle.length - 1)];
-        s.end = [box.left - origin.left + at.cx, box.top - origin.top + at.cy];
+        const scale = box.width / svg.viewBox.baseVal.width;
+        s.end = [box.left - origin.left + at.cx * scale, box.top - origin.top + at.cy * scale];
       }
       if (n < stitches.length) frames.current.knit = requestAnimationFrame(step);
       else finish(false);
@@ -382,19 +383,19 @@ export function UnravelReveal({name: given, labels, next, onStart, onRevealed, t
       <span ref={progress} role="progressbar" aria-label={labels.progress} aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={0} className="sr-only" />
 
-      <div className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-5" style={{top: NAME_TOP}}>
+      <div className="pointer-events-none absolute inset-x-edge flex flex-col items-center gap-5" style={{top: NAME_TOP}}>
         <div data-reveal-flakes="" className="flex gap-[70px]" style={{opacity: 0}}>
           <Snowflake cell={5} /><Snowflake cell={5} />
         </div>
         <p data-reveal-lead="" className="text-section font-bold" style={{opacity: 0}}>{labels.lead}</p>
         {stitched ? (
-          <svg ref={nameSvg} aria-hidden="true" width={nameWidth} height={nameHeight} viewBox={`0 0 ${nameWidth} ${nameHeight}`} className="block overflow-visible">
+          <svg ref={nameSvg} aria-hidden="true" width={nameWidth} height={nameHeight} viewBox={`0 0 ${nameWidth} ${nameHeight}`} className="block h-auto max-w-full overflow-visible">
             {nameStitches.map((stitch, index) => (
               <path key={index} className="fge-nm" d={stitch.d} data-on="false" style={{fill: "var(--color-yarn-white)"}} />
             ))}
           </svg>
         ) : (
-          <p aria-hidden="true" className="font-extrabold uppercase" style={{fontSize: 9 * ch * 0.86, lineHeight: `${9 * ch}px`, opacity: revealed ? 1 : 0}}>{name}</p>
+          <p aria-hidden="true" className="max-w-full text-center text-title wrap-anywhere font-extrabold uppercase" style={{opacity: revealed ? 1 : 0}}>{name}</p>
         )}
         <div data-reveal-only="" style={{opacity: 0}}><OnlyYou>{labels.onlyYou}</OnlyYou></div>
       </div>
