@@ -13,7 +13,7 @@ const borrowedSession = (viewer: Viewer) => and(
 
 /**
  * "Hide Beto": from now on this session has no sealed draw access, so whoever holds the phone next cannot
- * open the person again. Returns whether the session was on a borrowed phone and is now hidden.
+ * open the person again. Returns whether borrowed draw access is sealed or the borrowed session has ended.
  */
 export async function hideBorrowedPerson(tx: FamilyTransaction, viewer: Viewer, now: Date) {
   await lockFamily(tx, viewer.familyId);

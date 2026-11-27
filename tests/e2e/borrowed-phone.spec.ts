@@ -447,6 +447,7 @@ test("expiry before the first reveal returns to the owner's Home without opening
     const cookies = await page.context().cookies();
     expect(cookies.find(({name}) => name === "__Host-fge-session")?.value).toBe(ana.sessionCookie);
     expect(cookies.find(({name}) => name === "__Host-fge-borrowed")).toBeUndefined();
+    await shot(page, "privacy-expiry-before-first-reveal-owner-home");
   } finally {
     await f.close();
   }
@@ -654,7 +655,12 @@ test("Ana can preview a gift link after expiry without the stale borrowed cookie
     await page.goto(`/en/lists/${f.ids.Ana}/items/new?kind=link`);
     expect((await page.context().cookies()).some(cookie => cookie.name === "__Host-fge-borrowed")).toBe(true);
     await page.getByLabel(en.lists.url, {exact: true}).fill("https://example.com");
-    await page.getByLabel(en.lists.url, {exact: true}).press("Tab");
+    const previewResponse = page.waitForResponse(response => response.request().method() === "POST"
+      && new URL(response.url()).pathname === `/en/lists/${f.ids.Ana}/link-preview`);
+    await page.getByRole("button", {name: en.lists.preview, exact: true}).click();
+    const response = await previewResponse;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({card: {url: "https://example.com/"}});
     await expect(page.getByRole("region", {name: en.lists.previewTitle})).toBeVisible({timeout: 15_000});
     await expect(page).toHaveURL(new RegExp(`/en/lists/${f.ids.Ana}/items/new\\?kind=link$`));
     expect((await page.context().cookies()).some(cookie => cookie.name === "__Host-fge-borrowed")).toBe(false);
