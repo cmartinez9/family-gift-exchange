@@ -7,6 +7,7 @@ import {
   hidesClaims, ListError, requireListActor, requireListPerson, type ListViewer,
 } from "../access";
 import {activeItemOwner, listItemsScope, requireListItem} from "../item-records";
+import {diffSeen, seenOf, seenVersion, type SeenItem} from "./changes";
 
 export type ClaimMark = "mine" | "someone";
 
@@ -38,24 +39,25 @@ export async function clearItemClaim(tx: FamilyTransaction, familyId: string, it
 }
 
 async function withClaimableItem<T>(
-  viewer: ListViewer, itemId: string, action: (tx: FamilyTransaction) => Promise<T>,
+  viewer: ListViewer, itemId: string,
+  action: (tx: FamilyTransaction, item: Awaited<ReturnType<typeof requireListItem>>) => Promise<T>,
 ) {
   return withFamily(viewer.familyId, async (tx) => {
     await requireListActor(tx, viewer);
     const item = await requireListItem(tx, viewer.familyId, itemId, true);
     await requireListPerson(tx, viewer.familyId, item.ownerId);
     if (hidesClaims(viewer, item.ownerId)) throw new ListError("forbidden");
-    return action(tx);
+    return action(tx, item);
   });
 }
 
 export async function claimItem(viewer: ListViewer, itemId: string) {
-  await withClaimableItem(viewer, itemId, async (tx) => {
+  await withClaimableItem(viewer, itemId, async (tx, item) => {
     const [existing] = await tx.select({mine: sql<boolean>`${claims.claimerId} = ${viewer.actingAs}::uuid`})
       .from(claims).where(itemClaim(viewer.familyId, itemId));
     if (existing?.mine) return;
     if (existing) throw new ListError("already-claimed");
-    await tx.insert(claims).values({familyId: viewer.familyId, itemId, claimerId: viewer.actingAs});
+    await tx.insert(claims).values({familyId: viewer.familyId, itemId, claimerId: viewer.actingAs, seen: seenOf(item)});
   });
 }
 
@@ -81,6 +83,35 @@ export async function setClaimTick(
   });
 }
 
+/**
+ * "Still getting it": the getter has seen the owner's change. Accepts only the version they were shown,
+ * so a second edit in the meantime is not waved through unseen.
+ */
+export async function acknowledgeItemChange(viewer: ListViewer, itemId: string, version: string) {
+  await withClaimableItem(viewer, itemId, async (tx, item) => {
+    const current = seenOf(item);
+    if (seenVersion(current) !== version) throw new ListError("item-changed");
+    const [updated] = await tx.update(claims).set({seen: current})
+      .where(viewerClaim(viewer, itemId)).returning({id: claims.id});
+    if (!updated) throw new ListError("not-found");
+  });
+}
+
+const changeColumns = {
+  seen: claims.seen, itemNote: items.note, itemUrl: items.url, itemStore: items.store, itemPrice: items.price,
+};
+
+type ChangeColumns = {
+  title: string; seen: SeenItem | null; itemNote: string | null; itemUrl: string | null;
+  itemStore: string | null; itemPrice: string | null;
+};
+
+/** Each gift with what its owner changed since you last looked, and the version you are being shown. */
+function withChanges<T extends ChangeColumns>({seen, itemNote, itemUrl, itemStore, itemPrice, ...row}: T) {
+  const current = seenOf({title: row.title, note: itemNote, url: itemUrl, store: itemStore, price: itemPrice});
+  return {...row, changes: diffSeen(seen, current), version: seenVersion(current)};
+}
+
 export async function getGettingList(viewer: ListViewer) {
   return withFamily(viewer.familyId, async (tx) => {
     await requireListActor(tx, viewer);
@@ -90,12 +121,13 @@ export async function getGettingList(viewer: ListViewer) {
       updatedAt: items.updatedAt,
       bought: sql<boolean>`${claims.boughtAt} is not null`,
       wrapped: sql<boolean>`${claims.wrappedAt} is not null`,
+      ...changeColumns,
     }).from(claims).innerJoin(items, and(
       eq(items.familyId, claims.familyId), eq(items.id, claims.itemId), isNull(items.archivedAt),
     )).innerJoin(people, activeItemOwner()).where(and(
       eq(claims.familyId, viewer.familyId), eq(claims.claimerId, viewer.actingAs),
       notInArray(items.ownerId, Array.from(new Set([viewer.personId, viewer.actingAs]))),
     )).orderBy(people.displayName, items.title, items.id);
-    return rows;
+    return rows.map(withChanges);
   });
 }

@@ -10,7 +10,7 @@ import {
   saveListSize, saveNoClothes, setExchangeBudget,
 } from "@/server/lists";
 import {requireListEditor} from "@/server/lists/access";
-import {claimItem, setClaimTick, undoClaim} from "@/server/lists/claims";
+import {acknowledgeItemChange, claimItem, setClaimTick, undoClaim} from "@/server/lists/claims";
 import {LinkError, resolveLinkPreview} from "@/server/lists/link-preview";
 import {readLinkDraft, signLinkDraft} from "@/server/lists/link-preview/draft";
 import {MAX_PHOTO_INPUT} from "@/server/lists/photo-storage";
@@ -150,6 +150,19 @@ export async function claimCommand(
     return {error: feedback(error)};
   }
   await refreshLists();
+  return {};
+}
+
+/** "Still getting it": you have seen what the owner changed, as it was shown to you. */
+export async function acknowledgeChange(itemId: string, version: string): Promise<FormState> {
+  const viewer = await requireViewer();
+  try {
+    await acknowledgeItemChange(viewer, itemId, version);
+  } catch (error) {
+    return {error: feedback(error)};
+  }
+  const locale = await getLocale();
+  revalidatePath(`/${locale}/lists`, "layout");
   return {};
 }
 

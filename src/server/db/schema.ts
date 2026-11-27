@@ -203,6 +203,9 @@ export const aboutMe = pgTable("about_me", {
   }),
 ]);
 
+/** What the person getting an item last saw of it; see server/lists/claims/changes.ts. */
+export type ClaimSeen = {title: string; note: string | null; url: string | null; store: string | null; price: string | null};
+
 export const claims = pgTable("claims", {
   familyId: familyId(),
   id: uuid("id").defaultRandom().notNull(),
@@ -211,6 +214,7 @@ export const claims = pgTable("claims", {
   claimerId: uuid("claimer_id").notNull(),
   boughtAt: instant("bought_at"),
   wrappedAt: instant("wrapped_at"),
+  seen: jsonb("seen").$type<ClaimSeen>(),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),
   uniqueIndex("claims_one_per_item").on(table.familyId, table.itemId),
