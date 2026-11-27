@@ -261,19 +261,16 @@ async function changeListItem(
       const nextImageKey = keepUploaded ? item.imageKey : imageKey ?? (newLink === undefined ? item.imageKey : null);
       const imageSource = input.upload || keepUploaded ? "upload" : nextImageKey ? "preview" : undefined;
       const nextIconKey = nextImageKey ? undefined : iconKey ?? (newLink === undefined ? oldPreview.iconKey : undefined);
-      let nextPreview = preview
-        ? previewFields({
+      const nextPreview = item.kind === "link" ? {
+        ...(preview ? previewFields({
           ...preview,
           price: preview.price ?? (refresh ? oldPreview.price ?? null : null),
-        }, nextIconKey, imageSource)
-        : input.upload && item.kind === "link" ? {...oldPreview, iconKey: undefined, imageSource: "upload"} : undefined;
-      if (!preview && oldPreview.pending !== undefined) {
-        nextPreview = {
-          ...(nextPreview ?? oldPreview),
-          titleEdited: oldPreview.titleEdited || fields.title !== undefined,
-          priceEdited: oldPreview.priceEdited || fields.price !== undefined,
-        };
-      }
+        }) : oldPreview),
+        iconKey: nextIconKey,
+        imageSource,
+        titleEdited: oldPreview.titleEdited || (oldPreview.pending !== undefined && fields.title !== undefined),
+        priceEdited: oldPreview.priceEdited || (oldPreview.pending !== undefined && fields.price !== undefined),
+      } : undefined;
       const suggestedTitle = !oldPreview.titleEdited && (item.title === oldPreview.title || item.title === item.store)
         ? preview?.title : undefined;
       const suggestedPrice = !oldPreview.priceEdited && item.price === (oldPreview.price ?? null)

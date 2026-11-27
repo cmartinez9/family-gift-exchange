@@ -461,14 +461,15 @@ it.each([
 
 async function editField(selector: string, value: string) {
   await act(async () => {
-    const field = container.querySelector<HTMLInputElement>(selector)!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    const field = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+    const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(field, value);
     field.dispatchEvent(new Event("input", {bubbles: true}));
   });
 }
 
 async function editLink(value: string) {
-  await editField('input[name="link"]', value);
+  await editField('[name="link"]', value);
 }
 
 const recoveryFlows = [
@@ -554,7 +555,13 @@ it("ignores a code-preview transport failure after the entered code changes", as
 
 const preview: PreviewState = {card: {url: "https://shop.example/gift", title: "A sweater", store: "Shop", icon: "shop", price: null}};
 
-it.each(["before", "during"])("saves a valid onboarding link %s its preview loads", async (timing) => {
+it.each([
+  "https://shop.example/gift",
+  "Look at this mug https://shop.example.com/p/123",
+  "A sweater\nhttps://shop.example/gift\nSize M",
+  "shop.example:443/gift",
+  "https://[2606:4700:4700::1111]/gift",
+].flatMap((link) => ["before", "during"].map((timing) => ({link, timing}))))("saves onboarding link $link $timing its preview loads", async ({link, timing}) => {
   vi.useFakeTimers();
   const response = Promise.withResolvers<PreviewState>();
   const saved = Promise.withResolvers<{added: boolean; pictureComing: boolean}>();
@@ -563,19 +570,19 @@ it.each(["before", "during"])("saves a valid onboarding link %s its preview load
   await render(<><AddStep ownerId="person" /><ToastHost undoLabel="Undo" /></>);
   await click(en.getIn.add.paste);
   expect(button(en.getIn.paste.first).disabled).toBe(true);
-  await editLink("https://shop.example/gift");
+  await editLink(link);
   expect(button(en.getIn.add.add).disabled).toBe(false);
   if (timing === "during") {
     await advance(500);
     expect(fetch).toHaveBeenCalledWith("/en/lists/person/link-preview", expect.objectContaining({
-      method: "POST", body: JSON.stringify({link: "https://shop.example/gift"}),
+      method: "POST", body: JSON.stringify({link}),
     }));
   }
 
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
   expect(welcome.addFirstThing).toHaveBeenCalledOnce();
   const form = welcome.addFirstThing.mock.calls[0][2] as FormData;
-  expect(form.get("link")).toBe("https://shop.example/gift");
+  expect(form.get("link")).toBe(link);
   expect(form.get("kind")).toBe("link");
   expect(button(en.getIn.add.add).disabled).toBe(true);
   if (timing === "during") {
@@ -595,7 +602,10 @@ it.each(["before", "during"])("saves a valid onboarding link %s its preview load
   }
 });
 
-it.each(["", "https://", "not a link", "ftp://shop.example/gift", "https://user:pass@shop.example/gift"])(
+it.each([
+  "", "https://", "not a link", "ftp://shop.example/gift", "https://user:pass@shop.example/gift",
+  "http://localhost/gift", "http://10.0.0.1/gift", "http://[::1]/gift",
+])(
   "keeps Add disabled for an invalid onboarding link %s", async (link) => {
     vi.useFakeTimers();
     await render(<AddStep ownerId="person" />);
@@ -678,6 +688,31 @@ it.each(["returned", "transport"])("preserves the link note and preference when 
     ["person", "https://shop.example/gift", "Blue, size M", "on"],
     ["person", "https://shop.example/gift", "Blue, size M", "on"],
   ]);
+});
+
+it.each(["before", "during"])("submits the note when saving %s a replacement preview loads", async (timing) => {
+  vi.useFakeTimers();
+  const response = Promise.withResolvers<PreviewState>();
+  previews.mockResolvedValueOnce(preview).mockReturnValueOnce(response.promise);
+  await render(<AddStep ownerId="person" />);
+  await click(en.getIn.add.paste);
+  await editLink("https://shop.example/gift");
+  await advance(500);
+  await editField('input[name="note"]', "Blue, size M");
+  await click(en.getIn.paste.want);
+  await editLink("https://shop.example/replacement");
+  expect(container.querySelector('input[name="note"]')).toBeNull();
+  if (timing === "during") await advance(500);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { container.querySelector("form")!.requestSubmit(); });
+    const form = welcome.addFirstThing.mock.calls[attempt][2] as FormData;
+    expect(form.get("link")).toBe("https://shop.example/replacement");
+    expect(form.getAll("note")).toEqual(["Blue, size M"]);
+    expect(form.get("starred")).toBe("on");
+  }
+  await act(async () => response.resolve(preview));
+  expect(container.querySelector('input[name="note"]')).toBeNull();
 });
 
 async function selectPhoto(file: File) {

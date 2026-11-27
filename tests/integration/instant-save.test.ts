@@ -161,6 +161,30 @@ describe("saving a pasted link at once", () => {
     });
   });
 
+  it("retains owner fields through blocked previews, refreshes and link replacements", async () => {
+    const save = instantSave();
+    const blocked = await robe({title: "Target", price: null, image: undefined});
+    save.resolve.mockResolvedValue(blocked);
+    const added = await addListItem(owner, ownerId, {
+      kind: "link", link: blocked.url, title: "Target", price: "",
+    }, save.services);
+    await save.runLater();
+    await refreshListItem(owner, ownerId, added.id, save.services);
+
+    save.resolve.mockResolvedValue(await robe());
+    await expect(refreshListItem(owner, ownerId, added.id, save.services)).resolves.toMatchObject({
+      title: "Target", price: null, hasPhoto: true, pictureComing: false,
+    });
+
+    const replacement = await robe({url: "https://www.target.com/p/mittens/-/A-6789", title: "Target", price: null});
+    save.resolve.mockResolvedValue(replacement);
+    await editListItem(owner, ownerId, added.id, {link: replacement.url}, save.services);
+    save.resolve.mockResolvedValue({...replacement, title: "Winter mittens", price: "25.00"});
+    await expect(refreshListItem(owner, ownerId, added.id, save.services)).resolves.toMatchObject({
+      title: "Target", price: null, url: replacement.url, hasPhoto: true, pictureComing: false,
+    });
+  });
+
   it("does not tell a giver about the first picture arriving", async () => {
     const save = instantSave();
     save.resolve.mockImplementation(async () => robe());

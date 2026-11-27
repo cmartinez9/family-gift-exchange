@@ -17,6 +17,7 @@ import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
+import {parseLink} from "@/server/lists/link-preview/url";
 import {sizePresets} from "@/server/lists/validation";
 import {saveProfileField} from "../lists/actions";
 import type {FormState, PreviewCard, PreviewState} from "../lists/action-types";
@@ -192,16 +193,11 @@ export function SizesStep({ownerId, initial, profileHref}: {
   );
 }
 
-/** The store's name from a pasted link, for "Getting the picture from Target". */
-export function storeFromLink(value: string) {
+function pastedLink(value: string) {
   try {
-    const url = new URL(/^[a-z]+:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`);
-    if (!/^https?:$/.test(url.protocol) || !url.hostname.includes(".") || url.username || url.password) return "";
-    const host = url.hostname.replace(/^www\./, "");
-    const name = host.split(".")[0] ?? "";
-    return name ? name[0].toUpperCase() + name.slice(1) : "";
+    return parseLink(value);
   } catch {
-    return "";
+    return null;
   }
 }
 
@@ -347,8 +343,10 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
   const [loading, setLoading] = useState(false);
   const version = useRef(0);
   const previewRequest = useRef<AbortController | null>(null);
-  const field = useRef<HTMLInputElement>(null);
-  const store = card?.store || storeFromLink(link);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const parsed = pastedLink(link);
+  const name = parsed?.url.hostname.replace(/^www\./, "").split(".")[0] ?? "";
+  const store = card?.store || (name ? name[0].toUpperCase() + name.slice(1) : "");
 
   useEffect(() => {
     field.current?.focus();
@@ -370,7 +368,7 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
     const typed = value.trim();
     setCard(null);
     setFailed(false);
-    if (!storeFromLink(typed)) {
+    if (!pastedLink(typed)) {
       setLoading(false);
       return;
     }
@@ -402,10 +400,11 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
     previewRequest.current?.abort();
     version.current++;
     setLoading(false);
+    data.set("note", note);
     submit(data);
   }
 
-  const ready = Boolean(storeFromLink(link));
+  const ready = Boolean(parsed);
   return (
     <form action={save} className="contents">
       <Screen actions={<>
@@ -423,9 +422,9 @@ function PasteLink({ownerId, submit, pending, error, onBack, backLabel}: {
           <div className="flex h-14 items-center gap-2.5 rounded-pill bg-snow-white pr-1 pl-[18px] text-ink">
             <Icon name="link" size={22} className="text-muted-ink" />
             <label htmlFor="paste-link" className="sr-only">{t("field")}</label>
-            <input ref={field} id="paste-link" name="link" type="text" inputMode="url" autoCapitalize="none" autoComplete="off"
-              spellCheck={false} maxLength={2048} value={link} placeholder={t("placeholder")}
-              className="min-w-0 flex-1 bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink"
+            <textarea ref={field} id="paste-link" name="link" rows={1} inputMode="url" autoCapitalize="none" autoComplete="off"
+              spellCheck={false} maxLength={3000} value={link} placeholder={t("placeholder")}
+              className="min-w-0 flex-1 resize-none bg-transparent text-body font-semibold outline-none placeholder:font-normal placeholder:text-muted-ink"
               onChange={(event) => change(event.target.value)} />
             {link && <IconButton icon="close" label={t("clear")} className="bg-[#F3EEEC]" iconSize={20} onClick={() => {
               change("");
