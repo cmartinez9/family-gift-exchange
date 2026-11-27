@@ -12,7 +12,7 @@ import {withFamily} from "@/server/db/client";
 import {DrawError, organizerExchange} from "@/server/draw";
 import {listFamilyWishlists} from "@/server/lists";
 import {saveRosterAndContinue} from "../../../actions";
-import {DrawRecovery, drawPage} from "../../../components";
+import {DrawRecovery, drawPage, PersonStatusScreen} from "../../../components";
 import {FormScreen} from "../../../form";
 import {AddNames} from "../../../../family/add-names";
 import {RosterFields} from "../../../roster";
@@ -30,6 +30,9 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
   if (state instanceof DrawError) return <DrawRecovery error={state} manageId={exchangeId} />;
   const {id, version, name, listDeadline} = state.exchange;
   const hub = `/exchanges/${id}/manage`;
+  if (state.exchange.status === "closed") {
+    return <PersonStatusScreen status="closed" details={state.exchange} back={hub} backLabel={name} />;
+  }
 
   if (!version) {
     return (
