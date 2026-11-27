@@ -12,7 +12,7 @@ import {Sheet} from "@/components/ui/sheet";
 import {askForHelpWithKey, forgotPin, type AuthResult} from "./actions";
 import {tryAuthAction} from "./client-action";
 
-/** Who is asking: a joined person by name, or the owner of the key on screen, before they have a PIN. */
+/** Who is asking: a person by name, or the owner of the key on screen, before they have a PIN. */
 export type HelpAsker =
   | {familyId: string; personId: string}
   | {familyId: string; key: {value: string; typed: boolean; preview: string | null}};

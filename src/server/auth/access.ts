@@ -305,16 +305,14 @@ export async function signInWithPin(
 
 /**
  * Forgot my PIN: ask the organizers for a new key, at most three times a day per person. The same request is
- * the "Ask the organizer for help" link; `beforeJoining` lets it come from a first key, before any PIN exists.
+ * the "Ask the organizer for help" link.
  */
 export async function requestPinReset(
   tx: FamilyTransaction, familyId: string, personId: string, device: Device, now: Date,
-  {beforeJoining = false}: {beforeJoining?: boolean} = {},
 ) {
   if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
   const person = await activePerson(tx, familyId, personId);
   if (!person || person.helperId) return {error: "unavailable"} as const;
-  if (!beforeJoining && !await credential(tx, familyId, personId)) return {error: "unavailable"} as const;
   const [recent] = await tx.select({total: count()}).from(pinResetRequests).where(and(
     eq(pinResetRequests.familyId, familyId), eq(pinResetRequests.personId, personId),
     gt(pinResetRequests.requestedAt, new Date(now.getTime() - day)),
@@ -342,7 +340,7 @@ export async function requestHelpWithKey(
   if (typed && (typeof preview !== "string" || !validCodePreview(preview, pepper, familyId, key, value, device.hash))) {
     return {error: "unavailable"} as const;
   }
-  const result = await requestPinReset(tx, familyId, key.personId, device, now, {beforeJoining: true});
+  const result = await requestPinReset(tx, familyId, key.personId, device, now);
   return result.success ? {...result, personId: key.personId} : result;
 }
 

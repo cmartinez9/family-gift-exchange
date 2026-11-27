@@ -71,6 +71,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   }
 
   const {entry, sender, organizer} = found;
+  const help = <SignInHelp familyId={key.familyId} personId={entry.personId} />;
   const other = viewer && (viewer.familyId !== key.familyId || viewer.personId !== entry.personId);
   if (other) {
     // a forwarded key, refused (10.6): this phone stays signed in as someone else, and nothing changes
@@ -80,7 +81,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     return (
       <Screen actions={<>
         <ButtonLink href="/" icon="home">{t("home", {current: currentName})}</ButtonLink>
-        <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+        {help}
       </>}>
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("title", {name: entry.name})} lead={t("lead", {name: entry.name, current: currentName})} className="pt-6" />
@@ -106,7 +107,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     return (
       <Screen actions={<>
         <ButtonLink href="/account" transition="push">{auth("openAccount")}</ButtonLink>
-        <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+        {help}
       </>}>
         <PageTitle title={auth("yourKey")} lead={auth("feedback.usedKey")} className="pt-10" />
       </Screen>
@@ -119,7 +120,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
     return (
       <Screen actions={<>
         <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
-        <SignInHelp familyId={key.familyId} personId={viewer?.personId} />
+        {help}
       </>}>
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("missing")} lead={t("missingLead")} className="pt-6" />

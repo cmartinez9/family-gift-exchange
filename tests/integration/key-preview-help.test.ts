@@ -5,9 +5,9 @@ import {requireIssuedKey} from "../helpers/issued-key";
 import {withFamily} from "../../src/server/db/client";
 import {exchanges, families, outbox, people} from "../../src/server/db/schema";
 import {
-  inspectKey, issueKey, redeemKey, requestHelpWithKey, requestPinReset, type Device,
+  inspectKey, issueKey, redeemKey, requestHelpWithKey, requestPinReset, signInWithPin, type Device,
 } from "../../src/server/auth/access";
-import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
+import {changeCoOrganizer, createFamily, readiness, saveMember, signInFamily} from "../../src/server/auth/families";
 import {keyPreview} from "../../src/server/auth/key-preview";
 import {createCodePreview} from "../../src/server/auth/code-preview";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "../../src/server/auth/schema";
@@ -132,8 +132,6 @@ it("gives revoked, used, expired, unknown and looked-after keys the generic prev
 it("asks the organizers for help from an unopened key, and the request ends when the key is opened", async () => {
   const f = await fixture();
   const key = await f.issue();
-  // a first key has no PIN behind it yet, so the plain forgot-PIN request refuses it
-  await expect(forgotPin(f.familyId, f.rosa)).resolves.toEqual({error: "unavailable"});
   await expect(askForHelpWithKey(f.familyId, key.token!, false, null)).resolves.toEqual({success: "resetRequested"});
   const board = await tx(f.familyId, (t) => readiness(t, f.organizer, now));
   expect(board?.requests).toEqual([expect.objectContaining({personId: f.rosa, deviceKind: "iphone"})]);
@@ -176,6 +174,48 @@ it("refuses help requests that a key can't vouch for", async () => {
     .resolves.toEqual({error: "unavailable"});
   await expect(ask(key.code!, true, createCodePreview(f.pepper, f.familyId, entry, key.code!, phone.hash), phone))
     .resolves.toEqual({success: "resetRequested", personId: f.rosa});
-  // the plain request still needs a joined person, as before
-  await expect(tx(f.familyId, (t) => requestPinReset(t, f.familyId, f.rosa, device(), now))).resolves.toEqual({error: "unavailable"});
+  await expect(tx(f.familyId, (t) => requestPinReset(t, f.familyId, randomUUID(), device(), now))).resolves.toEqual({error: "unavailable"});
+});
+
+it("lets an invited member ask by name before making a PIN, with the same notices and limit", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const roster = await tx(f.familyId, (t) => signInFamily(t, f.familyId));
+  expect(roster?.helpNames).toContainEqual({id: f.rosa, name: "Rosa"});
+  expect(roster?.names.some(({id}) => id === f.rosa)).toBe(false);
+  const before = await authState(f.familyId);
+  await expect(forgotPin(f.familyId, f.rosa)).resolves.toEqual({success: "resetRequested"});
+  await expect(askForHelpWithKey(f.familyId, key.token!, false, null)).resolves.toEqual({success: "resetRequested"});
+  await expect(forgotPin(f.familyId, f.rosa)).resolves.toEqual({success: "resetRequested"});
+  await expect(forgotPin(f.familyId, f.rosa)).resolves.toEqual({error: "tryLater"});
+  await expect(askForHelpWithKey(f.familyId, key.token!, false, null)).resolves.toEqual({error: "tryLater"});
+  const after = await authState(f.familyId);
+  for (const table of ["keys", "events", "limits", "sessions", "pins", "passkeys"] as const) {
+    expect(after[table]).toEqual(before[table]);
+  }
+  expect(after.requests).toHaveLength(3);
+  expect(after.requests.every(({personId}) => personId === f.rosa)).toBe(true);
+  const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
+  expect(notices).toHaveLength(6);
+  expect(notices.every(({requesterName}) => requesterName === "Rosa")).toBe(true);
+  for (const personId of [f.ana, f.organizer.personId]) {
+    expect(notices.filter((notice) => notice.personId === personId)).toHaveLength(3);
+  }
+  await expect(tx(f.familyId, (t) => signInWithPin(t, f.familyId, f.rosa, pin, f.pepper, device(), now)))
+    .resolves.toEqual({error: "invalidPin"});
+  expect((await tx(f.familyId, (t) => readiness(t, f.organizer, now)))?.requests).toHaveLength(3);
+});
+
+it("excludes removed, unknown and helper-managed members from named help", async () => {
+  const f = await fixture();
+  const managed = await f.add("Leo", f.ana);
+  const removed = await f.add("Removed");
+  await tx(f.familyId, (t) => t.update(people).set({removedAt: now}).where(eq(people.id, removed)));
+  const roster = await tx(f.familyId, (t) => signInFamily(t, f.familyId));
+  expect(roster?.helpNames.map(({id}) => id).toSorted()).toEqual([f.rosa, f.ana, f.organizer.personId].toSorted());
+  for (const personId of [managed, removed, randomUUID()]) {
+    await expect(forgotPin(f.familyId, personId)).resolves.toEqual({error: "unavailable"});
+  }
+  expect(await tx(f.familyId, (t) => t.select().from(pinResetRequests))).toEqual([]);
+  expect(await tx(f.familyId, (t) => t.select().from(outbox).where(eq(outbox.template, "pin-reset-request")))).toEqual([]);
 });

@@ -7,7 +7,7 @@ import en from "../../messages/en.json";
 import es from "../../messages/es.json";
 import {AskForHelp, firstName} from "../../src/app/[locale]/sign-in/ask-for-help";
 import {KeyWelcome, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
-import {SignInFlow, SignInScreen} from "../../src/app/[locale]/sign-in/screen";
+import {SignInFlow, SignInHelp, SignInScreen} from "../../src/app/[locale]/sign-in/screen";
 import KeyPage from "../../src/app/[locale]/key/[key]/page";
 import FaceIdPage from "../../src/app/[locale]/face-id/page";
 
@@ -61,7 +61,8 @@ beforeEach(() => {
   server.keySender.mockResolvedValue("Christian");
   server.organizerName.mockResolvedValue("Christian Martinez");
   server.peopleOnDevice.mockResolvedValue(["rosa"]);
-  server.signInFamily.mockResolvedValue({name: "Martinez", names: [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}]});
+  const names = [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}];
+  server.signInFamily.mockResolvedValue({name: "Martinez", names, helpNames: names});
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -123,8 +124,12 @@ function prepareSheet() {
 }
 
 async function chooseLastName() {
-  const choice = container.querySelector<HTMLButtonElement>("dialog li:last-child button");
-  expect(choice?.textContent).toContain("Ana");
+  await chooseName("Ana");
+}
+
+async function chooseName(name: string) {
+  const choice = [...container.querySelectorAll<HTMLButtonElement>("dialog li button")].find((button) => button.textContent?.endsWith(name));
+  expect(choice, name).toBeDefined();
   await act(async () => choice!.click());
 }
 
@@ -351,7 +356,7 @@ it.each(["missing", "unavailable", "already-yours", "forwarded"] as const)("offe
   actions.forgotPin.mockResolvedValue({success: "resetRequested"});
   await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
   await tap("Ask Christian for help");
-  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(viewerFamilyId, branch === "forwarded" ? "ana" : "rosa");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
   expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
   expect(actions.useKey).not.toHaveBeenCalled();
 });
@@ -369,4 +374,49 @@ it.each(["sign-in", "paused", "key"] as const)("does not invent a help recipient
     : await SignInFlow({search: screen === "paused" ? {safety: "1"} : {}}));
   expect(link("Ask Christian for help")).toBeUndefined();
   expect(actions.forgotPin).not.toHaveBeenCalled();
+});
+
+it.each(["joined", "invited"] as const)("targets the inspected %s key owner instead of the remembered person", async (membership) => {
+  const helpNames = [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}];
+  server.signInFamily.mockResolvedValue({name: "Martinez", helpNames,
+    names: membership === "joined" ? helpNames : helpNames.filter(({id}) => id === "ana")});
+  server.peopleOnDevice.mockResolvedValue(["ana"]);
+  server.inspectKey.mockResolvedValue({...keyEntry, available: false});
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
+  expect(container.querySelector("dialog")).toBeNull();
+  expect(actions.useKey).not.toHaveBeenCalled();
+});
+
+it("asks for a name when an explicit target is unavailable, without silently substituting the remembered person", async () => {
+  server.peopleOnDevice.mockResolvedValue(["ana"]);
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(await SignInHelp({familyId: routeFamilyId, personId: "removed"}));
+  const {sheet} = prepareSheet();
+  await tap("Ask Christian for help");
+  expect(sheet.open).toBe(true);
+  expect(actions.forgotPin).not.toHaveBeenCalled();
+  await chooseName("Rosa");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
+});
+
+it.each(["home", "picker", "code", "paused"] as const)("includes first-time members in %s help without offering PIN sign-in", async (screen) => {
+  server.signInFamily.mockResolvedValue({name: "Martinez", names: [{id: "ana", name: "Ana"}],
+    helpNames: [{id: "rosa", name: "Rosa"}, {id: "ana", name: "Ana"}]});
+  server.peopleOnDevice.mockResolvedValue([]);
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  actions.previewCode.mockResolvedValue({error: "unavailable"});
+  await render(screen === "home" ? await SignInScreen({}) : await SignInFlow({search: {
+    family: routeFamilyId, all: "1", ...(screen === "code" ? {join: "1"} : screen === "paused" ? {safety: "1"} : {person: "rosa"}),
+  }}));
+  expect([...container.querySelectorAll("a")].some((link) => link.getAttribute("href")?.includes("person=rosa"))).toBe(false);
+  if (screen === "picker") expect(container.querySelector("h1")?.textContent).toBe(en.getIn.who.title);
+  if (screen === "code") await submitCode();
+  prepareSheet();
+  await tap("Ask Christian for help");
+  await chooseName("Rosa");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(screen === "home" ? "family" : routeFamilyId, "rosa");
+  expect(actions.enterPin).not.toHaveBeenCalled();
 });

@@ -391,3 +391,46 @@ test("code entry and a paused family share help requests and the existing limit"
     await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
   }
 });
+
+test("an invited member can ask after a failed code or expired key on someone else's remembered phone", async ({page}) => {
+  const f = await seed();
+  try {
+    await inFamily(f.familyId, (t) => t.update(personalKeys).set({expiresAt: new Date(Date.now() - 1000)})
+      .where(eq(personalKeys.personId, f.ids.Rosa)));
+    const before = await keyState(f.familyId);
+    await page.context().addCookies([
+      {name: "__Host-fge-device", value: f.titoPhone, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
+      {name: "__Host-fge-family", value: f.familyId, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
+    ]);
+    await page.goto(`/en/sign-in?family=${f.familyId}&all=1`);
+    await expect(page.getByRole("heading", {name: en.getIn.who.title})).toBeVisible();
+    await expect(page.getByRole("link", {name: "Rosa", exact: true})).toHaveCount(0);
+    await page.getByRole("link", {name: en.getIn.who.ownKey}).click();
+    await page.getByLabel(en.auth.keyCode).fill("000000");
+    await page.getByRole("button", {name: en.auth.checkCode}).click();
+    await expect(page.getByRole("alert")).toHaveText(en.auth.feedback.unavailable);
+    await page.getByRole("button", {name: "Ask Christian for help"}).click();
+    await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Rosa", exact: true}).click();
+    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+    for (let request = 2; request <= 4; request++) {
+      await page.goto(f.keys.Rosa);
+      await expect(page.getByRole("heading", {name: en.getIn.other.missing})).toBeVisible();
+      await page.getByRole("button", {name: "Ask Christian for help"}).click();
+      await expect(page.getByRole("status")).toHaveText(request <= 3
+        ? "Christian has been asked. Watch your chat." : "Christian was already asked today. Watch your chat.");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+    const after = await keyState(f.familyId);
+    expect(after.requests).toHaveLength(3);
+    expect(after.requests.every(({personId}) => personId === f.ids.Rosa)).toBe(true);
+    expect(after.keys).toEqual(before.keys);
+    expect(after.sessions).toEqual(before.sessions);
+    expect(after.pins).toEqual(before.pins);
+    expect(after.pins.some(({personId}) => personId === f.ids.Rosa)).toBe(false);
+    const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
+    expect(notices).toHaveLength(6);
+    expect(notices.every(({requesterName}) => requesterName === "Rosa")).toBe(true);
+  } finally {
+    await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
+  }
+});

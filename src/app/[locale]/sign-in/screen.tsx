@@ -39,12 +39,11 @@ async function loadFamily(search: Search) {
 }
 
 function familyHelp(family: NonNullable<Awaited<ReturnType<typeof loadFamily>>>, personId?: string) {
-  const selected = family.names.find(({id}) => id === personId);
-  const mine = family.names.filter(({id}) => family.known.includes(id));
-  const person = selected ?? (mine.length === 1 ? mine[0] : null);
+  const matches = family.helpNames.filter(({id}) => personId ? id === personId : family.known.includes(id));
+  const person = matches.length === 1 ? matches[0] : null;
   return <AskForHelp organizer={family.organizer} asker={person
     ? {familyId: family.familyId, personId: person.id}
-    : {familyId: family.familyId, names: family.names}} />;
+    : {familyId: family.familyId, names: family.helpNames}} />;
 }
 
 export async function SignInHelp({familyId, personId}: {familyId?: string; personId?: string}) {
@@ -101,9 +100,9 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
     help={family ? familyHelp(family, search.person) : null} />;
   if (!family) return <FindFamily />;
 
-  const {familyId, names, organizer, known} = family;
+  const {familyId, names, helpNames, organizer, known} = family;
   const familyUrl = `/sign-in?family=${familyId}`;
-  if (search.join === "1") return <CodeEntry familyId={familyId} backHref={familyUrl} sender={null} organizer={organizer} names={names} />;
+  if (search.join === "1") return <CodeEntry familyId={familyId} backHref={familyUrl} sender={null} organizer={organizer} names={helpNames} />;
 
   const selected = names.find(({id}) => id === search.person);
   if (selected) {
@@ -121,7 +120,7 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
       help={<AskForHelp organizer={organizer} asker={{familyId, personId: me.id}} />} />;
   }
   return <WhoIsUsing names={names} familyUrl={familyUrl}
-    help={<AskForHelp organizer={organizer} asker={{familyId, names}} />} />;
+    help={<AskForHelp organizer={organizer} asker={{familyId, names: helpNames}} />} />;
 }
 
 async function WelcomeBack({name, pinHref, othersHref, help}: {name: string; pinHref: string; othersHref: string; help: ReactNode}) {
