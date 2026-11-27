@@ -597,6 +597,8 @@
     },
     "help": {
       "ask": "Ask {organizer} for help",
+      "who": "Who needs help?",
+      "chooseName": "Choose your name to ask {organizer}.",
       "asked": "{organizer} has been asked. Watch your chat.",
       "already": "{organizer} was already asked today. Watch your chat.",
       "failed": "That didn't send. Try again."

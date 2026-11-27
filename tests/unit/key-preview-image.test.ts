@@ -22,8 +22,9 @@ it("lets a long name take the whole tile, and falls back to the first name", () 
 });
 
 it("knits the gift when there is no name or the alphabet can't draw it", () => {
-  for (const name of [null, "Güero", "Pépé", "", "   "]) {
+  for (const name of [null, "José", "Güero", "Pépé", "W".repeat(60), "", "   "]) {
     expect(previewPieces(name).map(({bitmap}) => bitmap)).toEqual([MOTIFS.flake, MOTIFS.gift, MOTIFS.flake]);
+    expect(previewSvg(name)).toBe(previewSvg(null));
   }
 });
 

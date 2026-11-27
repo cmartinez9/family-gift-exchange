@@ -292,3 +292,62 @@ test("in Spanish and at the largest text size, the link stays in the column", as
     await context.close();
   }
 });
+
+test("home and the name picker ask for the right person and share the daily limit", async ({page}) => {
+  const f = await seed();
+  try {
+    await page.context().addCookies([
+      {name: "__Host-fge-device", value: f.titoPhone, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
+      {name: "__Host-fge-family", value: f.familyId, url: origin, secure: true, httpOnly: true, sameSite: "Lax"},
+    ]);
+    await page.goto("/en");
+    await page.getByRole("button", {name: "Ask Christian for help"}).click();
+    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+    await shot(page, "home-help-asked");
+
+    await page.goto(`/en/sign-in?family=${f.familyId}&all=1`);
+    await page.getByRole("button", {name: "Ask Christian for help"}).click();
+    const choice = page.getByRole("dialog", {name: en.getIn.help.who});
+    await expect(choice).toBeVisible();
+    expect(await inFamily(f.familyId, (t) => t.select().from(pinResetRequests))).toHaveLength(1);
+    await shot(page, "name-picker-help-choice");
+    await choice.getByRole("button", {name: "Tito", exact: true}).click();
+    await expect(page.getByRole("status")).toHaveText("Christian has been asked. Watch your chat.");
+
+    await page.context().clearCookies();
+    await page.context().addCookies([{name: "__Host-fge-family", value: f.familyId, url: origin, secure: true, httpOnly: true, sameSite: "Lax"}]);
+    await page.goto("/es");
+    await page.getByRole("button", {name: "Pedirle ayuda a Christian"}).click();
+    await page.getByRole("dialog", {name: es.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
+    await expect(page.getByRole("status")).toHaveText("Ya le avisamos a Christian. Revisa tu chat.");
+
+    await page.goto(`/en/sign-in?family=${f.familyId}&all=1`);
+    await page.getByRole("button", {name: "Ask Christian for help"}).click();
+    await page.getByRole("dialog", {name: en.getIn.help.who}).getByRole("button", {name: "Tito", exact: true}).click();
+    await expect(page.getByRole("status")).toHaveText("Christian was already asked today. Watch your chat.");
+    const requests = await inFamily(f.familyId, (t) => t.select().from(pinResetRequests));
+    expect(requests).toHaveLength(3);
+    expect(requests.every(({personId}) => personId === f.ids.Tito)).toBe(true);
+    const notices = await inFamily(f.familyId, (t) => t.select().from(outbox).where(eq(outbox.template, "pin-reset-request")));
+    expect(notices).toHaveLength(6);
+    expect(notices.every(({requesterName}) => requesterName === "Tito")).toBe(true);
+  } finally {
+    await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
+  }
+});
+
+test("the key's helper branch asks without opening the key", async ({page}) => {
+  await page.goto(family.keys.Marta);
+  await page.getByRole("button", {name: "No, I'm helping Marta"}).click();
+  await expect(page.getByRole("button", {name: "Ask Christian for help"})).toBeVisible();
+  await shot(page, "key-helper-help");
+  const before = await keyState(family.familyId);
+  await page.getByRole("button", {name: "Ask Christian for help"}).click();
+  await expect(page.getByRole("status").filter({hasText: "Christian has been asked. Watch your chat."})).toBeVisible();
+  const after = await keyState(family.familyId);
+  expect(after.keys).toEqual(before.keys);
+  expect(after.sessions).toEqual(before.sessions);
+  expect(after.pins).toEqual(before.pins);
+  expect(after.requests).toHaveLength(before.requests.length + 1);
+  expect(after.requests.filter(({personId}) => personId === family.ids.Marta)).toHaveLength(2);
+});

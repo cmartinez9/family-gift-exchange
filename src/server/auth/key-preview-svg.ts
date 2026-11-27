@@ -19,7 +19,7 @@ const EDGE = 40;
 const BESIDE_FLAKES_MIN = 16;
 const ALONE_MIN = 12;
 
-type Piece = {bitmap: Bitmap; cell: number; colors: StitchColors};
+type Piece = {bitmap: Bitmap; cell: number; colors: StitchColors; text?: string};
 
 const flake: Piece = {bitmap: MOTIFS.flake, cell: FLAKE_CELL, colors: {"#": YARN}};
 const gift: Piece = {bitmap: MOTIFS.gift, cell: FLAKE_CELL, colors: {"#": YARN, o: GOLD}};
@@ -38,13 +38,13 @@ export function previewPieces(name: string | null): Piece[] {
     if (!canStitch(word)) continue;
     const bitmap = textBitmap(word);
     const cell = fit(bitmap, beside);
-    if (cell >= BESIDE_FLAKES_MIN) return [flake, {bitmap, cell, colors: {"#": YARN}}, flake];
+    if (cell >= BESIDE_FLAKES_MIN) return [flake, {bitmap, cell, colors: {"#": YARN}, text: word}, flake];
   }
   for (const word of words) {
     if (!canStitch(word)) continue;
     const bitmap = textBitmap(word);
     const cell = fit(bitmap, alone);
-    if (cell >= ALONE_MIN) return [{bitmap, cell, colors: {"#": YARN}}];
+    if (cell >= ALONE_MIN) return [{bitmap, cell, colors: {"#": YARN}, text: word}];
   }
   return [flake, gift, flake];
 }

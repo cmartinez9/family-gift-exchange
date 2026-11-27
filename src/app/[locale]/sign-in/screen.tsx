@@ -49,11 +49,15 @@ export async function SignInScreen({search = {}}: {search?: Search}) {
   if (viewer) return <Link href="/account" className={linkClass}>{auth("openAccount")}</Link>;
   const family = await loadFamily(search);
   const pinHref = family ? `/sign-in?family=${family.familyId}` : "/sign-in";
+  const mine = family?.names.filter(({id}) => family.known.includes(id)) ?? [];
   return (
     <section className="flex flex-col items-center gap-2">
       <RefreshSession />
       <FaceIdTile />
       <TextLink href={pinHref}>{t("usePin")}</TextLink>
+      {family && <AskForHelp organizer={family.organizer} asker={mine.length === 1
+        ? {familyId: family.familyId, personId: mine[0].id}
+        : {familyId: family.familyId, names: family.names}} />}
     </section>
   );
 }
@@ -96,7 +100,8 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
     return <WelcomeBack name={me.name} pinHref={`${familyUrl}&person=${me.id}`} othersHref={`${familyUrl}&all=1`}
       help={<AskForHelp organizer={organizer} asker={{familyId, personId: me.id}} />} />;
   }
-  return <WhoIsUsing names={names} familyUrl={familyUrl} />;
+  return <WhoIsUsing names={names} familyUrl={familyUrl}
+    help={<AskForHelp organizer={organizer} asker={{familyId, names}} />} />;
 }
 
 async function WelcomeBack({name, pinHref, othersHref, help}: {name: string; pinHref: string; othersHref: string; help: ReactNode}) {
@@ -114,13 +119,14 @@ async function WelcomeBack({name, pinHref, othersHref, help}: {name: string; pin
   );
 }
 
-async function WhoIsUsing({names, familyUrl}: {names: Array<{id: string; name: string}>; familyUrl: string}) {
+async function WhoIsUsing({names, familyUrl, help}: {names: Array<{id: string; name: string}>; familyUrl: string; help: ReactNode}) {
   const t = await getTranslations("getIn.who");
   const auth = await getTranslations("auth");
   return (
     <Screen actions={<>
       <TextLink href={`${familyUrl}&join=1`} transition="push" className="self-center">{t("ownKey")}</TextLink>
       <FaceIdLink label={auth("signInFaceId")} />
+      {help}
     </>}>
       <PageTitle title={t("title")} lead={t("lead")} className="pt-10" />
       <div className="px-edge pt-5">

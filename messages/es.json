@@ -597,6 +597,8 @@
     },
     "help": {
       "ask": "Pedirle ayuda a {organizer}",
+      "who": "¿Quién necesita ayuda?",
+      "chooseName": "Elige tu nombre para pedirle ayuda a {organizer}.",
       "asked": "Ya le avisamos a {organizer}. Revisa tu chat.",
       "already": "Ya le avisamos a {organizer} hoy. Revisa tu chat.",
       "failed": "No se pudo enviar. Inténtalo de nuevo."

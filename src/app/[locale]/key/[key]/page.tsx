@@ -9,7 +9,7 @@ import {Screen} from "@/components/ui/screen";
 import {getViewer} from "@/server/auth";
 import {activePerson, inspectKey, parseLinkKey} from "@/server/auth/access";
 import {keySender, organizerName} from "@/server/auth/account";
-import {PREVIEW_SIZE} from "@/server/auth/key-preview-svg";
+import {PREVIEW_SIZE, previewPieces} from "@/server/auth/key-preview-svg";
 import {appOrigin, currentDeviceKind} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {KeyAlreadyOpened, KeyWelcome} from "../../sign-in/get-in";
@@ -30,9 +30,10 @@ export async function generateMetadata({params}: {params: Promise<{locale: strin
   // "Martinez" reads "Martinez family"; a name that already says family is kept as it is
   const family = preview && (/\bfamil(?:y|ia)\b/i.test(preview.familyName) ? preview.familyName : t("family", {family: preview.familyName}));
   const description = preview ? `${family} · ${t("season", {year: preview.year})}` : t("generic");
+  const stitchedName = previewPieces(preview?.name ?? null).find(({text}) => text)?.text;
   const images = [{
     url: new URL(`/${locale}/key/${key}/preview`, appOrigin()).toString(),
-    ...PREVIEW_SIZE, type: "image/png", alt: preview ? t("picture", {name: preview.name}) : t("genericPicture"),
+    ...PREVIEW_SIZE, type: "image/png", alt: stitchedName ? t("picture", {name: stitchedName}) : t("genericPicture"),
   }];
   return {
     ...await screenTitle("hello.title"),

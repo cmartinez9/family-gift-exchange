@@ -208,7 +208,7 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
 
   if (phase === "helper") {
     return (
-      <Screen>
+      <Screen actions={help}>
         <WelcomeSteps step={1} />
         <div className="px-edge pt-8 pb-6">
           <HelpingKey name={entry.name} typed={typed} onHandOver={() => setPhase("pin")} onBack={() => setPhase("hello")} />
