@@ -1,8 +1,8 @@
 import "server-only";
-import {and, eq, isNull, notInArray, sql} from "drizzle-orm";
+import {and, eq, inArray, isNull, notInArray, sql} from "drizzle-orm";
 import {withFamily} from "../../db/client";
 import type {FamilyTransaction} from "../../db/database";
-import {claims, items, people} from "../../db/schema";
+import {claims, exchanges, items, people} from "../../db/schema";
 import {
   hidesClaims, ListError, requireListActor, requireListPerson, type ListViewer,
 } from "../access";
@@ -55,7 +55,11 @@ export async function claimItem(viewer: ListViewer, itemId: string) {
       .from(claims).where(itemClaim(viewer.familyId, itemId));
     if (existing?.mine) return;
     if (existing) throw new ListError("already-claimed");
-    await tx.insert(claims).values({familyId: viewer.familyId, itemId, claimerId: viewer.actingAs});
+    // Hold the season open until the claim is saved. Closing locks the same exchange FOR UPDATE.
+    const [exchange] = await tx.select({id: exchanges.id}).from(exchanges).where(and(
+      eq(exchanges.familyId, viewer.familyId), inArray(exchanges.status, ["open", "drawn", "locked"]),
+    )).limit(1).for("key share");
+    await tx.insert(claims).values({familyId: viewer.familyId, itemId, claimerId: viewer.actingAs, exchangeId: exchange?.id});
   });
 }
 
