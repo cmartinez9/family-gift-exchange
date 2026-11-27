@@ -20,10 +20,7 @@ function Bullet({icon, children}: {icon: IconName; children: string}) {
   );
 }
 
-/**
- * Dropouts and late joiners after the draw. Each change re-knits only the loops it touches, so it asks
- * first, in a sheet that says who is affected and that nobody learns who.
- */
+/** Confirm roster changes without identifying affected givers or exposing their matches. */
 export function ParticipationRows({exchangeId, version, people}: {exchangeId: string; version: number; people: Person[]}) {
   const t = useTranslations("draw");
   const ui = useTranslations("ui");

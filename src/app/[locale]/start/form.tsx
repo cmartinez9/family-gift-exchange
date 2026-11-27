@@ -10,7 +10,6 @@ import {haptic} from "@/components/ui/motion/haptic";
 import {Screen} from "@/components/ui/screen";
 import {startFamily, type AuthResult} from "../sign-in/actions";
 
-/** The organizer's first form: the invitation, the family's name, your name and a PIN, on one yarn block. */
 export function StartForm({hero}: {hero: React.ReactNode}) {
   const t = useTranslations("auth");
   const setup = useTranslations("draw.setup");
