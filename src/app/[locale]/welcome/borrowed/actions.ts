@@ -12,7 +12,8 @@ export type BorrowedReveal = {name?: string; error?: "unavailable" | "refresh"};
 /** Opening your own person on someone else's phone (9.3): the same reveal as on your own, and only there. */
 export async function revealOnBorrowedPhone(exchangeId: string, version: number): Promise<BorrowedReveal> {
   const viewer = await requireViewer({borrowed: "reveal"});
-  if (!viewer.borrowed || typeof exchangeId !== "string" || !Number.isInteger(version)) return {error: "unavailable"};
+  if (!viewer.borrowed) return {error: "refresh"};
+  if (typeof exchangeId !== "string" || !Number.isInteger(version)) return {error: "unavailable"};
   try {
     const {person} = await revealMyPerson(viewer, exchangeId, version);
     return {name: person.displayName};

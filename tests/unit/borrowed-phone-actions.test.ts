@@ -38,3 +38,15 @@ it("keeps a timed-out borrowed reveal retryable", async () => {
   server.revealMyPerson.mockRejectedValue(new DrawError("checkTimedOut"));
   await expect(revealOnBorrowedPhone("christmas", 1)).resolves.toEqual({error: "unavailable"});
 });
+
+it("refreshes into expiry cleanup when borrowing ends before the first reveal", async () => {
+  server.requireViewer.mockResolvedValue({personId: "ana", actingAs: "ana"});
+  await expect(revealOnBorrowedPhone("christmas", 1)).resolves.toEqual({error: "refresh"});
+  expect(server.revealMyPerson).not.toHaveBeenCalled();
+});
+
+it("keeps invalid reveal input unavailable while the borrowed identity is live", async () => {
+  server.requireViewer.mockResolvedValue({borrowed: {hidden: false}});
+  await expect(revealOnBorrowedPhone("christmas", 1.5)).resolves.toEqual({error: "unavailable"});
+  expect(server.revealMyPerson).not.toHaveBeenCalled();
+});

@@ -432,6 +432,26 @@ test("borrowed onboarding saves Rosa's sizes and gift while Ana's own list stays
   } finally { await f.close(); }
 });
 
+test("expiry before the first reveal returns to the owner's Home without opening a person", async ({browser}) => {
+  const f = await family(browser);
+  try {
+    const ana = await f.signedIn("Ana");
+    const {page} = ana;
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await handOver(page, await f.keyFor("Rosa"), "en");
+    expect(await f.seen("Rosa")).toBeNull();
+    await f.expireRosa();
+    await page.getByRole("button", {name: en.draw.person.revealTap}).click();
+    await expect(page).toHaveURL(/\/en$/);
+    expect(await f.seen("Rosa")).toBeNull();
+    const cookies = await page.context().cookies();
+    expect(cookies.find(({name}) => name === "__Host-fge-session")?.value).toBe(ana.sessionCookie);
+    expect(cookies.find(({name}) => name === "__Host-fge-borrowed")).toBeUndefined();
+  } finally {
+    await f.close();
+  }
+});
+
 test("Hide clears an already visible person even when the borrowed session has just expired", async ({browser}) => {
   const f = await family(browser);
   try {
