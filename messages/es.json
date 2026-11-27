@@ -445,6 +445,14 @@
       "budget-changed": {
         "title": "Cambió el presupuesto de los regalos",
         "body": "Abre la aplicación para ver el nuevo presupuesto."
+      },
+      "list-nudge": {
+        "title": "Tu lista de deseos te espera",
+        "body": "Agrega una o dos ideas de regalos para que tu familia sepa qué te gustaría recibir."
+      },
+      "person-nudge": {
+        "title": "Tu persona te espera",
+        "body": "Abre la aplicación para descubrir a tu persona en este intercambio."
       }
     },
     "privatePush": {
@@ -689,6 +697,7 @@
       "nothingYet": "Nada aún",
       "emptyTitle": "{name} todavía no ha agregado nada",
       "emptyHint": "Pregúntale qué le gustaría. No sabrá que eres tú.",
+      "emptyHintNudge": "Pregúntale qué le gustaría. No sabrá que eres tú. También le enviaremos un aviso.",
       "askForIdeas": "Pídele ideas a {name}",
       "budgetUnder": "de {budget}",
       "budgetOver": "Más de {budget}",
@@ -856,6 +865,15 @@
       "keySent": "Llave enviada, sin abrir",
       "notStarted": "Sin empezar",
       "whosInNote": "Solo tú ves esto. Nunca dice quién tiene a quién.",
+      "nudge": "Avisar",
+      "nudgeLabel": "Avisar a {name}",
+      "nudged": "Avisado",
+      "nudgeSent": "{name} recibirá un aviso",
+      "nudgeFailed": "No se envió. Inténtalo de nuevo.",
+      "nudgeNote": "Un aviso es una notificación en su teléfono. Nunca dice quién le tiene.",
+      "remindUnopened": "Recordar que descubran a su persona",
+      "unopenedNudgeHint": "Un aviso privado para quienes aún no descubren a su persona. Una vez al día por intercambio.",
+      "unopenedNudgeSent": "Avisos enviados",
       "remindChat": "Recordarle al chat familiar"
     },
     "keys": {

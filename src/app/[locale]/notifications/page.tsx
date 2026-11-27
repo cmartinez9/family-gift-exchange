@@ -26,6 +26,8 @@ const ICONS: Readonly<Record<Template, IconName>> = {
   "key-opened-elsewhere": "phone",
   "claimed-item-changed": "gift",
   "budget-changed": "tag",
+  "list-nudge": "list",
+  "person-nudge": "gift",
 };
 
 export default async function NotificationsPage() {

@@ -11,17 +11,17 @@ import {readiness} from "@/server/auth/families";
 import {withFamily} from "@/server/db/client";
 import {DrawError, organizerExchange} from "@/server/draw";
 import {listFamilyWishlists} from "@/server/lists";
+import {nudgedToday} from "@/server/messages";
+import {todayInExchangeCalendar} from "@/server/messages/calendar";
 import {saveRosterAndContinue} from "../../../actions";
 import {DrawRecovery, drawPage, PersonStatusScreen} from "../../../components";
 import {FormScreen} from "../../../form";
+import {NudgeButton} from "../../../nudge-button";
+import {RemindUnopenedButton} from "../../../remind-unopened-button";
 import {AddNames} from "../../../../family/add-names";
 import {RosterFields} from "../../../roster";
 import {SetupSteps} from "../../../setup";
 
-/**
- * Who's in. In setup (step 2) it is the roster: add names, tick who takes part. After the draw it is
- * who has a ready list, without ever hinting at who has whom.
- */
 export default async function PeoplePage({params}: {params: Promise<{exchangeId: string}>}) {
   const viewer = await requireViewer();
   const {exchangeId} = await params;
@@ -49,9 +49,12 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
     );
   }
 
-  const [board, lists] = await Promise.all([
-    withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date())),
+  const now = new Date();
+  const day = todayInExchangeCalendar(now);
+  const [board, lists, nudged] = await Promise.all([
+    withFamily(viewer.familyId, (tx) => readiness(tx, viewer, now)),
     listFamilyWishlists(viewer).catch(() => []),
+    nudgedToday(viewer, id, now),
   ]);
   const byId = new Map(lists.map((list) => [list.id, list]));
   const members = new Map((board?.members ?? []).map((member) => [member.id, member]));
@@ -66,6 +69,8 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
     if (member?.joinedAt || helper) return t("season.noList");
     return board?.sent.some((key) => key.personId === personId) ? t("season.keySent") : t("season.notStarted");
   };
+  const canNudge = (personId: string) => personId !== viewer.personId && members.has(personId) && !byId.get(personId)?.itemCount;
+  const anyNudge = taking.some(({id: personId}) => canNudge(personId));
   return (
     <Screen back={hub} actions={<ButtonLink href="/family/group-chat" transition="push" icon="share">{t("season.remindChat")}</ButtonLink>}>
       <BackRow href={hub} parent={name} backLabel={ui("back")} />
@@ -74,24 +79,31 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
         : t("season.whosInLead")} />
       <KnitIn className="flex flex-col gap-3 px-edge pt-6 pb-6">
         <Card flush className="px-5 py-1">
-          <ul className="fge-rows flex flex-col">
+          {/* at the largest text sizes the avatar steps aside and the tick or Nudge drops under the name */}
+          <ul className="fge-rows @container flex flex-col">
             {taking.map(({id: personId, displayName}) => {
               const ready = Boolean(byId.get(personId)?.ready);
               const you = personId === viewer.personId;
               return (
-                <li key={personId} className="flex min-h-16 items-center gap-3.5 py-2">
-                  <Avatar name={displayName} size={44} />
-                  <span className="flex min-w-0 flex-1 flex-col">
+                <li key={personId} className="flex min-h-16 flex-wrap items-center gap-x-3.5 gap-y-2 py-2">
+                  <Avatar name={displayName} size={44} className="@max-[16rem]:hidden" />
+                  <span className="flex min-w-0 flex-1 basis-24 flex-col">
                     <span className="text-row-title break-words">{displayName}</span>
                     <span className="text-body text-muted-ink">{you ? `${t("setup.youCap")} · ${status(personId)}` : status(personId)}</span>
                   </span>
-                  <Tick done={ready} label={ready ? t("season.listReady") : t("season.listNotReady")} />
+                  {canNudge(personId)
+                    ? <NudgeButton exchangeId={id} personId={personId} name={displayName} day={day} nudged={nudged.includes(personId)} />
+                    : <Tick done={ready} label={ready ? t("season.listReady") : t("season.listNotReady")} />}
                 </li>
               );
             })}
           </ul>
         </Card>
-        <p className="text-body">{t("season.whosInNote")}</p>
+        <p className="text-body">{anyNudge ? t("season.nudgeNote") : t("season.whosInNote")}</p>
+        <Card className="flex flex-col gap-3">
+          <p className="text-body">{t("season.unopenedNudgeHint")}</p>
+          <RemindUnopenedButton exchangeId={id} />
+        </Card>
       </KnitIn>
     </Screen>
   );

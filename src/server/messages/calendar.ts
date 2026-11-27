@@ -17,3 +17,7 @@ export function tomorrowInExchangeCalendar(now: Date) {
 export function daysUntilInExchangeCalendar(giftDay: string, now: Date) {
   return Math.round((Date.parse(giftDay) - exchangeDate(now)) / 86_400_000);
 }
+
+export function todayInExchangeCalendar(now: Date) {
+  return new Date(exchangeDate(now)).toISOString().slice(0, 10);
+}

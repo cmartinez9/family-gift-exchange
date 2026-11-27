@@ -445,6 +445,14 @@
       "budget-changed": {
         "title": "The gift budget changed",
         "body": "Open the app to see the new budget."
+      },
+      "list-nudge": {
+        "title": "Your wishlist is waiting",
+        "body": "Add a gift idea or two so your family knows what you’d like."
+      },
+      "person-nudge": {
+        "title": "Your person is waiting",
+        "body": "Open the app to see your person for this exchange."
       }
     },
     "privatePush": {
@@ -689,6 +697,7 @@
       "nothingYet": "Nothing yet",
       "emptyTitle": "{name} hasn’t added anything yet",
       "emptyHint": "Ask what they’d like. They won’t know it’s you.",
+      "emptyHintNudge": "Ask what they’d like. They won’t know it’s you. We’ll also nudge them.",
       "askForIdeas": "Ask {name} for ideas",
       "budgetUnder": "of {budget}",
       "budgetOver": "Over {budget}",
@@ -856,6 +865,15 @@
       "keySent": "Key sent, not opened",
       "notStarted": "Not started",
       "whosInNote": "Only you see this. It never says who has whom.",
+      "nudge": "Nudge",
+      "nudgeLabel": "Nudge {name}",
+      "nudged": "Nudged",
+      "nudgeSent": "{name} will get a nudge",
+      "nudgeFailed": "That didn’t send. Try again.",
+      "nudgeNote": "A nudge is a notice on their phone. It never says who has them.",
+      "remindUnopened": "Remind people to open their person",
+      "unopenedNudgeHint": "A private reminder for anyone who hasn’t opened their person. Once a day for this exchange.",
+      "unopenedNudgeSent": "Reminders sent",
       "remindChat": "Remind the group chat"
     },
     "keys": {

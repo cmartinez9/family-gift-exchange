@@ -148,6 +148,27 @@
       "when": 1795760137074,
       "tag": "0020_borrowed-phone",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795768517688,
+      "tag": "0021_list-nudges",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795768524010,
+      "tag": "0022_list-nudge-permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795768524794,
+      "tag": "0023_exchange-person-nudge",
+      "breakpoints": true
     }
   ]
 }
