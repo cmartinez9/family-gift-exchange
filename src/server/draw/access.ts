@@ -56,7 +56,8 @@ export function withDrawFamily<T>(
     // Family management takes the same family row before changing people or exchanges.
     await transaction.select({id: families.id}).from(families).where(eq(families.id, familyId)).for(familyLock);
     const current = await revalidateViewer(transaction, actor);
-    if (!current || current.actingAs !== actor.actingAs) throw new DrawError("forbidden");
+    // a person hidden on a borrowed phone stays hidden from whoever holds it next
+    if (!current || current.actingAs !== actor.actingAs || current.borrowed?.hidden) throw new DrawError("forbidden");
     if (delegation) {
       if (!current.isOrganizer || current.actingAs !== current.personId) throw new DrawError("forbidden");
       const [practice] = await transaction.select().from(practiceFamilies).where(and(

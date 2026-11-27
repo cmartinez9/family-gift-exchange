@@ -4,11 +4,14 @@ import {Card} from "@/components/ui/card";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {Screen} from "@/components/ui/screen";
-import {requireViewer} from "@/server/auth";
-import {faceIdOnDevice, listCount, mySizes} from "@/server/auth/account";
+import {requireWelcomeViewer, type WelcomeProps} from "../viewer";
+import {faceIdOnDevice, listCount, mySizes, organizerName} from "@/server/auth/account";
+import {activePerson} from "@/server/auth/access";
+import {phoneOwnerName} from "@/server/auth/borrowed";
 import {withFamily} from "@/server/db/client";
 import {listFamilyWishlists} from "@/server/lists";
 import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
+import {BorrowedAllSet} from "../borrowed/hand-back";
 import {screenTitle} from "../../sign-in/title";
 import {welcomeAssignment} from "../assignment";
 
@@ -29,8 +32,17 @@ export async function generateMetadata() {
 }
 
 /** All set (2.10): the step bar knits up, ALL SET! knits in, and what you did is ticked. */
-export default async function WelcomeDonePage() {
-  const viewer = await requireViewer();
+export default async function WelcomeDonePage(props: WelcomeProps = {}) {
+  const viewer = await requireWelcomeViewer(props);
+  if (viewer.borrowed) {
+    // on someone else's phone (9.5): the owner signs the relative out of it
+    const names = await withFamily(viewer.familyId, async (tx) => ({
+      name: (await activePerson(tx, viewer.familyId, viewer.personId))?.displayName ?? "",
+      owner: await phoneOwnerName(tx, viewer) ?? "",
+      organizer: await organizerName(tx, viewer.familyId) ?? "",
+    }));
+    return <BorrowedAllSet {...names} />;
+  }
   const [t, lists, assignment] = await Promise.all([
     getTranslations("getIn.done"), getTranslations("lists"), welcomeAssignment(viewer),
   ]);

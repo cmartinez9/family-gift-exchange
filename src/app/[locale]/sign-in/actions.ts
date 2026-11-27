@@ -2,7 +2,7 @@
 
 import {randomUUID} from "node:crypto";
 import {getLocale} from "next-intl/server";
-import {redirect} from "next/navigation";
+import {redirect, RedirectType} from "next/navigation";
 import {withFamily} from "@/server/db/client";
 import {notify} from "@/server/messages";
 import {schedulePushDelivery} from "@/server/messages/delivery";
@@ -14,7 +14,7 @@ import {
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
-import {appOrigin, currentDeviceKind, requestDevice, setSession} from "@/server/auth/request";
+import {appOrigin, currentDeviceKind, requestDevice, setBorrowedSession, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {createCodePreview} from "@/server/auth/code-preview";
 import {recordUsedKeyOpening} from "@/server/auth/used-key-notice";
@@ -173,6 +173,26 @@ export async function useKey(familyId: string, value: string, typed: boolean, pr
   if (!result.session) return {error: result.error ?? "unavailable", usedAt: result.usedAt, noticeQueued: result.noticeQueued, openingId: result.openingId};
   await setSession(familyId, result.session.cookie);
   redirect(`/${await getLocale()}/face-id${kind === "reset" ? "" : "?welcome=1"}`);
+}
+
+/**
+ * A relative opens their own first key on this signed-in phone (9.2): their PIN signs them in beside the
+ * phone's owner, who stays signed in. Then they open their person (9.3), and the step replaces the key in
+ * the history, so Back never leads to it.
+ */
+export async function lendKey(familyId: string, value: string, _: AuthResult, data: FormData): Promise<AuthResult> {
+  if (!uuidPattern.test(familyId) || typeof value !== "string") return {error: "unavailable"};
+  const owner = await getViewer();
+  if (!owner || owner.borrowed) return {error: "otherPerson"};
+  const device = await requestDevice();
+  const result = await withFamily(familyId, (tx) => redeemKey(tx, {
+    familyId, value, typed: false, device, currentViewer: owner, lend: true,
+    pin: field(data, "pin"), confirmation: field(data, "confirmation"),
+    pepper: authenticatorSecret(), now: new Date(),
+  }));
+  if (!result.session) return {error: result.error ?? "unavailable"};
+  await setBorrowedSession(result.session.cookie);
+  redirect(`/${await getLocale()}/welcome/borrowed`, RedirectType.replace);
 }
 
 export async function beginFaceId(enroll: boolean) {

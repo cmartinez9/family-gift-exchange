@@ -5,6 +5,7 @@ import {redirect} from "next/navigation";
 import {after} from "next/server";
 import {getLocale} from "next-intl/server";
 import {requireViewer} from "@/server/auth";
+import {clearStaleBorrowedSession} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
 import {
   addListItem, editListItem, ListError, moveListItem, refreshListItem, removeListItem, saveAboutField,
@@ -41,7 +42,8 @@ function dataImage(bytes: Buffer | undefined) {
 }
 
 export async function previewItemLink(ownerId: string, input: string): Promise<PreviewState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
+  await clearStaleBorrowedSession(viewer);
   try {
     await withFamily(viewer.familyId, (tx) => requireListEditor(tx, viewer, ownerId));
     const preview = await resolveLinkPreview(input);
@@ -173,7 +175,8 @@ export async function acknowledgeChange(actingAs: string, itemId: string, versio
 export async function saveProfileField(
   ownerId: string, field: string, value: string, group: "size" | "about" | "noClothes",
 ): Promise<FormState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
+  await clearStaleBorrowedSession(viewer);
   try {
     if (group === "size") await saveListSize(viewer, ownerId, field, value);
     else if (group === "noClothes" && (value === "true" || value === "false")) {

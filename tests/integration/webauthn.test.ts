@@ -8,12 +8,12 @@ import {families, outbox, people} from "../../src/server/db/schema";
 import {familyActivity} from "../../src/server/auth/account";
 import {schedulePushDelivery} from "../../src/server/messages/delivery";
 import {changeCoOrganizer, createFamily, readiness, saveMember} from "../../src/server/auth/families";
-import {digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
+import {createSession, digest, findViewer, parseSession, secret, sessionCookie} from "../../src/server/auth/session";
 import {authEvents, passkeys, pinCredentials, sessions} from "../../src/server/auth/schema";
 import {account, disputeEvent, turnOffFaceId} from "../../src/server/auth/security";
 import {getViewer, type Viewer} from "../../src/server/auth";
 import {requestDevice, setSession} from "../../src/server/auth/request";
-import {issueKey, issueOrganizerKey, redeemKey, signInWithPin, type Device} from "../../src/server/auth/access";
+import {issueKey, issueOrganizerKey, redeemKey, signInDevice, signInWithPin, type Device} from "../../src/server/auth/access";
 import {authenticationFinish, authenticationStart, registrationFinish, registrationStart} from "../../src/server/auth/webauthn";
 import {finishFaceIdSignIn, forgotPin, noticeUsedKeyLink} from "../../src/app/[locale]/sign-in/actions";
 
@@ -110,7 +110,8 @@ async function enroll(familyId: string, personId: string, enrollmentDevice: Devi
   }
   return {
     id, assertion,
-    authenticate: async (signInDevice: Device) => authenticationFinish(signInDevice, await assertion(signInDevice), null),
+    authenticate: async (signInDevice: Device, current: Viewer | null = null) =>
+      authenticationFinish(signInDevice, await assertion(signInDevice), current),
   };
 }
 
@@ -546,4 +547,28 @@ it("does not expand revocation through a passkey's earlier browser while revokin
   expect(preserved.revokedAt).toBeNull();
   const returned = (await unrelated.authenticate(device()))!.session;
   await expect(resolve(returned.cookie)).resolves.toMatchObject({personId: viewer.personId});
+});
+
+
+it("refuses a valid same-person Face ID sign-in while the viewer is borrowed", async () => {
+  const f = await fixture();
+  const borrowedPhone = device();
+  const passkey = await enroll(f.familyId, f.viewer.personId, borrowedPhone);
+  const [owner] = await withFamily(f.familyId, (tx) => tx.select().from(people)
+    .where(and(eq(people.familyId, f.familyId), eq(people.role, "organizer"))));
+  const ownerSession = await withFamily(f.familyId, (tx) => signInDevice(tx, f.familyId, owner.id, borrowedPhone, new Date()));
+  const session = await withFamily(f.familyId, (tx) => createSession(
+    tx, f.familyId, f.viewer.personId, borrowedPhone.hash, borrowedPhone.kind, new Date(), null,
+    {lenderSessionId: ownerSession.id, seconds: 1800},
+  ));
+  await withFamily(f.familyId, (tx) => tx.update(sessions).set({personHiddenAt: new Date()})
+    .where(and(eq(sessions.familyId, f.familyId), eq(sessions.id, session.id))));
+  const borrowed = (await resolve(session.cookie))!;
+  await expect(passkey.authenticate(borrowedPhone, borrowed)).resolves.toBeNull();
+  expect((await resolve(session.cookie))?.borrowed?.hidden).toBe(true);
+  expect(await resolve(ownerSession.cookie)).not.toBeNull();
+  const rows = await withFamily(f.familyId, (tx) => tx.select().from(sessions)
+    .where(and(eq(sessions.familyId, f.familyId), eq(sessions.personId, f.viewer.personId))));
+  expect(rows).toHaveLength(2);
+  expect(await passkey.authenticate(device())).not.toBeNull();
 });

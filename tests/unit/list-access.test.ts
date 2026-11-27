@@ -4,7 +4,7 @@ import {lockFamily} from "../../src/server/auth/access";
 import {revalidateViewer} from "../../src/server/auth/session";
 import type {FamilyTransaction} from "../../src/server/db/database";
 import {withFamily} from "../../src/server/db/client";
-import {requireListActor, requireListEditor} from "../../src/server/lists/access";
+import {hidesClaims, requireListActor, requireListEditor} from "../../src/server/lists/access";
 import {setExchangeBudget} from "../../src/server/lists/budget";
 import {claimItem, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 
@@ -50,6 +50,13 @@ it("allows the current owner after session revalidation", async () => {
   vi.mocked(revalidateViewer).mockResolvedValue(identity);
   await expect(requireListEditor(tx, viewer, personId, true)).resolves.toEqual(owner);
   expect(forLock).toHaveBeenCalledWith("no key update");
+});
+
+it.each([false, true])("protects both borrowed identities' claims (hidden=%s)", (hidden) => {
+  const borrower = {...viewer, borrowed: {lenderSessionId: randomUUID(), lenderPersonId: randomUUID(), hidden}};
+  expect(hidesClaims(borrower, borrower.personId)).toBe(true);
+  expect(hidesClaims(borrower, borrower.borrowed.lenderPersonId.toUpperCase())).toBe(true);
+  expect(hidesClaims(borrower, randomUUID())).toBe(false);
 });
 
 it.each(["claim", "undo", "bought", "wrapped", "budget"] as const)("blocks %s after a session is revoked", async (command) => {

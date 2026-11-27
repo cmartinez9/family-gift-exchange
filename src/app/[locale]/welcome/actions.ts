@@ -16,12 +16,9 @@ function text(form: FormData, name: string) {
   return typeof value === "string" ? value : undefined;
 }
 
-/**
- * Onboarding's one thing (2.7 to 2.9): a few words, a pasted link (its preview already fetched and
- * signed), or a photo. It stays on onboarding instead of opening the list, so All set comes next.
- */
+/** Keep the first item (2.7 to 2.9) in onboarding instead of opening the list, so All set comes next. */
 export async function addFirstThing(ownerId: string, _: FirstThingState, form: FormData): Promise<FirstThingState> {
-  const viewer = await requireViewer();
+  const viewer = await requireViewer({borrowed: "help"});
   const kind = text(form, "kind");
   let pictureComing = false;
   try {
