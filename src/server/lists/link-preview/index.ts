@@ -1,7 +1,7 @@
 import "server-only";
 import {processListPhoto} from "../photo-storage";
 import {TITLE_LIMIT} from "../validation";
-import {fetchPreview, type PreviewNetwork} from "./http";
+import {checkLinkHost, fetchPreview, type PreviewNetwork} from "./http";
 import {isBotWall, readProductMetadata} from "./metadata";
 import {storeFor} from "./store";
 import {cleanLink, parseLink, relatedLink} from "./url";
@@ -62,5 +62,23 @@ export async function resolveLinkPreview(input: string, network?: PreviewNetwork
     brand: previewText(metadata?.brand) ?? undefined,
     image,
     favicon,
+  };
+}
+
+/**
+ * What a link says before its page loads: the store, and a name from the link itself. The page fetch fills
+ * in the rest later (see `fillLinkPreview` in ../items.ts), so saving never waits on a store's page.
+ */
+export async function linkPreviewFromUrl(input: string, network?: PreviewNetwork): Promise<LinkPreview> {
+  const {url, sharedTitle} = parseLink(input);
+  await checkLinkHost(url, AbortSignal.timeout(1500), network);
+  const store = storeFor(url);
+  return {
+    url: cleanLink(url),
+    title: previewText(sharedTitle) ?? previewText(store.title),
+    price: null,
+    store: store.name,
+    icon: store.icon,
+    productId: store.productId,
   };
 }

@@ -3,6 +3,7 @@ import {expect, test, type Page, type TestInfo} from "@playwright/test";
 import {Pool} from "pg";
 import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const database = new Pool({connectionString: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL});
 test.setTimeout(90_000);
@@ -19,7 +20,7 @@ async function organizer(page: Page) {
   await page.getByRole("button", {name: en.auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: en.auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: en.auth.notNow}).click();
-  await expect(page.getByRole("heading", {name})).toBeVisible();
+  await openFamilyAfterDetails(page);
   const cookie = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!;
   const familyId = cookie.value.split(".")[0];
   const {rows: [exchange]} = await database.query("select id from exchanges where family_id = $1", [familyId]);
@@ -80,18 +81,19 @@ test("organizer can set and clear budgets before a draw and edit drawn and locke
     }
     await page.goto(`/en/exchanges/${f.exchangeId}/manage`);
     await page.getByLabel(en.draw.giftDay, {exact: true}).fill("2026-12-25");
-    await page.getByRole("button", {name: en.draw.saveDetails}).click();
+    await page.getByRole("button", {name: en.draw.setup.nextPeople}).click();
     await expect(page.getByLabel(en.draw.giftDay, {exact: true})).toBeHidden();
     expect(await state(f.exchangeId)).toMatchObject({status: "open"});
-    await page.locator("summary").filter({hasText: /^Draw names$/}).click();
-    await page.getByRole("button", {name: en.draw.confirmDraw}).click();
-    await expect(page.getByText(/^Draw seal /)).toBeVisible();
+    await page.goto(`/en/exchanges/${f.exchangeId}/manage/draw`);
+    await page.getByRole("button", {name: en.draw.drawNames}).click();
+    await page.getByRole("button", {name: en.draw.setup.skip}).click();
+    await expect(page.getByText(/^Seal code /)).toBeVisible();
     expect(await state(f.exchangeId)).toMatchObject({status: "drawn"});
     await setBudget(page, "35");
     expect(await state(f.exchangeId)).toMatchObject({status: "drawn", budget_amount: "35.00"});
     await page.goto(`/en/exchanges/${f.exchangeId}`);
-    await page.getByRole("button", {name: en.draw.reveal}).tap();
-    await expect(page.getByText(/^You’re giving to /)).toBeVisible();
+    await page.getByRole("button", {name: en.draw.person.revealTap}).tap();
+    await expect(page.getByRole("button", {name: /^See .+’s page$/})).toBeVisible();
     expect(await state(f.exchangeId)).toMatchObject({status: "locked"});
     await setBudget(page, "40");
     await expect(page.getByText("Gift budget: $40.00", {exact: true})).toBeVisible();

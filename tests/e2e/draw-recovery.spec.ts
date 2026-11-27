@@ -14,6 +14,7 @@ import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server
 import {drawSeal, sealText} from "../../src/server/draw/sealing";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import {openKey, signInWithPin, skipFaceId} from "../helpers/pin-pad";
+import {openPerson as reveal} from "../helpers/open-person";
 
 // Seed only the starting state: a known, encrypted cycle in a disposable database.
 // Reveals, questions, reporting, recovery, and redraws run against the HTTPS app.
@@ -46,7 +47,9 @@ async function fixture(browser: Browser, count: number, organizer = 0, coOrganiz
   async function device(index: number) {
     const token = secret();
     const session = await runForFamily(database.db, familyId, (tx) => createSession(tx, familyId, ids[index], digest(token), "iphone", new Date()));
-    const context = await browser.newContext({viewport: {width: 393, height: 851}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true});
+    // reduced motion: each reveal opens at once, so many devices fit in one test
+    const context = await browser.newContext({viewport: {width: 393, height: 851}, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
+      reducedMotion: "reduce"});
     contexts.push(context);
     await context.addCookies([
       {name: "__Host-fge-session", value: session.cookie, url: "https://localhost:3100", secure: true, httpOnly: true, sameSite: "Lax"},
@@ -71,10 +74,19 @@ async function fixture(browser: Browser, count: number, organizer = 0, coOrganiz
 
 async function open(page: Page, path: string) {
   await page.goto(path);
-  await page.getByRole("button", {name: "Open your person", exact: true}).click();
-  const recipient = page.getByRole("status").filter({hasText: /^You’re giving to /});
-  await expect(recipient).toBeVisible();
-  return (await recipient.innerText()).replace("You’re giving to ", "").replace(/\.$/, "");
+  return reveal(page);
+}
+
+async function ask(page: Page, text: string) {
+  await page.getByRole("button", {name: /^Ask .+ (a question|for ideas)$/}).first().click();
+  await page.getByLabel("Your anonymous question").fill(text);
+  await page.getByRole("button", {name: "Send my question", exact: true}).click();
+}
+
+async function answer(page: Page, text: string) {
+  await page.getByRole("link", {name: /A question for you/}).click();
+  await page.getByLabel("Your answer").fill(text);
+  await page.getByRole("button", {name: "Send my answer", exact: true}).click();
 }
 
 async function reportOpening(page: Page) {
@@ -166,9 +178,8 @@ test("organizer cannot infer a repaired recipient from their match, question ret
   const f = await fixture(browser, 6, 4);
   try {
     for (const device of f.devices) await open(device.page, f.member);
-    await f.devices[3].page.getByLabel("Your anonymous question").fill("Recognizable question from D");
-    await f.devices[3].page.getByRole("button", {name: "Send question", exact: true}).click();
-    await expect(f.devices[3].page.getByText("Waiting for an answer", {exact: true})).toBeVisible();
+    await ask(f.devices[3].page, "Recognizable question from D");
+    await expect(f.devices[3].page.getByText("We’ll tell you when they answer.", {exact: true})).toBeVisible();
     const owner = await f.device(1);
     await reportOpening(owner.page);
     await expect(owner.page).toHaveURL(/reported=1/);
@@ -179,7 +190,7 @@ test("organizer cannot infer a repaired recipient from their match, question ret
     const seen = Number(seenText.split(" ")[0]);
     const oneLoop = await organizer.getByText("The draw forms one loop.", {exact: true}).count() === 1;
     await capture(organizer, info, "organizer-public-proof");
-    await organizer.goto(f.member);
+    await organizer.goto(`${f.member}?answer=1`);
     const questionRetained = await organizer.getByText("Recognizable question from D", {exact: true}).count() === 1;
     const actual = new Map<string, string>();
     for (let index = 0; index < 6; index++) {
@@ -308,7 +319,7 @@ test("a reveal waiting on the family lock rejects a session revoked before the l
     await blocker.query("BEGIN");
     await blocker.query("SELECT id FROM families WHERE id = $1 FOR UPDATE", [f.familyId]);
     const pending = page.waitForRequest((request) => request.method() === "POST" && request.url().includes(f.exchangeId));
-    const clicking = page.getByRole("button", {name: "Open your person", exact: true}).click();
+    const clicking = page.getByRole("button", {name: "Or tap here to open it", exact: true}).click();
     await pending;
     // A second connection verifies that the real action has reached the shared lock.
     const drawLogin = decodeURIComponent(new URL(process.env.E2E_DRAW_DATABASE_URL ?? process.env.DATABASE_URL!).username);
@@ -393,9 +404,10 @@ test("uses a valid multi-loop fallback when keep-apart rules make one loop impos
       await f.database.db.insert(keepApart).values({familyId: f.familyId, exchangeId: f.exchangeId, personA, personB, reason: "custom"});
     }
     const page = f.devices[0].page;
-    await page.goto(f.manage);
-    await page.locator("summary").filter({hasText: /^Draw names$/}).click();
-    await page.getByRole("button", {name: "Yes, draw names", exact: true}).click();
+    await page.goto(`${f.manage}/draw`);
+    await page.getByRole("button", {name: "Draw names", exact: true}).click();
+    // reduced motion skips the ceremony straight to the seal
+    await expect(page.getByRole("heading", {name: "Names are drawn"})).toBeVisible();
     await page.getByRole("link", {name: "Check the sealed draw", exact: true}).click();
     await expect(page.getByRole("heading", {name: "The sealed draw passes all the rules."})).toBeVisible();
     await expect(page.getByText("The draw uses more than one loop.", {exact: true})).toBeVisible();
@@ -429,7 +441,7 @@ test("same-named recipients open their exact wishlists in English and Spanish", 
       await page.goto(f.member.replace("/en/", `/${locale}/`));
       const link = page.getByRole("link", {name: locale === "en" ? "Open Alex's wishlist" : "Ver la lista de Alex", exact: true});
       await expect(link).toHaveCount(0);
-      await page.getByRole("button", {name: locale === "en" ? "Open your person" : "Descubrir a tu persona", exact: true}).click();
+      await reveal(page);
       await expect(link).toHaveAttribute("href", `/${locale}/lists/${f.ids[index + 1]}`);
       await capture(page, info, `${locale}-exact-recipient-reveal`);
       await link.click();
@@ -523,25 +535,25 @@ test("reporting a session during a real link fetch prevents its pending wishlist
 });
 
 test("dropouts and late joiners preserve unaffected matches while a confirmed redraw clears openings and questions", async ({browser}, info) => {
+  // each dropout and late joiner now confirms in a sheet, and openings may replay the reveal
+  test.setTimeout(90_000);
   const f = await fixture(browser, 6);
   try {
     for (const device of f.devices) await open(device.page, f.member);
     const asker = f.devices[0].page;
-    await asker.getByLabel("Your anonymous question").fill("Keep this question for B");
-    await asker.getByRole("button", {name: "Send question", exact: true}).click();
-    await expect(asker.getByRole("status").filter({hasText: en.draw.questionSent})).toBeVisible();
+    await ask(asker, "Keep this question for B");
+    await expect(asker.getByText("Sent to Person B", {exact: true})).toBeVisible();
     const recipient = f.devices[1].page;
     await recipient.reload();
-    await recipient.getByLabel("Your answer").fill("Keep this private answer");
-    await recipient.getByRole("button", {name: "Send answer", exact: true}).click();
-    await expect(recipient.getByText(en.draw.answered, {exact: true})).toBeVisible();
+    await answer(recipient, "Keep this private answer");
+    await expect(recipient.getByText("You’ve answered.", {exact: true})).toBeVisible();
     const changed = f.devices[4].page;
-    await changed.getByLabel("Your anonymous question").fill("Erase this question for F");
-    await changed.getByRole("button", {name: "Send question", exact: true}).click();
-    await expect(changed.getByRole("status").filter({hasText: en.draw.questionSent})).toBeVisible();
+    await ask(changed, "Erase this question for F");
+    await expect(changed.getByText("Sent to Person F", {exact: true})).toBeVisible();
     await asker.goto(f.manage);
     await asker.locator("summary").filter({hasText: /^Dropouts and late joiners$/}).click();
     await asker.getByRole("button", {name: "Person F can’t take part", exact: true}).click();
+    await asker.getByRole("button", {name: "Yes, take Person F out", exact: true}).click();
     await expect(asker.getByText("4 of 5 have opened their person.", {exact: true})).toBeVisible();
     await capture(asker, info, "dropout-preserves-four-openings");
     await asker.goto(f.member);
@@ -563,6 +575,7 @@ test("dropouts and late joiners preserve unaffected matches while a confirmed re
     await asker.goto(f.manage);
     await asker.locator("summary").filter({hasText: /^Dropouts and late joiners$/}).click();
     await asker.getByRole("button", {name: "Add Person G to the draw", exact: true}).click();
+    await asker.getByRole("button", {name: "Yes, add Person G", exact: true}).click();
     await expect(asker.getByText(/^[34] of 6 have opened their person\.$/)).toBeVisible();
     await capture(asker, info, "late-join-preserves-unaffected-openings");
     const actual = new Map<string, string>();
@@ -585,11 +598,11 @@ test("dropouts and late joiners preserve unaffected matches while a confirmed re
     await recipient.reload();
     await expect(recipient.getByText("Keep this question for B", {exact: true})).toHaveCount(0);
     const beforeReport = await open(asker, f.member);
-    await asker.locator("summary").filter({hasText: /^Something wrong\?$/}).click();
-    await asker.getByRole("button", {name: "Try to fix my match", exact: true}).click();
-    await expect(asker.getByRole("button", {name: "Try to fix my match", exact: true})).toHaveCount(0);
+    await asker.getByRole("button", {name: "Something wrong?", exact: true}).click();
+    await asker.getByRole("button", {name: "Get a new person", exact: true}).click();
+    await expect(asker.getByRole("heading", {name: "Fixing it quietly"})).toBeVisible();
     expect(await open(asker, f.member)).not.toBe(beforeReport);
-    await expect(asker.getByRole("button", {name: "Try to fix my match", exact: true})).toHaveCount(0);
+    await expect(asker.getByRole("button", {name: "Something wrong?", exact: true})).toHaveCount(0);
     await capture(asker, info, "member-report-changes-only-once");
   } finally { await f.close(); }
 });

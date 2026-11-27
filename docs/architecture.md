@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 1 | `src/server/auth/index.ts` | Sign-in, session identity, family membership, organizer and helper authorization |
 | 2 | `src/server/draw/index.ts` | Constraints, draw, sealed assignments, reveal, repair, and routing questions to the assigned recipient |
-| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link previews, item photos, exchange budget, and claim visibility |
+| 3 | `src/server/lists/index.ts`, `link-preview/index.ts`, `claims/index.ts` | Wishlists, sizes, About me, link previews, item photos, exchange budget, claim visibility, and claim change tracking |
 | 4 | `src/server/messages/index.ts` | Message templates, queue, delivery adapters, and reminders |
 | Shared | `src/app`, `src/i18n`, `src/server/db` | Routing, locale setup, database connection, and shared tables |
 
@@ -16,17 +16,19 @@ Use named exports for domain modules and default exports where framework or tool
 
 The design is "Sweater Weather". [`design/DESIGN.md`](../design/DESIGN.md) is the product rulebook. [`design/design.json`](../design/design.json) owns the exported color, typography, card, spacing, and motion tokens; the rulebook's `rounded` front matter owns the radii. `src/styles/tokens.css` exposes these to Tailwind. [`tests/unit/design-tokens.test.ts`](../tests/unit/design-tokens.test.ts) compiles the stylesheet and checks effective custom properties, including the rulebook's front-matter colors and radii.
 
-The reusable components and motion primitives in `src/components/ui`, global tokens, self-hosted Rubik, and the [development gallery](../README.md#run-locally) are available. Live screens use them for sign-in, onboarding (`/welcome`), account (`/account`), Home, My list, Family, Things I'm getting, helping from a relative's key, the helper handoff and shared helping banner, the notification inbox and device controls, home-screen installation help, family-chat messages, and the season-close confirmation and wrap. Family-management and draw screens retain their existing page UI. The rulebook's remaining flows, including the draw and reveal ceremonies, describe the product direction rather than completed screens.
+The reusable components and motion primitives in `src/components/ui`, global tokens, self-hosted Rubik, and the [development gallery](../README.md#run-locally) are available. Live screens use them for family creation, sign-in, onboarding (`/welcome`), account (`/account`), Home, My list, Family, Things I'm getting, helping from a relative's key, the helper handoff and shared helping banner, the notification inbox and device controls, home-screen installation help, family-chat messages, the season-close confirmation and wrap, your person, asking and answering, the organizer's setup steps with the draw ceremony, sending keys, and the season's management screens. The rulebook's remaining flows describe the product direction rather than completed screens.
 
 Build screens with `Screen` for the ground, tab roots, pushed pages, and bottom actions. Links declare navigation motion with `AppLink`'s `transition` (`push`, `back`, or `tab`). The shared layout mounts `AppChrome` once for the toast and tab-bar host; the bar stays hidden until a page renders `Screen` with `tab`. The gallery's PIN demo and authentication share the pure `pinProblem` rule in [`src/lib/pin-policy.ts`](../src/lib/pin-policy.ts). Rubik is bundled in `src/styles/fonts` under the SIL Open Font License.
 
 ## Requests and data access
 
-Keep reads in Server Components and use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
+Keep page reads in Server Components; the authenticated [wishlist preview route](../src/app/[locale]/lists/[personId]/link-preview/route.ts) handles client-requested previews for both the list form and onboarding. Use feature-local `actions.ts` files with `"use server"` for mutations. Treat action input as untrusted. Validate it, resolve the caller from their server session, check authorization, and pass the trusted identity into the domain module. Choose the family from that identity. Pass only explicitly selected view data back to components or action callers, and perform mutations with related writes in the same transaction.
 
 Use `withFamily(familyId, callback)` in server modules. It sets the database role and family scope for the duration of a transaction. Qualify record lookups with `familyId` and their record IDs. PostgreSQL row-level security applies the same tenant condition to reads and writes. Keep direct connection access limited to tooling, the local message viewer, and the reminder scheduler's discovery call in [`reminders.ts`](../src/server/messages/reminders.ts). RLS covers the family boundary. Each domain module owns person-level permissions inside the family.
 
 Wishlist transactions use [`requireListActor`](../src/server/lists/access.ts) to acquire the exclusive family row lock also used by revocation and revalidate the live session and acting profile before accessing list data. Keep that lock through the protected operation. Edits must target the acting profile's own list; budget writes require the returned current organizer role and the organizer's own profile. Link fetching and photo storage happen outside these transactions; the final write must repeat editor authorization so a session revoked during that work cannot save changes.
+
+The [`SeenItem` contract](../src/server/lists/claims/changes.ts) owns claim comparison baselines and photo identity handling. See [Wishlists and gifts](../README.md#wishlists-and-gifts) for the change card's user workflow.
 
 Sealed draw operations use `withDrawFamily`. After acquiring the family row lock shared with account and family management, it revalidates the live session and acting profile before any draw callback runs. Practice delegates also require the live organizer-owner session and its persisted practice mapping before switching family scope. The practice loader audits decryption without reconciling the owner's real draw.
 
@@ -40,7 +42,7 @@ For deployments, `DATABASE_URL` should connect as a runtime login allowed to ass
 
 `DRAW_DATABASE_URL` connects as a separate login allowed to assume `fge_draw`. Give that login and the app login only their respective request roles. Keep table ownership and RLS bypass on the migration connection. For disposable local databases, the draw connection can use the local database owner and still explicitly assumes `fge_draw` for requests. Set `ASSIGNMENT_ENCRYPTION_KEY` to a base64-encoded 32-byte secret. Existing assignments require the key they were sealed with.
 
-Draw notifications have an optional `DrawEvents` integration contract exported by the draw module. A publisher must queue messages using the supplied transaction so a failed enqueue rolls back the draw or repair. The app actions do not supply a publisher yet, so draws and repairs currently send no notifications. The [`DrawEvent` type](../src/server/draw/events.ts) owns public event fields. Delivery destinations are private; repair destinations stay out of organizer views and exports. Both family and exchange keep-apart editors use the draw module’s exchange-scoped operation; rules can include inactive family members without enrolling them.
+Draw notifications have an optional `DrawEvents` integration contract exported by the draw module. A publisher must queue messages using the supplied transaction so a failed enqueue rolls back the draw or repair. The app actions do not supply a publisher yet, so draws and repairs currently send no notifications. The [`DrawEvent` type](../src/server/draw/events.ts) owns public event fields. Delivery destinations are private; repair destinations stay out of organizer views and exports. The family keep-apart editor uses the draw module’s exchange-scoped operation; rules can include inactive family members without enrolling them.
 
 ## Notifications
 
@@ -48,7 +50,7 @@ The sender uses `VERCEL_ENV` when set and otherwise `NODE_ENV`. In production, n
 
 Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in production to enable device notifications. Generate the pair with `pnpm exec web-push generate-vapid-keys` and set the subject to the public HTTPS app origin. Set `CRON_SECRET` in Vercel so it sends the bearer header to `/api/cron/notifications`. The daily schedule is defined in [`vercel.json`](../vercel.json). The job queues reminders a day before the list deadline and gift day using the America/Chicago calendar. It also processes pending pushes and retries.
 
-The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. The draw hooks await Phase 2 integration.
+The default [`ListEvents` adapter](../src/server/lists/list-events.ts) and sign-in PIN reset flow call the [`event hooks`](../src/server/messages/events.ts) in the originating transaction. See the [draw integration contract](#postgresql-and-migrations) for draw events.
 
 ## Disputed-reveal recovery
 

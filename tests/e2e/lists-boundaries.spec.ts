@@ -5,6 +5,7 @@ import en from "../../messages/en.json" with {type: "json"};
 import {connectDatabase, runForFamily, type FamilyTransaction} from "../../src/server/db/database";
 import {claims, families, items, people} from "../../src/server/db/schema";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 const {auth, lists} = en;
@@ -28,6 +29,7 @@ async function createFamily(page: Page) {
   await page.getByRole("button", {name: auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: auth.facePrompt})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
+  await openFamilyAfterDetails(page);
   await expect(page.getByRole("link", {name: auth.sendKeys})).toBeVisible();
   return (await page.context().cookies()).find(({name}) => name === "__Host-fge-session")!.value.split(".")[0];
 }
@@ -102,14 +104,14 @@ test("rejects code and private links, then saves a real store preview without a 
       ["https://localhost/private", "unsafe-link"],
     ] as const) {
       await input.fill(value);
-      await input.blur();
+      await page.getByRole("button", {name: lists.preview, exact: true}).click();
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(lists.feedback[code]);
     }
     await screenshot(page, "unsafe-private-link-rejected");
     const publicUrl = new URL(process.env.E2E_LIVE_PRODUCT_URL!);
     publicUrl.searchParams.set("utm_source", "wishlist-test");
     await input.fill(publicUrl.href.replace(/^https:\/\//, ""));
-    await input.blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     const preview = page.getByRole("region", {name: lists.previewTitle});
     // the fetched picture fills the form's photo tile
     const photo = page.locator("form img");

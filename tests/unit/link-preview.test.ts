@@ -2,7 +2,7 @@ import {readFile} from "node:fs/promises";
 import fc from "fast-check";
 import sharp from "sharp";
 import {describe, expect, it, vi} from "vitest";
-import {resolveLinkPreview} from "../../src/server/lists/link-preview";
+import {linkPreviewFromUrl, resolveLinkPreview} from "../../src/server/lists/link-preview";
 import {MAX_PREVIEW_BYTES, type PreviewNetwork, type PreviewResponse} from "../../src/server/lists/link-preview/http";
 import {readProductMetadata} from "../../src/server/lists/link-preview/metadata";
 import {cleanLink, parseLink} from "../../src/server/lists/link-preview/url";
@@ -155,5 +155,44 @@ describe("preview content and fallback", () => {
 
   it("cleans a schemeless store address", () => {
     expect(parseLink("example.com:443/frosted-mug").url.href).toBe("https://example.com/frosted-mug");
+  });
+});
+
+describe("saving a link before its page loads", () => {
+  it("names the store and the item from the link alone, without requesting the page", async () => {
+    const network = fakeNetwork();
+    await expect(linkPreviewFromUrl("https://www.target.com/p/fleece-robe/-/A-12345?utm_source=x", network)).resolves.toEqual({
+      url: "https://www.target.com/p/fleece-robe/-/A-12345", title: "fleece robe", price: null,
+      store: "Target", icon: "target", productId: "12345",
+    });
+    await expect(linkPreviewFromUrl("Look at this mug https://shop.example.com/p/123", network))
+      .resolves.toMatchObject({title: "Look at this mug", store: "shop.example.com", icon: "store"});
+    expect(network.lookup).toHaveBeenCalledTimes(2);
+    expect(network.request).not.toHaveBeenCalled();
+  });
+
+  it("keeps the same address rules as the page fetch", async () => {
+    const network = fakeNetwork();
+    for (const input of ["http://localhost/a", "http://10.0.0.1", "javascript:alert(1)"]) {
+      await expect(linkPreviewFromUrl(input, network)).rejects.toMatchObject({code: "unsafe-link"});
+    }
+    await expect(linkPreviewFromUrl("<b>shop.example.com</b>", network)).rejects.toMatchObject({code: "invalid-link"});
+    network.lookup.mockResolvedValueOnce([{address: "192.168.0.2", family: 4}]);
+    await expect(linkPreviewFromUrl("https://inside.example.com/gift", network)).rejects.toMatchObject({code: "unsafe-link"});
+  });
+
+  it("does not wait on a lookup that fails or hangs", async () => {
+    const network = fakeNetwork();
+    network.lookup.mockRejectedValueOnce(new Error("ENOTFOUND"));
+    await expect(linkPreviewFromUrl("https://gone.example.com/gift", network)).resolves.toMatchObject({store: "gone.example.com"});
+    vi.useFakeTimers();
+    try {
+      network.lookup.mockReturnValueOnce(new Promise(() => {}));
+      const saved = linkPreviewFromUrl("https://slow.example.com/gift", network);
+      await vi.advanceTimersByTimeAsync(1600);
+      await expect(saved).resolves.toMatchObject({store: "slow.example.com"});
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -2,6 +2,7 @@
 
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
+import {after} from "next/server";
 import {getLocale} from "next-intl/server";
 import {requireViewer} from "@/server/auth";
 import {withFamily} from "@/server/db/client";
@@ -10,12 +11,12 @@ import {
   saveListSize, saveNoClothes, setExchangeBudget,
 } from "@/server/lists";
 import {requireListEditor} from "@/server/lists/access";
-import {claimItem, setClaimTick, undoClaim} from "@/server/lists/claims";
+import {acknowledgeItemChange, claimItem, setClaimTick, undoClaim} from "@/server/lists/claims";
 import {LinkError, resolveLinkPreview} from "@/server/lists/link-preview";
 import {readLinkDraft, signLinkDraft} from "@/server/lists/link-preview/draft";
 import {MAX_PHOTO_INPUT} from "@/server/lists/photo-storage";
 import {aboutFields, itemKinds, type AboutField, type ItemKind} from "@/server/lists/validation";
-import type {FormState, PreviewState} from "./action-types";
+import type {ClaimState, FormState, PreviewState} from "./action-types";
 
 function feedback(error: unknown) {
   if (error instanceof ListError || error instanceof LinkError) return error.code;
@@ -66,7 +67,8 @@ export async function saveItem(
     if (!itemKinds.includes(kind)) throw new ListError("invalid-item");
     const link = kind === "link" ? stringField(form, "link") : undefined;
     const draft = link ? readLinkDraft(viewer, link, stringField(form, "draft")) : undefined;
-    const services = draft ? {resolve: async () => draft} : undefined;
+    // Without a preview read ahead of time, a new link saves at once and its picture follows (4.4).
+    const services = draft ? {resolve: async () => draft} : {later: after};
     const price = stringField(form, "price");
     const input = {
       title: stringField(form, "title"), note: stringField(form, "note"),
@@ -138,14 +140,29 @@ export async function itemCommand(
 
 export async function claimCommand(
   actingAs: string, itemId: string, command: "claim" | "undo" | "bought" | "wrapped", checked: boolean,
-): Promise<FormState> {
+  state: ClaimState = {},
+): Promise<ClaimState> {
+  const viewer = await requireViewer();
+  let released: ClaimState["released"];
+  try {
+    if (viewer.actingAs !== actingAs) throw new ListError("forbidden");
+    if (command === "claim") await claimItem(viewer, itemId, state.released);
+    else if (command === "undo") released = await undoClaim(viewer, itemId);
+    else if (command === "bought" || command === "wrapped") await setClaimTick(viewer, itemId, command, checked);
+    else throw new ListError("invalid-item");
+  } catch (error) {
+    return {error: feedback(error)};
+  }
+  await refreshLists();
+  return released ? {released} : {};
+}
+
+/** "Still getting it": you have seen what the owner changed, as it was shown to you. */
+export async function acknowledgeChange(actingAs: string, itemId: string, version: string): Promise<FormState> {
   const viewer = await requireViewer();
   try {
     if (viewer.actingAs !== actingAs) throw new ListError("forbidden");
-    if (command === "claim") await claimItem(viewer, itemId);
-    else if (command === "undo") await undoClaim(viewer, itemId);
-    else if (command === "bought" || command === "wrapped") await setClaimTick(viewer, itemId, command, checked);
-    else throw new ListError("invalid-item");
+    await acknowledgeItemChange(viewer, itemId, version);
   } catch (error) {
     return {error: feedback(error)};
   }

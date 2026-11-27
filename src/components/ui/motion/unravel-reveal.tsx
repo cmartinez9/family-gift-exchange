@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {TextButton} from "../button";
 import {OnlyYou} from "../card";
 import {FairIsleBand} from "../knit/knit-svg";
@@ -56,9 +56,13 @@ type Phase = "ready" | "holding" | "short" | "paused" | "watching" | "revealed";
  * Every hold has a tap path ("Or tap here to open it", 1100ms) and works from the keyboard (Space or
  * Enter held down). Reduced motion: the gift opens at once.
  */
-export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs: Title = "h1"}: {
-  /** The name to knit. A name the stitched alphabet cannot draw yet is shown in heavy Rubik. */
-  name: string;
+export function UnravelReveal({name: given, labels, next, onStart, onRevealed, titleAs: Title = "h1"}: {
+  /**
+   * The name to knit. A name the stitched alphabet cannot draw yet is shown in heavy Rubik.
+   * `null` while the name is still on its way (it is fetched when the hold starts): the gift unravels as
+   * usual and the name knits in as soon as it arrives.
+   */
+  name: string | null;
   labels: RevealLabels;
   /** What comes after: the main button on the ground, and a line under it. */
   next: ReactNode;
@@ -68,6 +72,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   /** The heading's level; the reveal is normally the whole screen. */
   titleAs?: "h1" | "h2" | "h3" | "h4";
 }) {
+  const name = given ?? "";
   const [phase, setPhase] = useState<Phase>("ready");
   const [announce, setAnnounce] = useState("");
   const stage = useRef<HTMLDivElement>(null);
@@ -76,7 +81,8 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   const ring = useRef<SVGCircleElement>(null);
   const progress = useRef<HTMLSpanElement>(null);
   const nameSvg = useRef<SVGSVGElement>(null);
-  const state = useRef({p: 0, row: 0, held: false, opened: false, done: false, end: null as [number, number] | null});
+  const state = useRef({p: 0, row: 0, held: false, opened: false, done: false, end: null as [number, number] | null,
+    waiting: null as "knit" | "open" | null});
   const frames = useRef({yarn: 0, hold: 0, tap: 0, knit: 0});
   const timers = useRef<number[]>([]);
   const callbacks = useRef({onStart, onRevealed});
@@ -99,6 +105,11 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     return {bitmap: chart, nameStitches: order};
   }, [name, stitched, cell, ch]);
   const nameWidth = round2((bitmap[0]?.length ?? 0) * cell), nameHeight = round2(bitmap.length * ch);
+  // the name may arrive while a hold or a tap is already running: those read the latest one
+  const latest = useRef({given, nameStitches});
+  useLayoutEffect(() => {
+    latest.current = {given, nameStitches};
+  });
 
   const q = useCallback(<T extends Element>(selector: string) => stage.current?.querySelector<T>(selector) ?? null, []);
   const qa = useCallback(<T extends Element>(selector: string) => [...(stage.current?.querySelectorAll<T>(selector) ?? [])], []);
@@ -139,7 +150,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     const k = Math.floor(s.p * ROWS + 1e-6);
     qa<SVGGElement>(".fge-kr").forEach((row, index) => row.setAttribute("data-gone", String(index < k)));
     if (ring.current) ring.current.style.opacity = s.p > 0 ? "0" : "1";
-    progress.current?.setAttribute("aria-valuenow", String(Math.round(s.p * 100)));
+    progress.current?.setAttribute("aria-valuenow", String(Math.floor(s.p * 100)));
     if (k > s.row) {
       s.row = k;
       haptic("tick");
@@ -163,7 +174,7 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     progress.current?.setAttribute("aria-valuenow", "100");
     cancelAnimationFrame(frames.current.yarn);
     setPhase("revealed");
-    setAnnounce(`${labels.lead} ${name}`);
+    setAnnounce(`${labels.lead} ${latest.current.given ?? ""}`);
     haptic("success");
     const fade = (selector: string, keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
       const element = q<HTMLElement | SVGElement>(selector);
@@ -180,10 +191,14 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     fade("[data-reveal-band]", [{opacity: 0, transform: "translateY(12px)"}, {opacity: 1, transform: "none"}], {duration: 420, delay: 780, easing: EASE.interface});
     showNext(instant ? 0 : 950);
     callbacks.current.onRevealed?.();
-  }, [labels.lead, name, q, showNext]);
+  }, [labels.lead, q, showNext]);
 
   const openNow = useCallback(() => {
     const s = state.current;
+    if (latest.current.given === null) {
+      s.waiting = "open";
+      return;
+    }
     s.opened = true;
     s.p = 1;
     qa<SVGGElement>(".fge-kr").forEach((row) => row.setAttribute("data-gone", "true"));
@@ -195,6 +210,12 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
   const knitName = useCallback(() => {
     const s = state.current;
     if (s.opened) return;
+    if (latest.current.given === null) {
+      // the gift is open but the name is still on its way
+      s.waiting = "knit";
+      setPhase("watching");
+      return;
+    }
     s.opened = true;
     setPhase("watching");
     timers.current.push(window.setTimeout(() => {
@@ -206,16 +227,28 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     const step = (time: number) => {
       const n = Math.floor(Math.max(0, time - start) / DURATION.knitNameStep);
       for (let index = 0; index < Math.min(n, stitches.length); index++) stitches[index].setAttribute("data-on", "true");
-      if (svg && host && nameStitches.length) {
+      const needle = latest.current.nameStitches;
+      if (svg && host && needle.length) {
         const box = svg.getBoundingClientRect(), origin = host.getBoundingClientRect();
-        const at = nameStitches[Math.min(n, nameStitches.length - 1)];
-        s.end = [box.left - origin.left + at.cx, box.top - origin.top + at.cy];
+        const at = needle[Math.min(n, needle.length - 1)];
+        const scale = box.width / svg.viewBox.baseVal.width;
+        s.end = [box.left - origin.left + at.cx * scale, box.top - origin.top + at.cy * scale];
       }
       if (n < stitches.length) frames.current.knit = requestAnimationFrame(step);
       else finish(false);
     };
     frames.current.knit = requestAnimationFrame(step);
-  }, [finish, nameStitches, qa]);
+  }, [finish, qa]);
+
+  // the name arrived after the gift had already come undone
+  useEffect(() => {
+    const s = state.current;
+    if (given === null || !s.waiting) return;
+    const waiting = s.waiting;
+    s.waiting = null;
+    if (waiting === "open") openNow();
+    else knitName();
+  }, [given, knitName, openNow]);
 
   const begin = useCallback(() => {
     const s = state.current;
@@ -278,10 +311,15 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
     all.yarn = requestAnimationFrame(drawYarn);
     return () => {
       cancelAnimationFrame(all.yarn);
-      cancelAnimationFrame(all.hold);
-      cancelAnimationFrame(all.tap);
-      cancelAnimationFrame(all.knit);
-      pending.forEach((timer) => window.clearTimeout(timer));
+      // Effect replay can follow the first input. Stop user-started motion only after a real unmount.
+      queueMicrotask(() => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the live ref distinguishes effect replay from a real unmount
+        if (stage.current) return;
+        cancelAnimationFrame(all.hold);
+        cancelAnimationFrame(all.tap);
+        cancelAnimationFrame(all.knit);
+        pending.forEach((timer) => window.clearTimeout(timer));
+      });
     };
   }, [drawYarn]);
 
@@ -350,23 +388,23 @@ export function UnravelReveal({name, labels, next, onStart, onRevealed, titleAs:
       <span ref={progress} role="progressbar" aria-label={labels.progress} aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={0} className="sr-only" />
 
-      <div className="pointer-events-none absolute inset-x-0 flex flex-col items-center gap-5" style={{top: NAME_TOP}}>
+      <div className="pointer-events-none absolute inset-x-edge flex flex-col items-center gap-5" style={{top: NAME_TOP}}>
         <div data-reveal-flakes="" className="flex gap-[70px]" style={{opacity: 0}}>
           <Snowflake cell={5} /><Snowflake cell={5} />
         </div>
         <p data-reveal-lead="" className="text-section font-bold" style={{opacity: 0}}>{labels.lead}</p>
         {stitched ? (
-          <svg ref={nameSvg} aria-hidden="true" width={nameWidth} height={nameHeight} viewBox={`0 0 ${nameWidth} ${nameHeight}`} className="block overflow-visible">
+          <svg ref={nameSvg} aria-hidden="true" width={nameWidth} height={nameHeight} viewBox={`0 0 ${nameWidth} ${nameHeight}`} className="block h-auto max-w-full overflow-visible">
             {nameStitches.map((stitch, index) => (
               <path key={index} className="fge-nm" d={stitch.d} data-on="false" style={{fill: "var(--color-yarn-white)"}} />
             ))}
           </svg>
         ) : (
-          <p aria-hidden="true" className="font-extrabold uppercase" style={{fontSize: 9 * ch * 0.86, lineHeight: `${9 * ch}px`, opacity: revealed ? 1 : 0}}>{name}</p>
+          <p aria-hidden="true" className="max-w-full text-center text-title wrap-anywhere font-extrabold uppercase" style={{opacity: revealed ? 1 : 0}}>{name}</p>
         )}
         <div data-reveal-only="" style={{opacity: 0}}><OnlyYou>{labels.onlyYou}</OnlyYou></div>
       </div>
-      <p className="sr-only" aria-live="assertive">{announce}</p>
+      <div className="sr-only" aria-live="assertive">{revealed && <Title>{announce}</Title>}</div>
 
       <div data-reveal-band="" className="pointer-events-none absolute inset-x-0" style={{top: BAND_TOP, opacity: 0}}>
         <FairIsleBand kind="flake" cell={7} />

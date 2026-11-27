@@ -8,6 +8,7 @@ import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families, items} from "../../src/server/db/schema";
 import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
 
@@ -23,7 +24,7 @@ async function startFamily(page: Page, language: "en" | "es") {
   await page.getByRole("button", {name: auth.createFamily}).click();
   await expect(page.getByRole("heading", {name: getIn.face.title})).toBeVisible();
   await page.getByRole("link", {name: auth.notNow}).click();
-  await expect(page.getByRole("heading", {name: familyName})).toBeVisible();
+  await openFamilyAfterDetails(page, language);
   const session = (await page.context().cookies()).find(({name}) => name === "__Host-fge-session");
   return session!.value.split(".")[0];
 }
@@ -198,10 +199,10 @@ test("shows a link fallback, saves a private photo, and keeps claim marks and ti
     await page.getByRole("link", {name: en.lists.newLink}).click();
     const productLink = page.getByLabel(en.lists.url);
     await productLink.fill("javascript:alert(1)");
-    await productLink.blur();
+    await page.getByRole("button", {name: en.lists.preview, exact: true}).click();
     await expect(page.getByRole("alert").filter({hasText: en.lists.feedback["unsafe-link"]})).toBeVisible();
     await productLink.fill("shop.example.com/bright-lantern?utm_source=fixture");
-    await productLink.blur();
+    await page.getByRole("button", {name: en.lists.preview, exact: true}).click();
     const preview = page.getByRole("region", {name: en.lists.previewTitle});
     await expect(preview.getByText(en.lists.noPicture.replace("{store}", "shop.example.com"))).toBeVisible();
     await expect(preview.getByRole("link", {name: en.lists.openProduct})).toHaveAttribute(

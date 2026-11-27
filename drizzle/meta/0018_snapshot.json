@@ -1,5 +1,5 @@
 {
-  "id": "2369234c-cb9e-4074-9425-3974ef45855c",
+  "id": "563c94a1-b4a1-4f7e-bcdc-9b54fc8575ab",
   "prevId": "82f66091-c0dd-4379-925b-a1635b6ad7b3",
   "version": "7",
   "dialect": "postgresql",
@@ -222,6 +222,12 @@
         "wrapped_at": {
           "name": "wrapped_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seen": {
+          "name": "seen",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         }
@@ -3022,13 +3028,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "reset_notice_eligible": {
-          "name": "reset_notice_eligible",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "trusted": {
           "name": "trusted",

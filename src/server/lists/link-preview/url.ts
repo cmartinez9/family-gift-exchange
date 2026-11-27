@@ -1,5 +1,4 @@
-import {isIP} from "node:net";
-import {parse} from "ipaddr.js";
+import {isValid, parse} from "ipaddr.js";
 
 const MAX_URL_LENGTH = 2048;
 const trackingKeys = new Set([
@@ -14,7 +13,7 @@ export class LinkError extends Error {
 }
 
 export function isPublicAddress(address: string): boolean {
-  if (!isIP(address) || address.includes("%")) return false;
+  if (!isValid(address) || address.includes("%")) return false;
   const ip = parse(address);
   if (ip.kind() === "ipv4") {
     return ip.range() === "unicast" && address !== "168.63.129.16";
@@ -33,7 +32,7 @@ function checkUrl(url: URL) {
   if (url.username || url.password) throw new LinkError("unsafe-link");
   if (url.href.length > MAX_URL_LENGTH) throw new LinkError("invalid-link");
   const hostname = urlHostname(url);
-  if (isIP(hostname)) {
+  if (isValid(hostname)) {
     if (!isPublicAddress(hostname)) throw new LinkError("unsafe-link");
     return url;
   }

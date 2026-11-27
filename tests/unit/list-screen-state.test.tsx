@@ -550,3 +550,38 @@ it("changes the rendered photo URL when a saved photo is replaced", async () => 
   expect(replaced).not.toBe(original);
   expect(new URL(replaced!, "https://gift.example").pathname).toBe("/en/lists/photo/item/photo");
 });
+
+it("shows a link saved before its page loaded as on its way, then as the item once it lands", async () => {
+  vi.useFakeTimers();
+  try {
+    const robe: ListItemView = {
+      id: "robe", kind: "link", title: "fleece robe", note: null, price: null, store: "Target", starred: false,
+      url: "https://www.target.com/p/fleece-robe/-/A-12345", pictureComing: true,
+    };
+    items = [robe, {...item}];
+    await render();
+    const coming = container.querySelector("[data-picture-coming]")!;
+    expect(coming.textContent).toBe("Getting the picture from TargetSaved. The picture is on its way.");
+    expect(coming.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Couldn’t get a picture");
+    await act(async () => { vi.advanceTimersByTime(1600); });
+    expect(refresh).toHaveBeenCalled();
+
+    refresh.mockClear();
+    items = [{...robe, title: "Cozy Fleece Robe", price: "39.99", photo: "/en/lists/photo/robe/photo?v=2", pictureComing: undefined}, {...item}];
+    await render();
+    expect(container.querySelector("[data-picture-coming]")).toBeNull();
+    expect(container.textContent).toContain("Cozy Fleece Robe");
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(refresh).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("asks for a photo once a link's wait ends without one", async () => {
+  items = [{id: "socks", kind: "link", title: "wool socks", note: null, price: null, store: "shop.example.com", starred: false, url: "https://shop.example.com/wool-socks"}];
+  await render();
+  expect(container.querySelector("[data-picture-coming]")).toBeNull();
+  expect(container.textContent).toContain("Couldn’t get a picture from shop.example.com.");
+});
