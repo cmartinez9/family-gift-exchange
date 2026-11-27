@@ -468,6 +468,17 @@ it.each(["en", "es"] as const)("asks the co-organizer by name in %s", async (loc
     ? "Ana has been asked. Watch your chat." : "Ya le avisamos a Ana. Revisa tu chat.");
 });
 
+it("names the primary organizer for a member when a co-organizer is also available", async () => {
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(<OrganizerHelpProvider organizers={[...familyOrganizers, {personId: "ana", name: "Ana Martinez"}]}>
+    <AskForHelp organizer="Christian Martinez" asker={{familyId: "family", personId: "rosa"}} />
+  </OrganizerHelpProvider>);
+  expect(link("Ask Ana for help")).toBeUndefined();
+  await tap("Ask Christian for help");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "rosa");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian has been asked. Watch your chat.");
+});
+
 it("switches stale recipient information to recovery instead of claiming success", async () => {
   actions.forgotPin.mockResolvedValue({error: "organizerRecovery"});
   await render(<OrganizerHelpProvider organizers={[...familyOrganizers, {personId: "ana", name: "Ana"}]}>

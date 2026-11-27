@@ -13,6 +13,7 @@ import {createCodePreview} from "../../src/server/auth/code-preview";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "../../src/server/auth/schema";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {authenticatorSecret} from "../../src/server/auth/pin";
+import {organizerContacts} from "../../src/server/auth/account";
 import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
@@ -227,6 +228,16 @@ it("does not record a sole organizer's request or claim to notify anyone", async
   expect(await authState(f.familyId)).toEqual(before);
   expect((await tx(f.familyId, (t) => signInFamily(t, f.familyId)))?.organizers)
     .toEqual([{personId: f.organizer.personId, name: "Christian", language: "en"}]);
+});
+
+it("puts the primary organizer before the co-organizer in the shared contact query", async () => {
+  const f = await fixture();
+  const contacts = await tx(f.familyId, (t) => organizerContacts(t, f.familyId));
+  expect(contacts).toEqual([
+    {personId: f.organizer.personId, name: "Christian", language: "en"},
+    {personId: f.ana, name: "Ana", language: "en"},
+  ]);
+  expect((await tx(f.familyId, (t) => signInFamily(t, f.familyId)))?.organizers).toEqual(contacts);
 });
 
 it("notifies the co-organizer for an organizer's recovery request, with the same daily limit", async () => {
