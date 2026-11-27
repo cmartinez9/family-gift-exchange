@@ -154,15 +154,15 @@ export async function claimCommand(
 }
 
 /** "Still getting it": you have seen what the owner changed, as it was shown to you. */
-export async function acknowledgeChange(itemId: string, version: string): Promise<FormState> {
+export async function acknowledgeChange(actingAs: string, itemId: string, version: string): Promise<FormState> {
   const viewer = await requireViewer();
   try {
+    if (viewer.actingAs !== actingAs) throw new ListError("forbidden");
     await acknowledgeItemChange(viewer, itemId, version);
   } catch (error) {
     return {error: feedback(error)};
   }
-  const locale = await getLocale();
-  revalidatePath(`/${locale}/lists`, "layout");
+  await refreshLists();
   return {};
 }
 

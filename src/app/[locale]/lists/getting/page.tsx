@@ -11,10 +11,12 @@ import {getListRecipient} from "@/server/lists/my-person";
 import {claimCommand} from "../actions";
 import {ChecklistTick} from "../controls";
 import {ItemThumb, photoPath} from "../item-view";
+import {ChangedItem} from "./changed-item";
 
 /**
  * Things I'm getting: every gift you marked, with Bought and Wrapped. Only you see this page and these
- * ticks. Gifts for your person are pine, as everything only you may see is.
+ * ticks. Gifts for your person are pine, as everything only you may see is. A gift its owner edited since
+ * you last looked says so, old to new, until you say you are still getting it or let it go.
  */
 export default async function GettingPage() {
   const viewer = await requireViewer();
@@ -23,6 +25,8 @@ export default async function GettingPage() {
     getTranslations("ui.tabs"), getFormatter(), getLocale(),
   ]);
   const recipientId = await getListRecipient(viewer, exchange?.id);
+  // one gold card per screen: the first changed gift
+  const firstChanged = items.find((item) => item.changes.length)?.itemId;
   return (
     <Screen back="/">
       <BackRow href="/" parent={home("home")} backLabel={ui("back")} />
@@ -33,22 +37,33 @@ export default async function GettingPage() {
           {items.map((item) => {
             const yours = item.ownerId === recipientId;
             const forWhom = yours ? t("gettingForPerson", {name: item.ownerName}) : t("gettingFor", {name: item.ownerName});
-            return (
-              <li key={item.itemId}>
-                <article aria-label={item.title}>
+            const photo = item.hasPhoto ? photoPath(locale, item.itemId, item.updatedAt) : undefined;
+            const gold = item.itemId === firstChanged;
+            const settled = (
                 <ItemCard tone={yours ? "mine" : "info"} titleAs="h2"
-                  picture={<ItemThumb item={{kind: item.kind, photo: item.hasPhoto ? photoPath(locale, item.itemId, item.updatedAt) : undefined}} />}
+                  picture={<ItemThumb item={{kind: item.kind, photo}} />}
                   title={<span className="break-words">{item.title}</span>}
                   store={<AppLink href={`/lists/${item.ownerId}`} transition="push" className="underline decoration-1 underline-offset-4">{forWhom}</AppLink>}
                   price={item.price !== null ? format.number(Number(item.price), {style: "currency", currency: "USD"}) : undefined}
                   after={(
-                    <div className="flex gap-2 pt-3.5">
+                    <div className="flex flex-wrap gap-2 pt-3.5">
                       <ChecklistTick label={t("bought")} checked={item.bought} onPine={yours}
                         action={claimCommand.bind(null, viewer.actingAs, item.itemId, "bought")} />
                       <ChecklistTick label={t("wrapped")} checked={item.wrapped} onPine={yours}
                         action={claimCommand.bind(null, viewer.actingAs, item.itemId, "wrapped")} />
                     </div>
                   )} />
+            );
+            return (
+              <li key={item.itemId}>
+                <article aria-label={item.title}>
+                  {item.changes.length
+                    ? (
+                      <ChangedItem actingAs={viewer.actingAs} itemId={item.itemId} title={item.title} ownerName={item.ownerName}
+                        version={item.version} changes={item.changes} gold={gold} settled={settled}
+                        picture={<ItemThumb item={{kind: item.kind, photo}} on={gold ? "next" : "info"} />} />
+                    )
+                    : settled}
                 </article>
               </li>
             );

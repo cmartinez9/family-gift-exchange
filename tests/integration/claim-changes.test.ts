@@ -19,8 +19,8 @@ const otherId = randomUUID();
 const helperId = randomUUID();
 const lookedAfterId = randomUUID();
 
-function viewer(personId: string, actingAs = personId): ListViewer {
-  return {familyId, personId, actingAs, sessionId: randomUUID(), isOrganizer: false} as ListViewer;
+function viewer(personId: string, actingAs = personId) {
+  return {familyId, personId, actingAs, sessionId: randomUUID(), isOrganizer: false};
 }
 
 const owner = viewer(ownerId);
