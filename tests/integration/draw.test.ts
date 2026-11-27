@@ -1416,7 +1416,7 @@ it("keeps failed claimer notices generic in list actions", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const form = new FormData();
   form.set("title", "Changed puzzle");
-  expect(await saveItem(owner.personId, item.id, "note", {}, form)).toEqual({error: "could-not-save"});
+  expect(await saveItem(owner.personId, item.id, "note", false, {}, form)).toEqual({error: "could-not-save"});
   expect(await itemCommand(owner.personId, item.id, "delete")).toEqual({error: "could-not-save"});
   expect((await getWishlist(owner, owner.personId)).items).toEqual([item]);
   expect(await drawNoticeIds(f.familyId, "claimed-item-changed")).toEqual([]);

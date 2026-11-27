@@ -10,11 +10,11 @@ import {HomeTop} from "@/components/ui/page-header";
 import {Pass} from "@/components/ui/pass";
 import {Screen} from "@/components/ui/screen";
 import type {Viewer} from "@/server/auth";
+import {myPerson} from "@/server/draw";
 import {getListExchangeCard, listFamilyWishlists} from "@/server/lists";
 import {getGettingList} from "@/server/lists/claims";
 import {listNotifications} from "@/server/messages/inbox";
 import {daysUntilInExchangeCalendar} from "@/server/messages/calendar";
-import {getListRecipient} from "@/server/lists/my-person";
 import {tabHrefs} from "../lists/tabs";
 import {InstallCard} from "./install-card";
 import {OfflineNotice} from "./offline-notice";
@@ -24,11 +24,13 @@ import {OfflineNotice} from "./offline-notice";
  * gold card for the one thing to do now, then quiet rows for what is yours.
  */
 export async function HomeScreen({viewer}: {viewer: Viewer}) {
-  const [members, exchange, getting, notices, t, lists, tabs, format] = await Promise.all([
+  const [members, exchange, getting, notices, t, lists, tabs, format, draw] = await Promise.all([
     listFamilyWishlists(viewer), getListExchangeCard(viewer), getGettingList(viewer), listNotifications(viewer),
     getTranslations("homeScreen"), getTranslations("lists"), getTranslations("ui.tabs"), getFormatter(),
+    getTranslations("draw"),
   ]);
-  const recipientId = await getListRecipient(viewer, exchange?.id);
+  const assignment = exchange ? await myPerson(viewer, exchange.id) : null;
+  const recipientId = assignment?.recipientId;
   const me = members.find(({id}) => id === viewer.personId);
   const listOwner = members.find(({id}) => id === viewer.actingAs);
   const recipient = members.find(({id}) => id === recipientId);
@@ -61,6 +63,9 @@ export async function HomeScreen({viewer}: {viewer: Viewer}) {
         </>
       )}
       <KnitIn variant="home" className="flex flex-col gap-card-gap px-edge pt-4 pb-6">
+        {exchange && assignment && !recipientId && (
+          <ButtonLink href={`/exchanges/${exchange.id}`} prefetch={false}>{draw("reveal")}</ButtonLink>
+        )}
         {recipient && (
           <Pass name={recipient.name} lead={lists("passLead")} onlyYou={lists("onlyYou")} href={`/lists/${recipient.id}`}
             openLabel={lists("openPerson", {name: recipient.name})}

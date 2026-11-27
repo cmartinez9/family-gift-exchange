@@ -134,8 +134,8 @@ for (const language of ["en", "es"] as const) {
       }
       await buyer.goto(path("/lists"));
       const listMemberLinks = buyer.locator("main li a");
-      const before = await listMemberLinks.allTextContents();
-      expect(before).toEqual([...roster].sort());
+      const before = await listMemberLinks.evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+      expect(before).toEqual(roster.filter((name) => name !== guests[1]).sort().map(listPath));
       await expect(buyer.getByRole("heading", {name: lists.otherLists})).toHaveCount(0);
       await buyer.goto(listPath(guests[0]));
       const buyerItem = buyer.getByRole("article", {name: gift});
@@ -155,9 +155,13 @@ for (const language of ["en", "es"] as const) {
       await owner.getByRole("button", {name: lists.saveItem, exact: true}).click();
       await expect(ownerItem.getByText("Warm white only")).toBeVisible();
       await notices("claimed item edited", "claimed-item-changed", [guests[1]]);
-      await ownerItem.getByText(lists.deleteItem, {exact: true}).click();
-      await ownerItem.getByRole("button", {name: lists.confirmDeleteButton}).click();
+      await ownerItem.getByRole("link", {name: lists.editNamedItem.replace("{title}", gift)}).click();
+      await owner.getByRole("button", {name: lists.deleteItem, exact: true}).click();
       await expect(ownerItem).toHaveCount(0);
+      // Leaving the document commits the removal that the new list UI offers to undo.
+      await owner.reload();
+      await expect.poll(async () => (await runForFamily(db, familyId!, (tx) => tx.select().from(outbox)))
+        .filter(({template}) => template === "claimed-item-changed").length).toBe(2);
       await notices("claimed item deleted", "claimed-item-changed", [guests[1]]);
 
       const managementResponses: Promise<string>[] = [];
@@ -209,23 +213,24 @@ for (const language of ["en", "es"] as const) {
       const [giver, recipient] = [...after].find(([, name]) => name !== organizer && name !== guests[0])!;
       const giverPage = memberPages.get(giver)!;
       const recipientPage = memberPages.get(recipient)!;
-      const givingTo = lists.givingTo.replace("{name}", recipient);
       for (const route of [path(), path("/lists")]) {
         await giverPage.goto(route);
-        const match = giverPage.getByRole("region", {name: givingTo});
+        const match = giverPage.getByRole("link").filter({hasText: lists.onlyYou});
         await expect(match).toBeVisible();
-        await expect(match.getByRole("link", {name: lists.openList})).toHaveAttribute("href", listPath(recipient));
-        const otherHeading = giverPage.getByRole("heading", {name: lists.otherLists});
-        await expect(otherHeading).toBeVisible();
-        expect(await match.evaluate((section, selector) => {
-          const other = [...document.querySelectorAll("h2")].find((heading) => heading.textContent === selector);
-          return Boolean(other && (section.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING));
-        }, lists.otherLists)).toBe(true);
+        await expect(match).toHaveAttribute("href", listPath(recipient));
+        await expect(match).toHaveAccessibleName(new RegExp(lists.openPerson.replace("{name}", recipient)));
+        if (route === path("/lists")) {
+          const remaining = giverPage.locator("main li a");
+          expect(await remaining.evaluateAll((links) => links.map((link) => link.getAttribute("href"))))
+            .toEqual(roster.filter((name) => name !== giver && name !== recipient).sort().map(listPath));
+          expect(await match.evaluate((node, next) => !!(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING),
+            (await remaining.first().elementHandle())!)).toBe(true);
+        }
       }
       await giverPage.goto(listPath(recipient));
-      await expect(giverPage.getByText(lists.yourPerson, {exact: true})).toBeVisible();
+      await expect(giverPage.getByRole("heading", {name: lists.namedList.replace("{name}", recipient), exact: true})).toBeVisible();
       await recipientPage.goto(listPath(recipient));
-      await expect(recipientPage.getByText(lists.yourPerson, {exact: true})).toHaveCount(0);
+      await expect(recipientPage.getByText(lists.passLead, {exact: true})).toHaveCount(0);
 
       await giverPage.goto(memberUrl);
       await giverPage.getByLabel(draw.askLabel).fill(question);
@@ -259,7 +264,7 @@ for (const language of ["en", "es"] as const) {
       await expect(page.getByText(draw.detailsSaved)).toBeVisible();
       await notices("budget changed", "budget-changed", roster);
       await giverPage.goto(listPath(recipient));
-      await expect(giverPage.getByText(lists.overBudget, {exact: true})).toBeVisible();
+      await expect(giverPage.locator('[data-budget="over"]:visible')).toBeVisible();
 
       await summary(page, draw.participation).click();
       await page.getByRole("button", {name: draw.dropout.replace("{name}", recipient)}).click();
@@ -267,7 +272,7 @@ for (const language of ["en", "es"] as const) {
       await notices("dropout repair", "plans-changed", [giver], [recipient]);
       await privateNotice("plans-changed");
       await giverPage.goto(path("/lists"));
-      await expect(giverPage.getByRole("region", {name: givingTo})).toHaveCount(0);
+      await expect(giverPage.getByRole("link").filter({hasText: lists.onlyYou})).toHaveCount(0);
       await giverPage.goto(path());
       await expect(giverPage.getByRole("link", {name: draw.reveal})).toBeVisible();
 

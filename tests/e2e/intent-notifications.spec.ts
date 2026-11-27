@@ -94,20 +94,24 @@ for (const surface of ["home", "family lists"] as const) {
       const owner = await f.device(1), other = await f.device(1);
       const path = surface === "home" ? "/en" : "/en/lists";
       await other.page.goto(path);
-      await expect(other.page.getByRole("heading", {name: /^You’re giving to /})).toHaveCount(0);
+      await expect(other.page.getByRole("link").filter({hasText: en.lists.onlyYou})).toHaveCount(0);
       expect(await f.database.db.select().from(drawOpenings).where(eq(drawOpenings.familyId, f.familyId))).toEqual([]);
       await capture(other.page, info, `${surface}-before-reveal`);
       await reveal(owner.page, f.member);
       for (const locale of ["en", "es"] as const) {
         const messages = locale === "en" ? en : es;
         await other.page.goto(surface === "home" ? `/${locale}` : `/${locale}/lists`);
-        const recipient = other.page.getByRole("heading", {name: messages.lists.givingTo.replace("{name}", "Person C"), exact: true});
+        const recipient = other.page.getByRole("link").filter({hasText: messages.lists.onlyYou});
         await expect(recipient).toBeVisible();
-        const card = recipient.locator("..");
-        await expect(card.getByRole("link", {name: messages.lists.openList, exact: true})).toHaveAttribute("href", `/${locale}/lists/${f.ids[2]}`);
-        const remaining = other.page.getByRole("heading", {name: messages.lists.otherLists, exact: true});
-        expect(await recipient.evaluate((node, otherNode) => !!(node.compareDocumentPosition(otherNode) & Node.DOCUMENT_POSITION_FOLLOWING), await remaining.elementHandle())).toBe(true);
-        await expect(other.page.locator("li").getByRole("link", {name: "Person C", exact: true})).toHaveCount(0);
+        await expect(recipient).toHaveAccessibleName(new RegExp(messages.lists.openPerson.replace("{name}", "Person C")));
+        await expect(recipient).toHaveAttribute("href", `/${locale}/lists/${f.ids[2]}`);
+        if (surface === "family lists") {
+          const remaining = other.page.locator("main li a");
+          expect(await remaining.evaluateAll((links) => links.map((link) => link.getAttribute("href"))))
+            .toEqual([0, 3, 4, 5].map((index) => `/${locale}/lists/${f.ids[index]}`));
+          expect(await recipient.evaluate((node, next) => !!(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING),
+            (await remaining.first().elementHandle())!)).toBe(true);
+        }
         await capture(other.page, info, `${surface}-${locale}-match-first`);
       }
       const opening = (await f.database.db.select().from(drawOpenings).where(and(eq(drawOpenings.familyId, f.familyId), eq(drawOpenings.sessionId, other.sessionId))))[0];
@@ -146,10 +150,9 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
       // Start each action in the named state, then submit an actual browser form.
       await reset();
       await page.goto("/en/lists");
-      await page.locator("summary").filter({hasText: en.lists.budget}).click();
       await page.getByLabel(en.lists.budget, {exact: true}).fill("30");
       await page.getByRole("button", {name: en.lists.saveBudget, exact: true}).click();
-      await expect(page.getByRole("main").getByRole("status")).toHaveText(en.lists.saved);
+      await expect(page.getByRole("status").filter({hasText: en.lists.saved}).last()).toBeVisible();
       await check("budget-changed");
       await page.getByRole("button", {name: en.lists.saveBudget, exact: true}).click();
       await expect(page.getByRole("button", {name: en.lists.saveBudget, exact: true})).toBeEnabled();
@@ -159,7 +162,7 @@ for (const state of ["setup", "open", "drawn", "locked"] as const) {
         await reset();
         await page.getByLabel(en.lists.budget, {exact: true}).fill(amount);
         await page.getByRole("button", {name: en.lists.saveBudget, exact: true}).click();
-        await expect(page.getByRole("main").getByRole("status")).toHaveText(en.lists.saved);
+        await expect(page.getByRole("status").filter({hasText: en.lists.saved}).last()).toBeVisible();
         await check("budget-changed");
         expect((await f.database.db.select().from(exchanges).where(eq(exchanges.id, f.exchangeId)))[0].budgetAmount)
           .toBe(amount ? `${amount}.00` : null);
@@ -220,35 +223,38 @@ test("a failed required claimer notice rolls back edits and removals with a gene
     const owner = await f.device(1), buyer = await f.device(2);
     const page = owner.page;
     await page.goto(`/en/lists/${f.ids[1]}/items/new?kind=note`);
-    await page.getByLabel("Item name", {exact: true}).fill("Secret winter puzzle");
-    await page.getByRole("button", {name: "Save item", exact: true}).click();
+    await page.getByLabel(en.lists.title, {exact: true}).fill("Secret winter puzzle");
+    await page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
     await buyer.page.goto(`/en/lists/${f.ids[1]}`);
     await buyer.page.getByRole("button", {name: en.lists.claim, exact: true}).click();
     await expect(buyer.page.getByText(en.lists.mine, {exact: true})).toBeVisible();
     // A real database write rejection exercises the action's transaction boundary.
     await f.database.db.execute(sql.raw(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.family_id = '${f.familyId}'::uuid AND NEW.template = 'claimed-item-changed' THEN RAISE EXCEPTION 'Private queue failure details'; END IF; RETURN NEW; END $$`));
     await f.database.db.execute(sql.raw(`CREATE TRIGGER ${functionName} BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION ${functionName}()`));
-    await page.getByRole("link", {name: "Edit item Secret winter puzzle", exact: true}).click();
-    await page.getByLabel("Item name", {exact: true}).fill("Changed winter puzzle");
-    await page.getByRole("button", {name: "Save item", exact: true}).click();
-    await expect(page.getByRole("main").getByRole("alert")).toHaveText(en.lists.feedback["could-not-save"]);
+    await page.getByRole("link", {name: en.lists.editNamedItem.replace("{title}", "Secret winter puzzle"), exact: true}).click();
+    await page.getByLabel(en.lists.title, {exact: true}).fill("Changed winter puzzle");
+    await page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toHaveText(en.lists.feedback["could-not-save"]);
     await expect(page.getByRole("main")).not.toContainText("Private queue failure details");
     await capture(page, info, "claimer-notice-failure-generic-edit");
     await page.goto(`/en/lists/${f.ids[1]}`);
     const card = page.getByRole("article", {name: "Secret winter puzzle", exact: true});
     await expect(card).toBeVisible();
     await expect(page.getByText(en.lists.someone, {exact: true})).toHaveCount(0);
-    await card.getByText(en.lists.deleteItem, {exact: true}).click();
-    await card.getByRole("button", {name: en.lists.confirmDeleteButton, exact: true}).click();
-    await expect(card.getByRole("alert")).toHaveText(en.lists.feedback["could-not-save"]);
+    await card.getByRole("link", {name: en.lists.editNamedItem.replace("{title}", "Secret winter puzzle"), exact: true}).click();
+    const removing = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/remove"));
+    await page.getByRole("button", {name: en.lists.deleteItem, exact: true}).click();
+    await expect(card).toHaveCount(0);
+    await removing;
+    await expect(page.getByRole("status").filter({hasText: en.lists.feedback["could-not-save"]})).toBeVisible();
     await page.reload();
     await expect(card).toBeVisible();
     expect(await f.notices()).toEqual([]);
     await capture(page, info, "claimer-notice-failure-keeps-item");
     await f.database.db.execute(sql.raw(`DROP TRIGGER ${functionName} ON outbox`));
-    await page.getByRole("link", {name: "Edit item Secret winter puzzle", exact: true}).click();
-    await page.getByLabel("Item name", {exact: true}).fill("Changed winter puzzle");
-    await page.getByRole("button", {name: "Save item", exact: true}).click();
+    await page.getByRole("link", {name: en.lists.editNamedItem.replace("{title}", "Secret winter puzzle"), exact: true}).click();
+    await page.getByLabel(en.lists.title, {exact: true}).fill("Changed winter puzzle");
+    await page.getByRole("button", {name: en.lists.saveItem, exact: true}).click();
     await expect(page.getByRole("article", {name: "Changed winter puzzle", exact: true})).toBeVisible();
     expect((await f.notices()).map(row => [row.personId, row.template])).toEqual([[f.ids[2], "claimed-item-changed"]]);
     await buyer.page.goto("/en/notifications");
