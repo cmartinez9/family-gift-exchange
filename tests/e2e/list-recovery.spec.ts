@@ -187,12 +187,12 @@ test("recovers offline heart, order, item draft, preview, budget and size saves 
     await page.waitForLoadState("networkidle");
     await page.context().setOffline(true);
     await page.getByLabel(lists.url).fill("https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html");
-    await page.getByLabel(lists.url).blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(lists.feedback["could-not-save"]);
     await shot(page, "offline-preview-feedback");
     await page.context().setOffline(false);
     await page.getByLabel(lists.url).fill("https://www.pololu.com/product/2133");
-    await page.getByLabel(lists.url).blur();
+    await page.getByRole("button", {name: lists.preview, exact: true}).click();
     await expect(page.getByRole("region", {name: lists.previewTitle}).getByText("DRV8825 Stepper Motor Driver Carrier, High Current", {exact: true})).toBeVisible();
 
     await page.goto(`${fixture.path}/items/new?kind=note`);

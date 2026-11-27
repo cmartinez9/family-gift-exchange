@@ -94,25 +94,34 @@ async function shoot(page: Page, name: string, options: {axe?: boolean} = {}) {
   await page.screenshot({path: `${shots}/${test.info().project.name}-${name}.png`});
 }
 
+test("a typed link saves with the first tap while the link field is focused", async ({page}) => {
+  await page.setViewportSize(phone);
+  const {familyId, rosa} = await startFamily(page);
+  try {
+    await page.goto(`/en/lists/${rosa}/items/new?kind=link`);
+    const link = page.getByLabel(lists.url);
+    await link.fill("https://gifts.invalid/winter/wool-socks");
+    await expect(link).toBeFocused();
+    const started = Date.now();
+    await page.getByRole("button", {name: lists.saveItem}).tap();
+    await expect(page.getByRole("status").filter({hasText: lists.added})).toBeVisible();
+    expect(Date.now() - started).toBeLessThan(10_000);
+    const saved = await seed(familyId, (tx) => tx.select({url: items.url}).from(items).where(eq(items.ownerId, rosa)));
+    expect(saved).toEqual([{url: "https://gifts.invalid/winter/wool-socks"}]);
+    const socks = page.getByRole("article", {name: "wool socks"});
+    await expect(socks.getByText(lists.noPicture.replace("{store}", "gifts.invalid"))).toBeVisible({timeout: 40_000});
+    await expect(page.getByText(coming("gifts.invalid"))).toHaveCount(0);
+  } finally {
+    await seed(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
+  }
+});
+
 test("a pasted link saves at once and its picture follows without a reload", async ({page}) => {
   test.setTimeout(180_000);
   await page.setViewportSize(phone);
   const {familyId, rosa} = await startFamily(page);
   try {
     await addPhotos(page, rosa);
-
-    // Saving does not wait on the store. A link nobody can open settles as a clean item asking for a photo.
-    await page.goto(`/en/lists/${rosa}/items/new?kind=link`);
-    await page.getByLabel(lists.url).fill("https://gifts.invalid/winter/wool-socks");
-    const started = Date.now();
-    // Straight to Save, before the field's own preview has had a chance to load
-    await page.getByRole("button", {name: lists.saveItem}).dispatchEvent("click");
-    await expect(page.getByRole("status").filter({hasText: lists.added})).toBeVisible();
-    expect(Date.now() - started).toBeLessThan(10_000);
-    const socks = page.getByRole("article", {name: "wool socks"});
-    await expect(socks.getByText(lists.noPicture.replace("{store}", "gifts.invalid"))).toBeVisible({timeout: 40_000});
-    await expect(page.getByText(coming("gifts.invalid"))).toHaveCount(0);
-    await seed(familyId, (tx) => tx.delete(items).where(and(eq(items.familyId, familyId), eq(items.title, "wool socks"))).execute());
 
     // 4.4: added, the picture on its way, and the toast
     const robeId = await seedComing(familyId, rosa);

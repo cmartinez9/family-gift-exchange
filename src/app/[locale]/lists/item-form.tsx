@@ -200,7 +200,6 @@ export function ItemForm({ownerId, kind, initial, mode = "page", onSaved, onRemo
         <>
           <TextArea id={`${ids}-link`} label={t("url")} hint={t("linkHint")} name="link" rows={2} value={link} required maxLength={3000}
             onChange={(event) => changeLink(event.currentTarget.value)}
-            onBlur={() => void loadPreview(link)}
             onPaste={(event) => {
               const input = event.clipboardData.getData("text");
               if (!input) return;
