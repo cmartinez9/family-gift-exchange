@@ -204,7 +204,10 @@ export const aboutMe = pgTable("about_me", {
 ]);
 
 /** What the person getting an item last saw of it; see server/lists/claims/changes.ts. */
-export type ClaimSeen = {title: string; note: string | null; url: string | null; store: string | null; price: string | null};
+export type ClaimSeen = {
+  title: string; note: string | null; url: string | null; store: string | null; price: string | null;
+  imageKey?: string | null;
+};
 
 export const claims = pgTable("claims", {
   familyId: familyId(),

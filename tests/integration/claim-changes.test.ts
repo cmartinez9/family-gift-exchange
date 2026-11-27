@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {and, eq} from "drizzle-orm";
+import sharp from "sharp";
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
 import {signInDevice} from "../../src/server/auth/access";
 import {actFor} from "../../src/server/auth/security";
@@ -7,8 +8,9 @@ import {digest, secret} from "../../src/server/auth/session";
 import {withFamily} from "../../src/server/db/client";
 import {claims, families, people} from "../../src/server/db/schema";
 import {addListItem, editListItem, getWishlist, removeListItem, type ListEvents} from "../../src/server/lists";
-import {acknowledgeItemChange, claimItem, getGettingList, undoClaim} from "../../src/server/lists/claims";
+import {acknowledgeItemChange, claimItem, getGettingList, setClaimTick, undoClaim} from "../../src/server/lists/claims";
 import type {ListViewer} from "../../src/server/lists/access";
+import type {ListPhotoStorage} from "../../src/server/lists/photo-storage";
 
 vi.mock("server-only", () => ({}));
 
@@ -83,6 +85,34 @@ describe("what changed on a gift you are getting", () => {
     expect((await gettingEntry(buyer, item.id))?.changes).toEqual([]);
   });
 
+  it("shows a photo-only edit, rejects an unseen picture, and deletes the replaced image data", async () => {
+    const photos = new Map<string, Buffer>();
+    const storage: ListPhotoStorage = {
+      put: async (key, bytes) => { photos.set(key, bytes); },
+      get: async (key) => photos.has(key) ? Uint8Array.from(photos.get(key)!) : null,
+      remove: async (key) => { photos.delete(key); },
+    };
+    const upload = (background: string) => sharp({create: {width: 20, height: 20, channels: 3, background}}).png().toBuffer();
+    const item = await addListItem(owner, ownerId, {kind: "photo", title: "Slippers", upload: await upload("red")}, {storage});
+    await claimItem(buyer, item.id);
+    const initial = (await gettingEntry(buyer, item.id))!;
+    const seen = (await claimRow(item.id))[0].seen!;
+    expect(seen.imageKey).toBe([...photos.keys()][0]);
+
+    await editListItem(owner, ownerId, item.id, {upload: await upload("blue")}, {storage, events: quiet});
+    const changed = (await gettingEntry(buyer, item.id))!;
+    expect(changed).toMatchObject({hasPhoto: true, changes: [{field: "photo", hasPhoto: true}]});
+    expect(changed.changes).toHaveLength(1);
+    expect(changed.version).not.toBe(initial.version);
+    expect(photos.has(seen.imageKey!)).toBe(false);
+    expect(photos.size).toBe(1);
+    expect((await claimRow(item.id))[0].seen).toEqual(seen);
+    await expect(acknowledgeItemChange(buyer, item.id, initial.version)).rejects.toMatchObject({code: "item-changed"});
+    await acknowledgeItemChange(buyer, item.id, changed.version);
+    expect((await gettingEntry(buyer, item.id))?.changes).toEqual([]);
+    expect((await claimRow(item.id))[0].seen?.imageKey).toBe([...photos.keys()][0]);
+  });
+
   it("shows a changed link by its store, and a note that was added or cleared", async () => {
     const resolve = vi.fn()
       .mockResolvedValueOnce({url: "https://target.example.com/socks", title: "Socks", price: "12.00", store: "target.example.com", icon: "store"})
@@ -141,11 +171,43 @@ describe("what changed on a gift you are getting", () => {
     await undoClaim(buyer, item.id);
     expect(await claimRow(item.id)).toEqual([]);
     await claimItem(other, item.id);
-    expect((await claimRow(item.id))[0]?.seen).toEqual({title: "Scarf", note: "Short", url: null, store: null, price: null});
+    expect((await claimRow(item.id))[0]?.seen).toEqual({title: "Scarf", note: "Short", url: null, store: null, price: null, imageKey: null});
     expect((await gettingEntry(other, item.id))?.changes).toEqual([]);
 
     await removeListItem(owner, ownerId, item.id, {events: quiet});
     expect(await claimRow(item.id)).toEqual([]);
+  });
+
+  it.each([
+    {bought: false, wrapped: false}, {bought: true, wrapped: false},
+    {bought: false, wrapped: true}, {bought: true, wrapped: true},
+  ])("restores released progress %j with a fresh snapshot when Undo reclaims the gift", async (progress) => {
+    const item = await note("Gloves", {note: "Medium"});
+    await claimItem(buyer, item.id);
+    await setClaimTick(buyer, item.id, "bought", progress.bought);
+    await setClaimTick(buyer, item.id, "wrapped", progress.wrapped);
+    await editListItem(owner, ownerId, item.id, {note: "Large"}, {events: quiet});
+    expect((await gettingEntry(buyer, item.id))?.changes).toHaveLength(1);
+
+    const released = await undoClaim(buyer, item.id);
+    expect(released).toEqual(progress);
+    expect(await claimRow(item.id)).toEqual([]);
+    await editListItem(owner, ownerId, item.id, {note: "Extra large"}, {events: quiet});
+    await claimItem(buyer, item.id, released);
+    expect(await gettingEntry(buyer, item.id)).toMatchObject({...progress, changes: []});
+    expect((await claimRow(item.id))[0].seen?.note).toBe("Extra large");
+  });
+
+  it("does not restore progress onto a gift someone else claimed after it was released", async () => {
+    const item = await note("Teapot");
+    await claimItem(buyer, item.id);
+    await setClaimTick(buyer, item.id, "bought", true);
+    await setClaimTick(buyer, item.id, "wrapped", true);
+    const released = await undoClaim(buyer, item.id);
+    await claimItem(other, item.id);
+    await expect(claimItem(buyer, item.id, released)).rejects.toMatchObject({code: "already-claimed"});
+    expect(await gettingEntry(other, item.id)).toMatchObject({bought: false, wrapped: false});
+    expect(await gettingEntry(buyer, item.id)).toBeUndefined();
   });
 
   it("gives the owner the same edit result and list whether or not anyone is getting the item", async () => {

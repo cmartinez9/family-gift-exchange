@@ -299,6 +299,8 @@
       "noLink": "Sin enlace",
       "linkAt": "En {store}",
       "newLinkAt": "Otra página en {store}",
+      "newPicture": "Foto nueva",
+      "pictureRemoved": "Foto eliminada",
       "keep": "Lo sigo regalando",
       "letGo": "Ya no lo regalo",
       "kept": "Listo. Sigue en tu lista.",

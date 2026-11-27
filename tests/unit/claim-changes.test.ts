@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {diffSeen, seenOf, seenVersion, type SeenItem} from "../../src/server/lists/claims/changes";
 
-const base: SeenItem = {title: "Cozy slipper socks", note: "Size 7 to 8", url: null, store: null, price: "18.00"};
+const base: SeenItem = {title: "Cozy slipper socks", note: "Size 7 to 8", url: null, store: null, price: "18.00", imageKey: null};
 
 describe("diffSeen", () => {
   it("is empty when nothing changed or nothing was recorded yet", () => {
@@ -32,12 +32,26 @@ describe("diffSeen", () => {
     const [change] = diffSeen(base, {...base, url: "javascript:alert(1)", store: "evil"});
     expect(change).toEqual({field: "link", before: null, after: "evil", url: null});
   });
+
+  it("shows a photo-only replacement, addition, or removal without exposing stored identities", () => {
+    const seen = seenOf({...base, imageKey: "old-photo.webp"});
+    expect(diffSeen(seen, {...base, imageKey: "new-photo.webp"})).toEqual([{field: "photo", hasPhoto: true}]);
+    expect(diffSeen(base, {...base, imageKey: "new-photo.webp"})).toEqual([{field: "photo", hasPhoto: true}]);
+    expect(diffSeen(seen, base)).toEqual([{field: "photo", hasPhoto: false}]);
+    expect(diffSeen(seen, {...seen})).toEqual([]);
+  });
+
+  it("does not invent an old picture for a legacy snapshot without photo identity", () => {
+    const {imageKey, ...legacy} = base;
+    void imageKey;
+    expect(diffSeen(legacy, {...base, imageKey: "current-photo.webp"})).toEqual([]);
+  });
 });
 
 describe("seenVersion", () => {
   it("changes with any shown field and is stable otherwise", () => {
     expect(seenVersion(base)).toBe(seenVersion({...base}));
-    for (const field of ["title", "note", "url", "store", "price"] as const) {
+    for (const field of ["title", "note", "url", "store", "price", "imageKey"] as const) {
       expect(seenVersion({...base, [field]: "other"})).not.toBe(seenVersion(base));
     }
     expect(seenVersion(seenOf({...base, note: null}))).not.toBe(seenVersion(base));

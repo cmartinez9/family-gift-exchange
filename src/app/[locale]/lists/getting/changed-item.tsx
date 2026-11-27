@@ -106,18 +106,20 @@ export function ChangedItem({actingAs, itemId, title, ownerName, version, change
 
   const letGo = () => {
     startTransition(async () => {
-      const {error} = await runListAction(() => claimCommand(actingAs, itemId, "undo", false));
+      const result = await runListAction(() => claimCommand(actingAs, itemId, "undo", false));
+      const {error} = result;
       if (error) {
         toast({message: lists(`feedback.${error}`), icon: "alert"});
         return;
       }
+      const released = "released" in result ? result.released : undefined;
       toast({
         message: t("letGone"),
-        undo: () => {
-          void runListAction(() => claimCommand(actingAs, itemId, "claim", true)).then(({error: undoError}) => {
+        undo: released && (() => {
+          void runListAction(() => claimCommand(actingAs, itemId, "claim", true, {released})).then(({error: undoError}) => {
             if (undoError) toast({message: lists(`feedback.${undoError}`), icon: "alert"});
           });
-        },
+        }),
       });
     });
   };
@@ -151,6 +153,14 @@ export function ChangedItem({actingAs, itemId, title, ownerName, version, change
 function ChangeLines({change}: {change: ItemChange}) {
   const t = useTranslations("lists.changed");
   const format = useFormatter();
+  if (change.field === "photo") {
+    return (
+      <div className="flex items-start gap-2 text-body-strong" data-changed="photo">
+        <Icon name="arrow" size={20} strokeWidth={2.2} className="mt-[2.5px]" />
+        <span className="min-w-0 break-words">{t(change.hasPhoto ? "newPicture" : "pictureRemoved")}</span>
+      </div>
+    );
+  }
   const value = (side: "before" | "after") => {
     const text = change[side];
     if (change.field === "price") {

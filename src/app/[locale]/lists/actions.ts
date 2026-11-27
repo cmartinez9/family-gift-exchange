@@ -15,7 +15,7 @@ import {LinkError, resolveLinkPreview} from "@/server/lists/link-preview";
 import {readLinkDraft, signLinkDraft} from "@/server/lists/link-preview/draft";
 import {MAX_PHOTO_INPUT} from "@/server/lists/photo-storage";
 import {aboutFields, itemKinds, type AboutField, type ItemKind} from "@/server/lists/validation";
-import type {FormState, PreviewState} from "./action-types";
+import type {ClaimState, FormState, PreviewState} from "./action-types";
 
 function feedback(error: unknown) {
   if (error instanceof ListError || error instanceof LinkError) return error.code;
@@ -138,19 +138,21 @@ export async function itemCommand(
 
 export async function claimCommand(
   actingAs: string, itemId: string, command: "claim" | "undo" | "bought" | "wrapped", checked: boolean,
-): Promise<FormState> {
+  state: ClaimState = {},
+): Promise<ClaimState> {
   const viewer = await requireViewer();
+  let released: ClaimState["released"];
   try {
     if (viewer.actingAs !== actingAs) throw new ListError("forbidden");
-    if (command === "claim") await claimItem(viewer, itemId);
-    else if (command === "undo") await undoClaim(viewer, itemId);
+    if (command === "claim") await claimItem(viewer, itemId, state.released);
+    else if (command === "undo") released = await undoClaim(viewer, itemId);
     else if (command === "bought" || command === "wrapped") await setClaimTick(viewer, itemId, command, checked);
     else throw new ListError("invalid-item");
   } catch (error) {
     return {error: feedback(error)};
   }
   await refreshLists();
-  return {};
+  return released ? {released} : {};
 }
 
 /** "Still getting it": you have seen what the owner changed, as it was shown to you. */

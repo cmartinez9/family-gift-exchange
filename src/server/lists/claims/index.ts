@@ -10,6 +10,7 @@ import {activeItemOwner, listItemsScope, requireListItem} from "../item-records"
 import {diffSeen, seenOf, seenVersion, type SeenItem} from "./changes";
 
 export type ClaimMark = "mine" | "someone";
+export type ClaimProgress = {bought: boolean; wrapped: boolean};
 
 export async function listClaimMarks(tx: FamilyTransaction, viewer: ListViewer, ownerId: string) {
   if (hidesClaims(viewer, ownerId)) return new Map<string, ClaimMark>();
@@ -51,13 +52,18 @@ async function withClaimableItem<T>(
   });
 }
 
-export async function claimItem(viewer: ListViewer, itemId: string) {
+export async function claimItem(viewer: ListViewer, itemId: string, progress?: ClaimProgress) {
   await withClaimableItem(viewer, itemId, async (tx, item) => {
     const [existing] = await tx.select({mine: sql<boolean>`${claims.claimerId} = ${viewer.actingAs}::uuid`})
       .from(claims).where(itemClaim(viewer.familyId, itemId));
     if (existing?.mine) return;
     if (existing) throw new ListError("already-claimed");
-    await tx.insert(claims).values({familyId: viewer.familyId, itemId, claimerId: viewer.actingAs, seen: seenOf(item)});
+    const now = new Date();
+    await tx.insert(claims).values({
+      familyId: viewer.familyId, itemId, claimerId: viewer.actingAs, seen: seenOf(item),
+      boughtAt: progress?.bought === true ? now : null,
+      wrappedAt: progress?.wrapped === true ? now : null,
+    });
   });
 }
 
@@ -66,8 +72,12 @@ function viewerClaim(viewer: ListViewer, itemId: string) {
 }
 
 export async function undoClaim(viewer: ListViewer, itemId: string) {
-  await withClaimableItem(viewer, itemId, async (tx) => {
-    await tx.delete(claims).where(viewerClaim(viewer, itemId));
+  return withClaimableItem(viewer, itemId, async (tx) => {
+    const [released] = await tx.delete(claims).where(viewerClaim(viewer, itemId)).returning({
+      bought: sql<boolean>`${claims.boughtAt} is not null`,
+      wrapped: sql<boolean>`${claims.wrappedAt} is not null`,
+    });
+    return released;
   });
 }
 
@@ -99,16 +109,19 @@ export async function acknowledgeItemChange(viewer: ListViewer, itemId: string, 
 
 const changeColumns = {
   seen: claims.seen, itemNote: items.note, itemUrl: items.url, itemStore: items.store, itemPrice: items.price,
+  itemImageKey: items.imageKey,
 };
 
 type ChangeColumns = {
   title: string; seen: SeenItem | null; itemNote: string | null; itemUrl: string | null;
-  itemStore: string | null; itemPrice: string | null;
+  itemStore: string | null; itemPrice: string | null; itemImageKey: string | null;
 };
 
 /** Each gift with what its owner changed since you last looked, and the version you are being shown. */
-function withChanges<T extends ChangeColumns>({seen, itemNote, itemUrl, itemStore, itemPrice, ...row}: T) {
-  const current = seenOf({title: row.title, note: itemNote, url: itemUrl, store: itemStore, price: itemPrice});
+function withChanges<T extends ChangeColumns>({seen, itemNote, itemUrl, itemStore, itemPrice, itemImageKey, ...row}: T) {
+  const current = seenOf({
+    title: row.title, note: itemNote, url: itemUrl, store: itemStore, price: itemPrice, imageKey: itemImageKey,
+  });
   return {...row, changes: diffSeen(seen, current), version: seenVersion(current)};
 }
 

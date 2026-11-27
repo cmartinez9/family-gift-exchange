@@ -10,19 +10,21 @@ import {safeStoredLink} from "../link-preview/url";
  */
 export type SeenItem = ClaimSeen;
 
-type ItemFields = {title: string; note: string | null; url: string | null; store: string | null; price: string | null};
-
 export type ItemChange =
   | {field: "title" | "note" | "price"; before: string | null; after: string | null}
-  | {field: "link"; before: string | null; after: string | null; url: string | null};
+  | {field: "link"; before: string | null; after: string | null; url: string | null}
+  | {field: "photo"; hasPhoto: boolean};
 
-export function seenOf(item: ItemFields): SeenItem {
-  return {title: item.title, note: item.note, url: item.url, store: item.store, price: item.price};
+export function seenOf(item: SeenItem): SeenItem {
+  return {
+    title: item.title, note: item.note, url: item.url, store: item.store, price: item.price,
+    imageKey: item.imageKey ?? null,
+  };
 }
 
 /** A short fingerprint of what the getter is shown, so "Still getting it" accepts only what they saw. */
 export function seenVersion(seen: SeenItem) {
-  return createHash("sha256").update(JSON.stringify([seen.title, seen.note, seen.url, seen.store, seen.price]))
+  return createHash("sha256").update(JSON.stringify([seen.title, seen.note, seen.url, seen.store, seen.price, seen.imageKey ?? null]))
     .digest("base64url").slice(0, 22);
 }
 
@@ -40,6 +42,9 @@ export function diffSeen(seen: SeenItem | null, current: SeenItem): ItemChange[]
       field: "link", before: seen.store ?? seen.url, after: current.store ?? current.url,
       url: safeStoredLink(current.url) ?? null,
     });
+  }
+  if (seen.imageKey !== undefined && seen.imageKey !== (current.imageKey ?? null)) {
+    changes.push({field: "photo", hasPhoto: Boolean(current.imageKey)});
   }
   return changes;
 }
