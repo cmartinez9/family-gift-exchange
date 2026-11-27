@@ -4,6 +4,7 @@ import {promisify} from "node:util";
 import {expect, test, type Browser, type Page, type TestInfo} from "@playwright/test";
 import {and, eq, sql} from "drizzle-orm";
 import en from "../../messages/en.json" with {type: "json"};
+import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {exchanges, families, households, keepApart, participants, people} from "../../src/server/db/schema";
 import {pinCredentials} from "../../src/server/auth/schema";
@@ -11,7 +12,7 @@ import {hashPin} from "../../src/server/auth/pin";
 import {createSession, digest, secret} from "../../src/server/auth/session";
 import {disputeSession} from "../../src/server/auth/security";
 import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server/draw/schema";
-import {drawSeal, sealText} from "../../src/server/draw/sealing";
+import {drawSeal, openText, sealText} from "../../src/server/draw/sealing";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import {openKey, signInWithPin, skipFaceId} from "../helpers/pin-pad";
 import {openPerson as reveal} from "../helpers/open-person";
@@ -145,7 +146,7 @@ for (const recovery of ["local repair", "confirmed redraw"] as const) {
       await expect(reporter.page.getByRole("heading", {name: "The exchange is paused for now", exact: true})).toBeVisible();
       const {stdout} = await promisify(execFile)("pnpm", ["--silent", "admin:organizer-key", f.familyId], {
         env: {...process.env, DATABASE_ADMIN_URL: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL,
-          AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: "https://localhost:3100"},
+          AUTH_SECRET: process.env.E2E_AUTH_SECRET, AUTH_ORIGIN: new URL(reporter.page.url()).origin},
       });
       const page = reporter.page;
       await openKey(page, JSON.parse(stdout).url, "6285");
@@ -342,12 +343,13 @@ test("a reveal waiting on the family lock rejects a session revoked before the l
   }
 });
 
-test("repair-deadline pages keep sealed data blocked and offer localized recovery while practice still works", async ({browser}, info) => {
+test("repairs a backlog of disputed reveals within the deadline while practice still works", async ({browser}, info) => {
   test.setTimeout(90_000);
   const f = await fixture(browser, 20, 0, null, 1);
   try {
-    // A backlog of exposed matches exercises the real repair deadline, without
-    // replacing the solver or the application with a stub.
+    // This backlog used to exhaust the search. It must now recover within the
+    // application's deadline; localized timeout handling is tested with an
+    // explicit solver failure in the draw integration suite.
     const opened: (typeof f.devices)[number]["viewer"][] = [];
     for (let index = 1; index < 20; index++) {
       const device = await f.device(index);
@@ -365,30 +367,33 @@ test("repair-deadline pages keep sealed data blocked and offer localized recover
         tx, reporter, opened[index - 1].sessionId, new Date(),
       ))).toBe(true);
     }
-    for (const [locale, message, account] of [
-      ["en", "The check took too long. Try again or simplify the keep-apart rules.", "My account"],
-      ["es", "La revisión tomó demasiado tiempo. Inténtalo de nuevo o simplifica las reglas.", "Mi cuenta"],
-    ]) {
+    for (const locale of ["en", "es"] as const) {
+      const messages = locale === "en" ? en : es;
       await owner.page.goto(f.member.replace("/en/", `/${locale}/`));
-      await expect(owner.page.getByRole("main").getByRole("alert")).toHaveText(message);
-      await expect(owner.page.getByRole("link", {name: account, exact: true})).toBeVisible();
-      await expect(owner.page.getByRole("button")).toHaveCount(0);
-      await capture(owner.page, info, `${locale}-member-repair-recovery`);
+      await expect(owner.page.getByRole("main").getByRole("alert")).toHaveCount(0);
+      expect(await reveal(owner.page)).not.toBe("Person C");
+      await capture(owner.page, info, `${locale}-member-backlog-repaired`);
       const organizer = f.devices[0].page;
       await organizer.goto(`${f.manage.replace("/en/", `/${locale}/`)}?check=1`);
-      await expect(organizer.getByRole("main").getByRole("alert")).toHaveText(message);
-      await expect(organizer.getByRole("link", {name: account, exact: true})).toBeVisible();
-      await capture(organizer, info, `${locale}-organizer-repair-recovery`);
+      await expect(organizer.getByRole("heading", {name: messages.draw.verified, exact: true})).toBeVisible();
+      await capture(organizer, info, `${locale}-organizer-backlog-repaired`);
     }
+    const rows = await f.database.db.select().from(assignments).where(eq(assignments.familyId, f.familyId));
+    const key = Buffer.from(process.env.E2E_ASSIGNMENT_ENCRYPTION_KEY!, "base64");
+    const repaired = new Map(rows.map(({giverId, version, recipientSealed}) => {
+      expect(version).toBe(2);
+      return [giverId, openText(key, {familyId: f.familyId, exchangeId: f.exchangeId, giverId, version, field: "assignment"}, recipientSealed)];
+    }));
+    for (const giverId of f.ids.slice(1)) expect(repaired.get(giverId)).not.toBe(f.previous.get(giverId));
     const organizer = f.devices[0].page;
     await organizer.goto("/en/exchanges/practice");
     await organizer.getByRole("button", {name: "Start practice", exact: true}).click();
     await organizer.getByRole("button", {name: "Draw names", exact: true}).click();
     await expect(organizer.getByRole("listitem").filter({hasText: / gives to /})).toHaveCount(6);
-    await capture(organizer, info, "practice-with-real-repair-deadline");
+    await capture(organizer, info, "practice-after-real-backlog-repair");
     const [real] = await f.database.db.select().from(exchanges).where(and(eq(exchanges.familyId, f.familyId), eq(exchanges.id, f.exchangeId)));
-    expect(real.drawVersion).toBe(1);
-    expect(real.disputedRevealRepairedAt).toBeNull();
+    expect(real.drawVersion).toBe(2);
+    expect(real.disputedRevealRepairedAt).toBeInstanceOf(Date);
   } finally { await f.close(); }
 });
 

@@ -111,7 +111,7 @@ export function authorizeSealedSubject(snapshot: RuleSnapshot, viewer: DrawViewe
   if (!giver || (giver.helperId ?? giver.id) !== viewer.personId) throw new DrawError("notFound");
 }
 
-type DecryptPurpose = "reveal" | "check" | "repair" | "practice" | "ask" | "question-inbox" | "question-outbox" | "answer";
+type DecryptPurpose = "reveal" | "opened-recipient" | "check" | "repair" | "practice" | "ask" | "question-inbox" | "question-outbox" | "answer";
 
 export class InvalidSeal extends Error {
   constructor() {
@@ -180,7 +180,7 @@ export async function loadPairs(
 
 export async function loadRecipient(
   tx: FamilyTransaction, viewer: DrawViewer, exchange: Exchange, decrypt: DrawDecryptor,
-  purpose: "ask" | "reveal",
+  purpose: "ask" | "reveal" | "opened-recipient",
 ) {
   const {rows: [assignment]} = await tx.execute<{sealed: Buffer | null}>(sql`
     SELECT public.fge_sealed_recipient(
@@ -188,10 +188,15 @@ export async function loadRecipient(
     ) AS sealed
   `);
   if (!assignment?.sealed) throw new DrawError("notFound");
-  return decrypt.open(purpose, {
+  const recipientId = decrypt.open(purpose, {
     field: "assignment", familyId: viewer.familyId, exchangeId: exchange.id,
     giverId: viewer.actingAs, version: exchange.version,
   }, assignment.sealed);
+  await tx.insert(drawOpenings).values({
+    familyId: viewer.familyId, exchangeId: exchange.id, giverId: viewer.actingAs,
+    version: exchange.version, viewerId: viewer.personId, sessionId: viewer.sessionId,
+  }).onConflictDoNothing();
+  return recipientId;
 }
 
 function questionScope(familyId: string, exchangeId: string) {
@@ -256,6 +261,9 @@ export async function writeRepair(
   await publishDraw(events, tx, {
     kind: "reassigned", familyId, exchangeId: exchange.id, version: summary.version,
   }, destinations);
+  await publishDraw(events, tx, {
+    kind: "participationCancelled", familyId, exchangeId: exchange.id, version: summary.version,
+  }, [...previous.keys()].filter((giver) => !next.has(giver)));
   return {...summary, changedGivers: destinations.filter((giver) => previous.has(giver)).length};
 }
 

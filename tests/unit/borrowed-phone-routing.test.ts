@@ -7,7 +7,8 @@ import {requireWelcomeViewer} from "../../src/app/[locale]/welcome/viewer";
 import {GET as finishExpiredBorrowing} from "../../src/app/[locale]/welcome/borrowed/expired/route";
 import {requireViewer} from "../../src/server/auth";
 
-const server = vi.hoisted(() => ({findViewer: vi.fn(), touchSession: vi.fn(), borrowedCookie: "borrowed" as string | undefined}));
+const server = vi.hoisted(() => ({findViewer: vi.fn(), touchSession: vi.fn(), mySizes: vi.fn(), welcomeAssignment: vi.fn(),
+  borrowedCookie: "borrowed" as string | undefined}));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({cookies: async () => ({get: (name: string) =>
   name === "owner" ? {value: "owner"} : server.borrowedCookie ? {value: server.borrowedCookie} : undefined,
@@ -16,6 +17,8 @@ vi.mock("next/headers", () => ({cookies: async () => ({get: (name: string) =>
 vi.mock("next-intl/server", () => ({getLocale: async () => "en"}));
 vi.mock("next/navigation", () => ({redirect: (url: string) => { throw new Error(`redirect:${url}`); }}));
 vi.mock("@/server/db/client", () => ({withFamily: (_family: string, action: (tx: unknown) => unknown) => action({})}));
+vi.mock("@/server/auth/account", () => ({mySizes: server.mySizes}));
+vi.mock("../../src/app/[locale]/welcome/assignment", () => ({welcomeAssignment: server.welcomeAssignment}));
 vi.mock("@/server/auth/session", () => ({
   findViewer: server.findViewer, touchSession: server.touchSession,
   parseSession: (value: string | undefined) => value ? {familyId: "family"} : null, sessionCookie: "owner", borrowedCookie: "borrowed",
@@ -31,6 +34,7 @@ const guest = {...owner, sessionId: "rosa", personId: "rosa", actingAs: "rosa",
 beforeEach(() => {
   vi.resetAllMocks();
   server.borrowedCookie = "borrowed";
+  server.mySizes.mockResolvedValue({noClothes: false, sizes: {tops: "L"}});
 });
 
 it.each([false, true])("routes a borrowed viewer away from ordinary pages (hidden=%s)", async (hidden) => {
@@ -96,4 +100,28 @@ it("does not retarget old borrowed links after the expired cookie has been clear
   server.findViewer.mockResolvedValue(owner);
   await expect(WelcomeListPage({searchParams: Promise.resolve({borrowed: guest.sessionId})}))
     .rejects.toThrow("redirect:/en/welcome/borrowed/expired");
+});
+
+it.each([
+  ["sizes", WelcomeSizesPage], ["list", WelcomeListPage],
+] as const)("loads sealed borrowed %s onboarding without accessing the hidden match", async (_name, page) => {
+  const hidden = {...guest, borrowed: {...guest.borrowed, hidden: true}};
+  server.findViewer.mockResolvedValueOnce(owner).mockResolvedValueOnce(hidden);
+  server.welcomeAssignment.mockRejectedValue(new Error("hidden match must stay sealed"));
+  const screen = await page({searchParams: Promise.resolve({borrowed: guest.sessionId})});
+  expect(screen.props).toMatchObject({ownerId: guest.personId, personOpened: false,
+    replace: true, borrowedSessionId: guest.sessionId});
+  expect(server.welcomeAssignment).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["sizes", WelcomeSizesPage], ["list", WelcomeListPage],
+] as const)("retains the ordinary viewer's opened match status on the %s step", async (_name, page) => {
+  server.borrowedCookie = undefined;
+  server.findViewer.mockResolvedValue(owner);
+  server.welcomeAssignment.mockResolvedValue({recipientId: "beto", version: 1});
+  const screen = await page();
+  expect(screen.props).toMatchObject({ownerId: owner.personId, personOpened: true,
+    replace: false, borrowedSessionId: undefined});
+  expect(server.welcomeAssignment).toHaveBeenCalledWith(owner);
 });

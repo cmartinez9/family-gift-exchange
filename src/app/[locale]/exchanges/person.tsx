@@ -32,7 +32,7 @@ const SUGGESTIONS = ["size", "color", "have"] as const;
  * Your person: the reveal the first time, then their page — pine, because only you may see it.
  * The name comes from the reveal itself; until it is opened on this visit the page keeps it hidden.
  */
-export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, exchangeFacts}: {
+export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing, incoming, back, backLabel, answerHref, exchangeFacts, steps, continuation}: {
   context: MemberContext;
   seen: boolean;
   canReport: boolean;
@@ -46,6 +46,8 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   backLabel: string;
   answerHref: string;
   exchangeFacts?: ReactNode;
+  steps?: ReactNode;
+  continuation?: ReactNode;
 }) {
   const t = useTranslations("draw");
   const ui = useTranslations("ui");
@@ -90,7 +92,8 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
 
   if (view === "reveal") {
     return (
-      <Screen ground="red" back={back}>
+      <Screen ground="red" back={back} actions={continuation}>
+        {steps}
         {incoming.length > 0 && (
           // a question for you can be answered before you open your own person
           <ModeBanner icon="message" action={<AppLink href={answerHref} transition="push" className={modeActionClass}>{t("person.answer")}</AppLink>}>
@@ -126,15 +129,17 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   const list = person?.list;
   const empty = list && list.items.length === 0;
   const askLabel = name ? t("person.ask", {name}) : t("person.askAnonymous");
+  const actions = canAsk && (name ? !empty : false) ? (
+    <>
+      <Button icon="message" onClick={() => setAsk(true)}>{askLabel}</Button>
+      <p className="text-center text-body">{t("person.askNote", {name: name ?? ""})}</p>
+    </>
+  ) : !name ? (
+    <Button icon="gift" onClick={() => open()}>{t("reveal")}</Button>
+  ) : undefined;
   return (
-    <Screen ground="pine" back={back} actions={canAsk && (name ? !empty : false) ? (
-      <>
-        <Button icon="message" onClick={() => setAsk(true)}>{askLabel}</Button>
-        <p className="text-center text-body">{t("person.askNote", {name: name ?? ""})}</p>
-      </>
-    ) : !name ? (
-      <Button icon="gift" onClick={() => open()}>{t("reveal")}</Button>
-    ) : undefined}>
+    <Screen ground="pine" back={back} actions={continuation ? <>{actions}{continuation}</> : actions}>
+      {steps}
       <BackRow href={back} parent={backLabel} backLabel={ui("back")}
         right={canReport && <TextButton className="text-snow-white" onClick={() => setReport(true)}>{t("report")}</TextButton>} />
 

@@ -194,7 +194,7 @@ it("notifies only ordinary claimers of edits and removals with generic localized
   }
 });
 
-it("rolls back default callback messages with the item savepoint and budget transaction", async () => {
+it("rolls back item edits and removals with their notices and the budget transaction", async () => {
   const owner = await signedInDevice(members[1].id);
   const seen: (typeof outbox.$inferSelect)[][] = [];
   const rollbackEvents: ListEvents = {
@@ -209,20 +209,16 @@ it("rolls back default callback messages with the item savepoint and budget tran
       throw new Error("rollback");
     },
   };
-  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  try {
-    await expect(editListItem(owner, owner.personId, itemIds[0], {note: "Saved despite queue failure"}, {events: rollbackEvents}))
-      .resolves.toMatchObject({note: "Saved despite queue failure"});
-    expect(warning).toHaveBeenCalledOnce();
-  } finally {
-    warning.mockRestore();
-  }
+  await expect(editListItem(owner, owner.personId, itemIds[0], {note: "Must roll back"}, {events: rollbackEvents}))
+    .rejects.toThrow("rollback");
+  await expect(removeListItem(owner, owner.personId, itemIds[0], {events: rollbackEvents})).rejects.toThrow("rollback");
   await expect(setExchangeBudget(await signedInDevice(organizers[0].id), exchangeId, "75", rollbackEvents))
     .rejects.toThrow("rollback");
   expect(seen[0]).toMatchObject([{personId: members[0].id, language: "en", template: "claimed-item-changed"}]);
-  expect(seen[1].map(({personId}) => personId).toSorted())
+  expect(seen[1]).toMatchObject([{personId: members[0].id, language: "en", template: "claimed-item-changed"}]);
+  expect(seen[2].map(({personId}) => personId).toSorted())
     .toEqual([...organizers, ...members, dependent].map(({id}) => id).toSorted());
-  expect(seen[1].every(({template}) => template === "budget-changed")).toBe(true);
+  expect(seen[2].every(({template}) => template === "budget-changed")).toBe(true);
   const state = await withFamily(familyId, async (tx) => ({
     messages: await tx.select().from(outbox),
     exchanges: await tx.select().from(exchanges),
@@ -230,7 +226,8 @@ it("rolls back default callback messages with the item savepoint and budget tran
   }));
   expect(state.messages).toEqual([]);
   expect(state.exchanges).toMatchObject([{budgetAmount: null}]);
-  expect(state.items).toMatchObject([{note: "Saved despite queue failure"}]);
+  expect(state.items).toMatchObject([{note: null, archivedAt: null}]);
+  expect(await getGettingList(await signedInDevice(members[0].id))).toContainEqual(expect.objectContaining({itemId: itemIds[0]}));
 });
 
 it("rolls back event notifications with the corresponding family mutation", async () => {

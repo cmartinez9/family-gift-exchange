@@ -144,10 +144,12 @@ test("reconciles heart edits and displays a replacement photo without reloading 
 test("recovers offline heart, order, item draft, preview, budget and size saves and permits retry", async ({page}) => {
   test.setTimeout(120_000);
   const fixture = await setup(page);
+  // A reserved domain exercises the supported metadata fallback without a live retailer dependency.
+  const productUrl = "https://shop.invalid/stepper-motor-driver";
   try {
     await database(fixture.familyId, (tx) => tx.insert(items).values({
       familyId: fixture.familyId, ownerId: fixture.ownerId, kind: "link", title: "Motor driver",
-      url: "https://www.pololu.com/product/2133", store: "pololu.com", position: 2,
+      url: productUrl, store: "shop.invalid", preview: {title: "Motor driver"}, position: 2,
     }).execute());
     await page.goto(fixture.path);
     const heart = card(page).getByRole("button", {name: lists.star});
@@ -181,19 +183,22 @@ test("recovers offline heart, order, item draft, preview, budget and size saves 
     await savedPost(page, async () => (await edit(page)).getByRole("button", {name: lists.moveUp}).click());
     await expect(page.getByRole("article").first()).toHaveAttribute("aria-label", "Tea tin");
     await savedPost(page, async () => (await edit(page, "Motor driver")).getByRole("button", {name: lists.refresh}).click());
-    await expect(page.getByRole("article").locator("img")).toBeVisible();
+    await expect(card(page, "stepper motor driver")).toBeVisible();
 
     await page.goto(`${fixture.path}/items/new?kind=link`);
     await page.waitForLoadState("networkidle");
     await page.context().setOffline(true);
-    await page.getByLabel(lists.url).fill("https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html");
+    await page.getByLabel(lists.url).fill("https://shop.invalid/winter-book");
     await page.getByRole("button", {name: lists.preview, exact: true}).click();
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(lists.feedback["could-not-save"]);
     await shot(page, "offline-preview-feedback");
     await page.context().setOffline(false);
-    await page.getByLabel(lists.url).fill("https://www.pololu.com/product/2133");
+    await page.getByLabel(lists.url).fill(productUrl);
     await page.getByRole("button", {name: lists.preview, exact: true}).click();
-    await expect(page.getByRole("region", {name: lists.previewTitle}).getByText("DRV8825 Stepper Motor Driver Carrier, High Current", {exact: true})).toBeVisible();
+    const preview = page.getByRole("region", {name: lists.previewTitle});
+    await expect(preview.getByText("stepper motor driver", {exact: true})).toBeVisible();
+    await expect(preview.getByText(lists.noPicture.replace("{store}", "shop.invalid"))).toBeVisible();
+    await expect(preview.getByRole("link", {name: lists.openProduct})).toHaveAttribute("href", productUrl);
 
     await page.goto(`${fixture.path}/items/new?kind=note`);
     await page.waitForLoadState("networkidle");

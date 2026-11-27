@@ -196,23 +196,18 @@ describe("wishlist access and claims", () => {
     expect(await reservations()).toEqual(before);
   });
 
-  it("enqueues edits and removals only for the claimer and keeps queue failures private", async () => {
+  it("enqueues edits and removals only for the claimer and rolls back queue failures", async () => {
     const item = await addWritten(owner, ownerId, "Tea tin");
     await claimItem(buyer, item.id);
     const events: ListEvents = {claimedItemChanged: vi.fn(), budgetChanged: vi.fn()};
     const failingEvents: ListEvents = {...events, async claimedItemChanged(tx) {
       await tx.execute(sql`select 1 / 0`);
     }};
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await expect(editListItem(owner, ownerId, item.id, {note: "Any shade"}, {events: failingEvents}))
-        .resolves.toEqual({...item, note: "Any shade", updatedAt: expect.any(Date)});
-      expect(warning).toHaveBeenCalledOnce();
-    } finally {
-      warning.mockRestore();
-    }
+    await expect(editListItem(owner, ownerId, item.id, {note: "Any shade"}, {events: failingEvents})).rejects.toThrow();
+    await expect(removeListItem(owner, ownerId, item.id, {events: failingEvents})).rejects.toThrow();
     expect((await getWishlist(owner, ownerId)).items.find(({id}) => id === item.id))
-      .toEqual({...item, note: "Any shade", updatedAt: expect.any(Date)});
+      .toEqual(item);
+    expect((await getGettingList(buyer)).some((entry) => entry.itemId === item.id)).toBe(true);
 
     const edited = await editListItem(owner, ownerId, item.id, {note: "Any color"}, {events});
     expect(edited).toEqual({...item, note: "Any color", updatedAt: expect.any(Date)});

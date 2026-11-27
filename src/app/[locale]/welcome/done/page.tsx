@@ -9,9 +9,11 @@ import {faceIdOnDevice, listCount, mySizes, organizerName} from "@/server/auth/a
 import {activePerson} from "@/server/auth/access";
 import {phoneOwnerName} from "@/server/auth/borrowed";
 import {withFamily} from "@/server/db/client";
+import {listFamilyWishlists} from "@/server/lists";
 import {Greeting, WelcomeSteps} from "../../sign-in/get-in";
 import {BorrowedAllSet} from "../borrowed/hand-back";
 import {screenTitle} from "../../sign-in/title";
+import {welcomeAssignment} from "../assignment";
 
 function Row({done, title, sub}: {done: boolean; title: string; sub?: string}) {
   return (
@@ -41,7 +43,12 @@ export default async function WelcomeDonePage(props: WelcomeProps = {}) {
     }));
     return <BorrowedAllSet {...names} />;
   }
-  const t = await getTranslations("getIn.done");
+  const [t, lists, assignment] = await Promise.all([
+    getTranslations("getIn.done"), getTranslations("lists"), welcomeAssignment(viewer),
+  ]);
+  const recipient = assignment?.recipientId
+    ? (await listFamilyWishlists(viewer)).find(({id}) => id === assignment.recipientId)
+    : undefined;
   const {sizes, things, face} = await withFamily(viewer.familyId, async (tx) => {
     const mine = await mySizes(tx, viewer.familyId, viewer.actingAs);
     return {
@@ -52,12 +59,13 @@ export default async function WelcomeDonePage(props: WelcomeProps = {}) {
   });
   return (
     <Screen actions={<ButtonLink href="/" icon="arrow">{t("home")}</ButtonLink>}>
-      <WelcomeSteps step={4} done allDone={sizes && things > 0} waitingStep={2} />
+      <WelcomeSteps step={4} done allDone={sizes && things > 0} waitingStep={assignment?.recipientId ? undefined : 2} />
       <Greeting heading top={t("top")} bottom={t("bottom")} />
       <div className="px-edge pt-7">
         <Card flush className="px-5 py-2">
           <KnitIn as="ul" className="fge-rows flex flex-col">
             <Row done title={t("backIn")} sub={face ? t("backInFace") : t("backInPin")} />
+            {recipient && <Row done title={lists("givingTo", {name: recipient.name})} />}
             <Row done={sizes} title={sizes ? t("sizes") : t("sizesLater")} />
             <Row done={things > 0} title={things > 0 ? t("list", {count: things}) : t("listLater")} sub={things > 0 ? t("listSub") : undefined} />
           </KnitIn>

@@ -103,6 +103,9 @@ it("allows budget changes using the current organizer role", async () => {
   vi.mocked(lockFamily).mockResolvedValue(true);
   vi.mocked(revalidateViewer).mockResolvedValue({...identity, isOrganizer: true});
   const stale = {...viewer, isOrganizer: false};
-  await setExchangeBudget(stale, randomUUID(), "50");
+  const exchangeId = randomUUID();
+  const events = {claimedItemChanged: vi.fn(), budgetChanged: vi.fn()};
+  await setExchangeBudget(stale, exchangeId, "50", events);
   expect(budget).toBe("50.00");
+  expect(events.budgetChanged).toHaveBeenCalledExactlyOnceWith(tx, {familyId: viewer.familyId, exchangeId});
 });

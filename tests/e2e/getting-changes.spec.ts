@@ -321,6 +321,13 @@ test("shows changed titles, cleared details and a different page at the same sto
     await shoot(page, "title-cleared-details-same-store-link", true);
     await card.getByRole("button", {name: changed.keep}).click();
     await expect(card.getByLabel(lists.bought)).toBeVisible();
+    // Bought appears optimistically; finish the acknowledgement before Ana edits again.
+    await expect(page.getByRole("status").filter({hasText: changed.kept})).toBeVisible();
+    const [acknowledged] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, socks)));
+    expect(acknowledged.seen).toEqual({
+      title: "Purple slipper socks", note: null, price: null,
+      url: "https://shop.example.com/slippers-purple", store: "shop.example.com", imageKey: null,
+    });
     // An owner may change their mind. Only the final values matter, not the edit timestamp.
     await anaEdits(familyId, socks, {note: "Any color"});
     await page.reload();

@@ -426,6 +426,18 @@
         "title": "Cambio de planes",
         "body": "Te tocó otra persona. Abre la aplicación para ver a quién le darás un regalo."
       },
+      "draw-redrawn": {
+        "title": "Se reemplazó el sorteo",
+        "body": "Vuelve a abrir tu resultado en la aplicación para ver a quién le darás un regalo."
+      },
+      "exchange-details-changed": {
+        "title": "Cambiaron los detalles del intercambio",
+        "body": "Abre la aplicación para revisar el día, la hora, el lugar y la fecha límite de las listas."
+      },
+      "participation-cancelled": {
+        "title": "Se canceló tu participación",
+        "body": "Ya no participas en este intercambio y no necesitas llevar un regalo para él."
+      },
       "gift-day-reminder": {
         "title": "Mañana es el intercambio",
         "body": "Revisa los detalles en la aplicación y acuérdate de llevar tu regalo."
@@ -445,6 +457,10 @@
       "budget-changed": {
         "title": "Cambió el presupuesto de los regalos",
         "body": "Abre la aplicación para ver el nuevo presupuesto."
+      },
+      "question-answered": {
+        "title": "Respondieron a tu pregunta",
+        "body": "Abre el intercambio para leer la respuesta."
       },
       "list-nudge": {
         "title": "Tu lista de deseos te espera",
@@ -609,7 +625,7 @@
     "ruleRemoved": "Se quitó la regla.",
     "ready": "Listo para el sorteo",
     "choiceCount": "Con estas reglas, cada persona puede sacar al menos a {count, plural, one {# persona} other {# personas}}.",
-    "choiceWarning": "{count, plural, one {# persona tiene} other {# personas tienen}} menos de tres opciones y podrían adivinar a quién sacaron.",
+    "choiceWarning": "{count, plural, one {# persona tiene} other {# personas tienen}} menos de tres opciones. Es posible que las personas puedan deducir quién le regala a quién.",
     "drawNames": "Sortear los nombres",
     "confirmDraw": "Sí, hacer el sorteo",
     "drawConfirmHelp": "Cada persona recibirá el nombre de alguien a quien regalarle.",

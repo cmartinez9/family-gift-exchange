@@ -426,6 +426,18 @@
         "title": "Change of plans",
         "body": "You have a new person. Open the app to see who you’re giving to."
       },
+      "draw-redrawn": {
+        "title": "The draw was replaced",
+        "body": "Open your match again in the app to see who you’re giving to."
+      },
+      "exchange-details-changed": {
+        "title": "The exchange details changed",
+        "body": "Open the app to check the gift day, time, place and wishlist deadline."
+      },
+      "participation-cancelled": {
+        "title": "Your participation was cancelled",
+        "body": "You’re no longer taking part in this exchange and no longer need to bring a gift for it."
+      },
       "gift-day-reminder": {
         "title": "Gift day is tomorrow",
         "body": "Check the details in the app and remember to bring your gift."
@@ -445,6 +457,10 @@
       "budget-changed": {
         "title": "The gift budget changed",
         "body": "Open the app to see the new budget."
+      },
+      "question-answered": {
+        "title": "Your question was answered",
+        "body": "Open the exchange to read the answer."
       },
       "list-nudge": {
         "title": "Your wishlist is waiting",
@@ -609,7 +625,7 @@
     "ruleRemoved": "Keep-apart rule removed.",
     "ready": "Ready to draw",
     "choiceCount": "Each person has at least {count, plural, one {# eligible person} other {# eligible people}} under these rules.",
-    "choiceWarning": "{count, plural, one {# person has} other {# people have}} fewer than three eligible people and may be able to guess their match.",
+    "choiceWarning": "{count, plural, one {# person has} other {# people have}} fewer than three eligible people. People may be able to work out who has whom.",
     "drawNames": "Draw names",
     "confirmDraw": "Yes, draw names",
     "drawConfirmHelp": "Each person will get one person to buy for.",

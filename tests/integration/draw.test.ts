@@ -5,10 +5,10 @@ import {NextIntlClientProvider} from "next-intl";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {audit, claims, exchanges, families, households, items, keepApart, participants, people} from "../../src/server/db/schema";
+import {audit, claims, exchanges, families, households, items, keepApart, outbox, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
-  DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
+  DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus, myPerson,
   organizerExchange, ownRevealOpenings, practiceCommand, practiceMemberView, practiceSeason,
   previewAsMember, repairDisputedReveals, reportPair, revealMyPerson, runDraw, setKeepApart, setParticipants, startPractice,
   type DrawEvents, type DrawViewer, type ExchangeDetails,
@@ -20,8 +20,10 @@ import {account, actFor, disputeEvent, disputeSession, endSessions, listSessionD
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {readiness, removeMember} from "../../src/server/auth/families";
-import {addListItem, getListExchangeCard, getWishlist} from "../../src/server/lists";
+import {addListItem, getListExchangeCard, getWishlist, setExchangeBudget} from "../../src/server/lists";
 import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
+import {listEvents} from "../../src/server/lists/list-events";
+import type {Template} from "../../src/server/messages/templates";
 import {renderServerTree} from "../helpers/render-server";
 import enMessages from "../../messages/en.json";
 import esMessages from "../../messages/es.json";
@@ -37,7 +39,7 @@ import {HelpingBanner} from "../../src/app/[locale]/helping/banner";
 import AccountPage from "../../src/app/[locale]/account/page";
 import {reportEvent, reportSession, signOut, switchProfile} from "../../src/app/[locale]/account/actions";
 import {reveal as revealAction} from "../../src/app/[locale]/exchanges/actions";
-import {saveBudget} from "../../src/app/[locale]/lists/actions";
+import {itemCommand, saveBudget, saveItem} from "../../src/app/[locale]/lists/actions";
 import {withDrawFamily} from "../../src/server/draw/access";
 import {assignments, practiceFamilies, questions} from "../../src/server/draw/schema";
 
@@ -114,6 +116,13 @@ const suffix = randomBytes(6).toString("hex");
 const appRole = `draw_test_app_${suffix}`;
 const drawRole = `draw_test_sealed_${suffix}`;
 const testFamilies = new Set<string>();
+
+async function drawNoticeIds(familyId: string, template: Template) {
+  const rows = await admin.db.select({personId: outbox.personId, requesterName: outbox.requesterName})
+    .from(outbox).where(and(eq(outbox.familyId, familyId), eq(outbox.template, template)));
+  expect(rows.every(({requesterName}) => requesterName === null)).toBe(true);
+  return rows.map(({personId}) => personId).sort();
+}
 
 function testLogin(name: string, password: string) {
   const url = new URL(databaseUrl!);
@@ -268,12 +277,16 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
   const helperOwner = {...organizer, sessionId: helperSession.id};
   await runForFamily(app.db, familyId, (tx) => actFor(tx, helperOwner, ids[1]));
   const helper = {...helperOwner, actingAs: ids[1]};
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: null, version: 2});
+  expect(await organizerExchange(organizer, exchangeId)).toMatchObject({seenCount: 0, exchange: {status: "drawn"}});
   await expect(revealMyPerson(viewers[1], exchangeId, 2)).rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...viewers[3], actingAs: ids[1]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
   await expect(revealMyPerson({...organizer, actingAs: ids[3]}, exchangeId, 2))
     .rejects.toMatchObject({code: "forbidden"});
   const opened = await revealMyPerson(helper, exchangeId, 2);
+  expect(await myPerson(helper, exchangeId)).toEqual({recipientId: opened.person.id, version: 2});
+  expect(await myPerson(organizer, exchangeId)).toEqual({recipientId: null, version: 2});
   expect(Object.keys(opened).sort()).toEqual(["person", "version"]);
   expect(opened.person.id).not.toBe(ids[0]);
   expect(opened.person.id).not.toBe(ids[1]);
@@ -318,32 +331,27 @@ it("locks on first reveal, records device openings, and redraws atomically", asy
 it("changes one giver for a simple dropout and inserts a newcomer without erasing other seen ticks", async () => {
   const {organizer, exchangeId, ids, viewers, familyId} = await fixture();
   await runDraw(organizer, exchangeId, {expectedVersion: 0});
+  expect(await drawNoticeIds(familyId, "names-drawn")).toEqual(ids.slice(0, 6).sort());
   const known = new Map(await Promise.all(viewers.slice(0, 6).map(async (viewer) =>
     [viewer.personId, (await revealMyPerson(viewer, exchangeId, 1)).person.id] as const)));
-  const events: {destinations: readonly string[]}[] = [];
-  const sink: DrawEvents = {
-    async publish(_tx, event, destinations) {
-      verifyNoPairing(event);
-      expect(event.kind).toBe("reassigned");
-      events.push({destinations});
-    },
-  };
-  const dropout = await changeParticipation(organizer, exchangeId, ids[1], "out", 1, sink);
+  const dropout = await changeParticipation(organizer, exchangeId, ids[1], "out", 1);
   expect(dropout).toMatchObject({version: 2, changedGivers: 1, participantCount: 5});
-  const [changed] = events[0].destinations;
-  expect(known.get(changed)).toBe(ids[1]);
+  const changed = [...known].find(([, recipient]) => recipient === ids[1])![0];
+  expect(await drawNoticeIds(familyId, "plans-changed")).toEqual([changed]);
+  expect(await drawNoticeIds(familyId, "participation-cancelled")).toEqual([ids[1]]);
   expect(await organizerExchange(organizer, exchangeId)).toMatchObject({seenCount: 4});
-  const entry = await changeParticipation(organizer, exchangeId, ids[6], "in", 2, sink);
+  const entry = await changeParticipation(organizer, exchangeId, ids[6], "in", 2);
   expect(entry).toMatchObject({version: 3, changedGivers: 1, participantCount: 6});
-  expect(events[1].destinations).toHaveLength(2);
-  expect(events[1].destinations).toContain(ids[6]);
   await expect(revealMyPerson(viewers[1], exchangeId, 3)).rejects.toMatchObject({code: "notFound"});
   const rows = await runForFamily(app.db, familyId, (tx) => tx.select({
     id: participants.personId, seen: participants.seenVersion,
   }).from(participants).where(and(eq(participants.familyId, familyId), eq(participants.exchangeId, exchangeId))));
+  const current = new Map(await Promise.all(viewers.filter(({personId}) => personId !== ids[1]).map(async (viewer) =>
+    [viewer.personId, (await revealMyPerson(viewer, exchangeId, 3)).person.id] as const)));
+  const predecessor = [...current].find(([, recipient]) => recipient === ids[6])![0];
+  expect(await drawNoticeIds(familyId, "plans-changed")).toEqual([changed, predecessor, ids[6]].sort());
   for (const row of rows) {
-    if (row.id === ids[1] || [changed, ...events[1].destinations].includes(row.id)) expect(row.seen).toBeNull();
-    else expect(row.seen).toBe(3);
+    expect(row.seen).toBe([ids[1], changed, predecessor, ids[6]].includes(row.id) ? null : 3);
   }
   expect(await checkSealedDraw(organizer, exchangeId)).toMatchObject({valid: true, oneLoop: true});
   verifyNoPairing([dropout, entry]);
@@ -376,7 +384,10 @@ it("protects anonymous questions and only returns the answer to the asker", asyn
   });
   expect(await listOwnQuestions(bystander, exchangeId)).toEqual({version: 1, incoming: [], outgoing: []});
   await expect(answerQuestion(bystander, exchangeId, id, 1, "Wrong account")).rejects.toMatchObject({code: "notFound"});
+  expect(await drawNoticeIds(familyId, "question-answered")).toEqual([]);
   await answerQuestion(recipient, exchangeId, id, 1, "Moonlight blue");
+  await expect(answerQuestion(recipient, exchangeId, id, 1, "Second answer")).rejects.toMatchObject({code: "alreadyAnswered"});
+  expect(await drawNoticeIds(familyId, "question-answered")).toEqual([asker.personId]);
   expect(await listOwnQuestions(asker, exchangeId)).toEqual({
     version: 1, outgoing: [{id, text: "Favorite color?", answer: "Moonlight blue"}], incoming: [],
   });
@@ -634,6 +645,7 @@ it("loads and starts isolated practice while the real family has an unresolved r
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(repair, "repairDraw").mockImplementation(() => { throw new DrawError("checkTimedOut"); });
   await expect(repairDisputedReveals(f.organizer)).rejects.toMatchObject({code: "checkTimedOut"});
+  expect(await myPerson(reporter, f.exchangeId)).toBeNull();
   signedIn.viewer = f.organizer;
   const page = () => PracticePage({searchParams: Promise.resolve({})}).then(renderServerTree).then(markup);
   expect(await practiceSeason(f.organizer)).toBeNull();
@@ -780,6 +792,7 @@ it("does not repair an unopened disputed session or an opening invalidated by a 
   await revealMyPerson(f.viewers[3], f.exchangeId, 1);
   vi.spyOn(solver, "solveDraw").mockReturnValueOnce(cycle(f.ids.slice(0, 6).reverse()));
   await runDraw(f.organizer, f.exchangeId, {expectedVersion: 1, confirmation: "REDRAW"});
+  expect(await drawNoticeIds(f.familyId, "draw-redrawn")).toEqual(f.ids.slice(0, 6).sort());
   const otherOwner = {...f.viewers[3], sessionId: (await runForFamily(app.db, f.familyId, (tx) => signInDevice(
     tx, f.familyId, f.ids[3], {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
   ))).id};
@@ -1275,6 +1288,8 @@ it("keeps the disputed recipient ambiguous at the same public sealed-loop result
     viewer.personId, (await revealMyPerson(index === 1 ? owner : viewer, f.exchangeId, 2)).person.id,
   ] as const)));
   const changed = (pairs: ReadonlyMap<string, string>) => f.ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  expect(await drawNoticeIds(f.familyId, "plans-changed"))
+    .toEqual(f.ids.filter((id) => actual.get(id) !== previous.get(id)).sort());
   expect(proof.oneLoop).toBe(modelOneLoop(actual));
   expect(state.seenCount).toBe(f.ids.length - changed(actual));
   const alternatives = possibleDraws(f.ids).filter((pairs) => pairs.get(f.ids[1]) !== f.ids[2]
@@ -1335,6 +1350,109 @@ it.each(["en", "es"] as const)("renders localized recovery on member and sealed-
   expect(manageHtml).toContain('name="confirmation"');
   await expect(revealMyPerson(owner, f.exchangeId, 1)).rejects.toMatchObject({code: "checkTimedOut"});
   await expect(listOwnQuestions(owner, f.exchangeId)).rejects.toMatchObject({code: "checkTimedOut"});
+});
+
+it.each([false, true])("records match reads on another session and repairs their disclosure (helper: %s)", async (helpers) => {
+  const f = await fixture({helpers});
+  if (helpers) await admin.db.update(people).set({helperId: f.ids[3]}).where(and(
+    eq(people.familyId, f.familyId), eq(people.id, f.ids[1]),
+  ));
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  const owner = helpers ? {...f.viewers[3], actingAs: f.ids[1]} : f.viewers[1];
+  if (helpers) await runForFamily(app.db, f.familyId, (tx) => actFor(tx, f.viewers[3], f.ids[1]));
+  const session = await runForFamily(app.db, f.familyId, (tx) => signInDevice(
+    tx, f.familyId, owner.personId, {hash: digest(secret()), kind: "ipad", network: null}, new Date(),
+  ));
+  const otherOwner = {...owner, sessionId: session.id, actingAs: owner.personId};
+  if (helpers) await runForFamily(app.db, f.familyId, (tx) => actFor(tx, otherOwner, f.ids[1]));
+  const other = {...otherOwner, actingAs: owner.actingAs};
+  expect(await myPerson(other, f.exchangeId)).toEqual({recipientId: null, version: 1});
+  expect(await ownRevealOpenings(owner, f.exchangeId)).toEqual([]);
+  const opened = await revealMyPerson(owner, f.exchangeId, 1);
+  expect(await myPerson(other, f.exchangeId)).toEqual({recipientId: opened.person.id, version: 1});
+  const evidence = await ownRevealOpenings(owner, f.exchangeId);
+  expect(evidence).toEqual([expect.objectContaining({sessionId: other.sessionId, openedAt: expect.any(Date)})]);
+  await myPerson(other, f.exchangeId);
+  await revealMyPerson(other, f.exchangeId, 1);
+  expect(await ownRevealOpenings(owner, f.exchangeId)).toEqual(evidence);
+  expect(await runForFamily(app.db, f.familyId, (tx) => disputeSession(tx, owner, other.sessionId, new Date())))
+    .toBe(true);
+  await repairDisputedReveals(owner);
+  expect(await memberDrawStatus(owner, f.exchangeId)).toMatchObject({seen: false, exchange: {version: 2}});
+  expect((await revealMyPerson(owner, f.exchangeId, 2)).person.id).not.toBe(opened.person.id);
+});
+
+it.each(["setup", "open", "drawn", "locked"] as const)("notifies plan and budget edits in %s exchanges", async (status) => {
+  const f = await fixture();
+  if (status === "setup") await admin.db.update(exchanges).set({status}).where(eq(exchanges.id, f.exchangeId));
+  if (status === "drawn" || status === "locked") await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  if (status === "locked") await revealMyPerson(f.viewers[1], f.exchangeId, 1);
+  const recipients = f.ids.slice(0, 6).sort();
+  let edited = {...details};
+  await editExchange(f.organizer, f.exchangeId, {...edited, giftTime: "18:30:00"});
+  expect(await drawNoticeIds(f.familyId, "exchange-details-changed")).toEqual([]);
+  for (const patch of [
+    {giftDay: "2023-01-07"}, {giftTime: "19:00"}, {place: "Winter Hall"}, {listDeadline: "2022-12-29"},
+  ]) {
+    edited = {...edited, ...patch};
+    await editExchange(f.organizer, f.exchangeId, edited);
+    expect(await drawNoticeIds(f.familyId, "exchange-details-changed")).toEqual(recipients);
+    await admin.db.delete(outbox).where(and(eq(outbox.familyId, f.familyId), eq(outbox.template, "exchange-details-changed")));
+  }
+  expect(await drawNoticeIds(f.familyId, "plans-changed")).toEqual([]);
+  if (status === "setup") await admin.db.update(exchanges).set({status}).where(eq(exchanges.id, f.exchangeId));
+  await editExchange(f.organizer, f.exchangeId, {...edited, budgetAmount: "30"});
+  expect(await drawNoticeIds(f.familyId, "budget-changed")).toEqual(recipients);
+  await admin.db.delete(outbox).where(and(eq(outbox.familyId, f.familyId), eq(outbox.template, "budget-changed")));
+  if (status === "setup") await admin.db.update(exchanges).set({status}).where(eq(exchanges.id, f.exchangeId));
+  await setExchangeBudget(f.organizer, f.exchangeId, "40");
+  expect(await drawNoticeIds(f.familyId, "budget-changed")).toEqual(recipients);
+  await setExchangeBudget(f.organizer, f.exchangeId, "40.00");
+  expect(await drawNoticeIds(f.familyId, "budget-changed")).toEqual(recipients);
+});
+
+it("rolls back plan edits when their notice cannot be queued", async () => {
+  const f = await fixture();
+  const failing: DrawEvents = {async publish() { throw new Error("Queue unavailable"); }};
+  await expect(editExchange(f.organizer, f.exchangeId, {...details, place: "Another hall"}, failing))
+    .rejects.toThrow("Queue unavailable");
+  expect((await organizerExchange(f.organizer, f.exchangeId)).exchange.place).toBe(details.place);
+  expect(await drawNoticeIds(f.familyId, "exchange-details-changed")).toEqual([]);
+});
+
+it("keeps failed claimer notices generic in list actions", async () => {
+  const f = await fixture();
+  const owner = f.viewers[1];
+  const item = await addListItem(owner, owner.personId, {kind: "note", title: "Winter puzzle"});
+  await claimItem(f.viewers[2], item.id);
+  signedIn.viewer = owner;
+  vi.spyOn(listEvents, "claimedItemChanged").mockRejectedValue(new Error("Private queue failure details"));
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const form = new FormData();
+  form.set("title", "Changed puzzle");
+  expect(await saveItem(owner.personId, item.id, "note", false, {}, form)).toEqual({error: "could-not-save"});
+  expect(await itemCommand(owner.personId, item.id, "delete")).toEqual({error: "could-not-save"});
+  expect((await getWishlist(owner, owner.personId)).items).toEqual([item]);
+  expect(await drawNoticeIds(f.familyId, "claimed-item-changed")).toEqual([]);
+});
+
+it("notifies retained and departing participants accurately after a full redraw", async () => {
+  const f = await fixture();
+  const previous = cycle(f.ids.slice(0, 6));
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(previous);
+  await runDraw(f.organizer, f.exchangeId, {expectedVersion: 0});
+  await revealMyPerson(f.viewers[1], f.exchangeId, 1);
+  const next = new Map(previous).set(f.ids[0], f.ids[2]);
+  next.delete(f.ids[1]);
+  vi.spyOn(solver, "solveDraw").mockReturnValueOnce(next);
+  await runDraw(f.organizer, f.exchangeId, {
+    expectedVersion: 1, confirmation: "REDRAW", selection: f.ids.slice(0, 6).filter((id) => id !== f.ids[1]),
+  });
+  expect(await drawNoticeIds(f.familyId, "draw-redrawn")).toEqual([...next.keys()].sort());
+  expect(await drawNoticeIds(f.familyId, "participation-cancelled")).toEqual([f.ids[1]]);
+  expect(await drawNoticeIds(f.familyId, "plans-changed")).toEqual([]);
+  expect(await checkSealedDraw(f.organizer, f.exchangeId)).toMatchObject({valid: true, count: 5});
+  expect((await revealMyPerson(f.viewers[2], f.exchangeId, 2)).person.id).toBe(previous.get(f.ids[2]));
 });
 
 it("keeps access denials and unexpected failures out of recoverable draw states", async () => {

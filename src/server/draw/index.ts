@@ -10,7 +10,7 @@ export {
 export {
   changeParticipation, checkSealedDraw, drawFeasibility, dryRunDraw, redrawConfirmation, reportPair, runDraw,
 } from "./lifecycle";
-export {memberDrawStatus, ownRevealOpenings, repairDisputedReveals, revealMyPerson} from "./member";
+export {memberDrawStatus, myPerson, ownRevealOpenings, repairDisputedReveals, revealMyPerson} from "./member";
 export {
   practiceCommand, practiceMemberView, practiceSeason, startPractice, type PracticeCommand,
 } from "./practice";

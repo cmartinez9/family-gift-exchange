@@ -69,8 +69,9 @@ export const drawRuleSnapshots = pgTable("draw_rule_snapshots", {
   }),
 ]);
 
-// First opening per session and draw version. A repair can carry forward seen
-// status without creating an opening for a session that never opened that version.
+// First recipient disclosure per giver, session, and draw version; repeated reads
+// preserve its timestamp. A repair can carry forward seen status, but evidence
+// for that version is recorded only when the session actually reads the recipient.
 export const drawOpenings = pgTable("draw_openings", {
   familyId: familyId(),
   exchangeId: uuid("exchange_id").notNull(),

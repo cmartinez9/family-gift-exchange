@@ -28,6 +28,19 @@ it.each(templates)("renders %s in both languages using only declared inputs", (t
   }), {numRuns: 25});
 });
 
+it("describes replaced draws and cancelled participation without asserting a new match", () => {
+  expect(renderMessage("en", {template: "draw-redrawn"})).toEqual({
+    title: "The draw was replaced", body: "Open your match again in the app to see who you’re giving to.",
+  });
+  expect(renderMessage("es", {template: "draw-redrawn"})).toEqual({
+    title: "Se reemplazó el sorteo", body: "Vuelve a abrir tu resultado en la aplicación para ver a quién le darás un regalo.",
+  });
+  expect(renderMessage("en", {template: "participation-cancelled"}).body)
+    .toBe("You’re no longer taking part in this exchange and no longer need to bring a gift for it.");
+  expect(renderMessage("es", {template: "participation-cancelled"}).body)
+    .toBe("Ya no participas en este intercambio y no necesitas llevar un regalo para él.");
+});
+
 it("uses the public app origin in both languages and encodes the WhatsApp text", () => {
   const address = "https://gifts.example/family/mock-family-key?pin=9874#private";
   const familyId = "d9a3d678-1cb8-4739-8941-a7cb66072927";

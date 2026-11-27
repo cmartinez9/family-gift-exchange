@@ -23,6 +23,21 @@ function validate(people: DrawPerson[], excluded: KeepApartPair[], pairs: Pairs)
   });
 }
 
+function seededShuffle(seed: number) {
+  let state = seed;
+  return <T>(values: Iterable<T>): T[] => {
+    const result = [...values];
+    for (let index = result.length - 1; index > 0; index--) {
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      const other = (state >>> 0) % (index + 1);
+      [result[index], result[other]] = [result[other], result[index]];
+    }
+    return result;
+  };
+}
+
 function bruteForce(people: DrawPerson[], excluded: KeepApartPair[]) {
   if (people.length < 4) return {possible: false, loop: false};
   const paired: number[] = [];
@@ -263,6 +278,142 @@ it("identifies when no per-organizer private repair exists in a tiny family", ()
   const rules = drawRules(people, []);
   expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], seenGivers: [], questionGivers: []})).toBeNull();
   expect(repairDraw(rules, previous, ["B"], undefined, {observers: ["A", "C"], seenGivers: [], questionGivers: [], fullRedraw: true})).toBeNull();
+});
+
+it("bounds a private full redraw for sixteen people with two organizers", () => {
+  const ids = Array.from({length: 16}, (_, index) => String(index));
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const previous = new Map(ids.map((id, index) => [id, ids[(index + 1) % ids.length]]));
+  const observers = [ids[0], ids[8]];
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(seededShuffle(1125));
+  const started = performance.now();
+  let visits = 0;
+  try {
+    const next = repairDraw(drawRules(people, []), previous, [ids[1]], () => {
+      if (++visits > 100_000 || performance.now() - started > 1500) throw new Error("Redraw search exceeded its budget");
+    }, {observers, seenGivers: [], questionGivers: [], fullRedraw: true});
+    expect(next).not.toBeNull();
+    expect(validate(people, [], next!)).toBe(true);
+    expect(next!.get(ids[1])).not.toBe(previous.get(ids[1]));
+    for (const observer of observers) {
+      const alternatives: Pairs[] = [];
+      for (const second of ids.filter((id) => id !== ids[1] && id !== observer)) {
+        for (const third of ids.filter((id) => id !== ids[1] && id !== second && id !== observer)) {
+          const other = new Map(next).set(ids[1], next!.get(second)!)
+            .set(second, next!.get(third)!).set(third, next!.get(ids[1])!);
+          if (validate(people, [], other) && modelOneLoop(other) === modelOneLoop(next!)
+            && other.get(ids[1]) !== previous.get(ids[1])) alternatives.push(other);
+        }
+      }
+      expect(new Set(alternatives.map((pairs) => pairs.get(ids[1]))).size).toBeGreaterThan(1);
+    }
+  } finally {
+    shuffle.mockRestore();
+  }
+});
+
+it.each([1125, 2026, 343])("bounds ordinary recovery for a helper and ten dependents (seed: %s)", (seed) => {
+  const ids = Array.from({length: 16}, (_, index) => String(index));
+  const people = ids.map((id, index) => ({
+    id, householdId: null, helperId: index > 0 && index <= 10 ? ids[0] : null,
+  }));
+  const order = [0, 11, 1, 12, 2, 13, 3, 14, 4, 5, 6, 7, 8, 9, 10, 15].map((index) => ids[index]);
+  const previous = new Map(order.map((id, index) => [id, order[(index + 1) % order.length]]));
+  const mustChange = ids.slice(0, 11);
+  const observers = [ids[13], ids[14]];
+  const seenGivers = ids.filter((_, index) => index % 3 !== 0);
+  const questionGivers = [ids[2], ids[3], ...observers];
+  const changed = (pairs: Pairs) => ids.filter((id) => pairs.get(id) !== previous.get(id)).length;
+  const observation = (pairs: Pairs, observer: string) => JSON.stringify([
+    changed(pairs), pairs.get(observer),
+    seenGivers.filter((id) => pairs.get(id) === previous.get(id)).length,
+    questionGivers.filter((id) => id === observer || previous.get(id) === observer)
+      .map((id) => pairs.get(id) === previous.get(id)),
+    modelOneLoop(pairs),
+  ]);
+  expect(validate(people, [], previous)).toBe(true);
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(seededShuffle(seed));
+  const started = performance.now();
+  let visits = 0;
+  try {
+    const next = repairDraw(drawRules(people, []), previous, mustChange, () => {
+      if (++visits > 100_000 || performance.now() - started > 1500) throw new Error("Recovery search exceeded its budget");
+    }, {observers, seenGivers, questionGivers});
+    expect(next).not.toBeNull();
+    expect(validate(people, [], next!)).toBe(true);
+    expect(mustChange.every((id) => next!.get(id) !== previous.get(id))).toBe(true);
+    expect(changed(next!)).toBe(mustChange.length);
+    const alternatives: Pairs[] = [next!];
+    for (const first of mustChange) {
+      for (const second of mustChange.filter((id) => id !== first)) {
+        for (const third of mustChange.filter((id) => id !== first && id !== second)) {
+          const other = new Map(next).set(first, next!.get(second)!)
+            .set(second, next!.get(third)!).set(third, next!.get(first)!);
+          if (validate(people, [], other) && mustChange.every((id) => other.get(id) !== previous.get(id))) {
+            alternatives.push(other);
+          }
+        }
+      }
+    }
+    for (const observer of observers) {
+      const matching = alternatives.filter((pairs) => observation(pairs, observer) === observation(next!, observer));
+      for (const giver of mustChange) {
+        expect(new Set(matching.map((pairs) => pairs.get(giver))).size).toBeGreaterThan(1);
+      }
+    }
+  } finally {
+    shuffle.mockRestore();
+  }
+});
+
+it("continues past a capped ten-change layer to a private eleven-change repair", () => {
+  const first = [..."ABCDEF"];
+  const second = [..."GHIJKLMNOP"];
+  const ids = [...first, ...second];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const excluded = first.flatMap((personA) => second.map((personB) => ({personA, personB})));
+  const previous = new Map([first, second].flatMap((group) =>
+    group.map((id, index) => [id, group[(index + 1) % group.length]] as const)));
+  const disputedSecond = second.slice(0, 8);
+  const mustChange = ["B", ...disputedSecond];
+  const changed = (pairs: Pairs) => [...pairs].filter(([id, recipient]) => recipient !== previous.get(id)).length;
+  const firstRepairs = possibleDraws(first).filter((pairs) => pairs.get("B") !== previous.get("B"));
+  const minimumFirst = Math.min(...firstRepairs.map(changed));
+  expect(minimumFirst).toBe(2);
+  expect(new Set(firstRepairs.filter((pairs) => changed(pairs) === minimumFirst).map((pairs) => pairs.get("B"))))
+    .toEqual(new Set(["F"]));
+  const secondPeople = people.filter(({id}) => second.includes(id));
+  const model = new Map(second.map((id) => [id, previous.get(id)!]));
+  let minimumSecondCount = 0;
+  function countMinimumRepairs(recipients: string[], index = 0) {
+    if (index === disputedSecond.length) {
+      if (validate(secondPeople, [], model)) minimumSecondCount++;
+      return;
+    }
+    const giver = disputedSecond[index];
+    for (const recipient of recipients) {
+      if (minimumSecondCount > 1024) break;
+      if (recipient === previous.get(giver)) continue;
+      model.set(giver, recipient);
+      countMinimumRepairs(recipients.filter((id) => id !== recipient), index + 1);
+    }
+    model.set(giver, previous.get(giver)!);
+  }
+  countMinimumRepairs(disputedSecond.map((id) => previous.get(id)!));
+  expect(minimumSecondCount).toBeGreaterThan(1024);
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(seededShuffle(1125));
+  const started = performance.now();
+  try {
+    const next = repairDraw(drawRules(people, excluded), previous, mustChange, () => {
+      if (performance.now() - started > 1500) throw new Error("Recovery search exceeded its deadline");
+    }, {observers: ["E", "G"], seenGivers: [], questionGivers: []});
+    expect(next).not.toBeNull();
+    expect(validate(people, excluded, next!)).toBe(true);
+    expect(mustChange.every((id) => next!.get(id) !== previous.get(id))).toBe(true);
+    expect(changed(next!)).toBe(11);
+  } finally {
+    shuffle.mockRestore();
+  }
 });
 
 it("keeps B ambiguous after conditioning on the opened count with only B D E seen", () => {

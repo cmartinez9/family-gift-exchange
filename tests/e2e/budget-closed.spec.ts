@@ -6,6 +6,8 @@ import es from "../../messages/es.json" with {type: "json"};
 import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const database = new Pool({connectionString: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL});
+// Budget checks use stable layouts through the draw, reveal, and match-first list.
+test.use({reducedMotion: "reduce"});
 test.setTimeout(90_000);
 test.afterAll(() => database.end());
 
@@ -86,7 +88,6 @@ test("organizer can set and clear budgets before a draw and edit drawn and locke
     expect(await state(f.exchangeId)).toMatchObject({status: "open"});
     await page.goto(`/en/exchanges/${f.exchangeId}/manage/draw`);
     await page.getByRole("button", {name: en.draw.drawNames}).click();
-    await page.getByRole("button", {name: en.draw.setup.skip}).click();
     await expect(page.getByText(/^Seal code /)).toBeVisible();
     expect(await state(f.exchangeId)).toMatchObject({status: "drawn"});
     await setBudget(page, "35");

@@ -94,6 +94,9 @@ export async function runDraw(
       kind: exchange.version ? "redrawn" : "drawn",
       familyId, exchangeId: exchange.id, version: summary.version,
     }, [...pairs.keys()]);
+    if (previous) await publishDraw(events, tx, {
+      kind: "participationCancelled", familyId, exchangeId: exchange.id, version: summary.version,
+    }, [...previous.keys()].filter((giver) => !pairs.has(giver)));
     return summary;
   }, false);
 }

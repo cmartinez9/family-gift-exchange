@@ -12,7 +12,7 @@ import {hashPin} from "../../src/server/auth/pin";
 import {disputeSession} from "../../src/server/auth/security";
 import {createSession, digest, secret} from "../../src/server/auth/session";
 import {assignments, drawOpenings, drawRuleSnapshots} from "../../src/server/draw/schema";
-import {drawSeal, sealText} from "../../src/server/draw/sealing";
+import {drawSeal, openText, sealText} from "../../src/server/draw/sealing";
 import {requireIssuedKey} from "../helpers/issued-key";
 import {signInWithPin, typePin} from "../helpers/pin-pad";
 import {openPerson} from "../helpers/open-person";
@@ -38,7 +38,7 @@ async function family(browser: Browser, {drawn = true, recoveryBacklog = false} 
   const exchangeId = randomUUID();
   const ids = Object.fromEntries(names.map((name) => [name, randomUUID()])) as Record<Name, string>;
   // Rosa gives to Beto, as in the frames.
-  const relatives = recoveryBacklog ? Array.from({length: 20}, () => randomUUID()) : [];
+  const relatives: string[] = recoveryBacklog ? Array.from({length: 20}, () => randomUUID()) : [];
   const playing = [ids.Christian, ids.Rosa, ids.Beto, ids.Ana, ids.Leo, ...relatives];
   const next = new Map(playing.map((id, index) => [id, playing[(index + 1) % playing.length]]));
   const key = Buffer.from(process.env.E2E_ASSIGNMENT_ENCRYPTION_KEY!, "base64");
@@ -114,8 +114,16 @@ async function family(browser: Browser, {drawn = true, recoveryBacklog = false} 
           {familyId, personId, actingAs: personId, sessionId: reporter.id, isOrganizer: false}, exposed.id, new Date()))).toBe(true);
       }
     },
-    resolveRecoveryBacklog: () => database.db.update(drawOpenings).set({invalidatedAt: new Date()})
-      .where(eq(drawOpenings.familyId, familyId)),
+    async verifyRecoveryBacklog() {
+      const rows = (await database.db.select().from(assignments).where(eq(assignments.familyId, familyId)))
+        .filter(({giverId}) => relatives.includes(giverId));
+      expect(rows).toHaveLength(relatives.length);
+      for (const {giverId, version, recipientSealed} of rows) {
+        expect(version).toBe(2);
+        expect(openText(key, {familyId, exchangeId, giverId, version, field: "assignment"}, recipientSealed))
+          .not.toBe(next.get(giverId));
+      }
+    },
     expireRosa: () => database.db.update(sessions).set({expiresAt: new Date(Date.now() - 1000)})
       .where(and(eq(sessions.familyId, familyId), eq(sessions.personId, ids.Rosa))),
     closeDraw: () => database.db.update(exchanges).set({status: "closed"})
@@ -586,7 +594,7 @@ test("reporting a compromised lending phone revokes its borrower and repairs Ros
   }
 });
 
-test("a real disputed-draw timeout leaves borrowed reveal retryable without handing the phone back", async ({browser}) => {
+test("a disputed-draw backlog recovers without sealing the borrowed person's reveal", async ({browser}) => {
   test.setTimeout(60_000);
   const f = await family(browser, {recoveryBacklog: true});
   try {
@@ -594,32 +602,22 @@ test("a real disputed-draw timeout leaves borrowed reveal retryable without hand
     await page.emulateMedia({reducedMotion: "reduce"});
     await handOver(page, await f.keyFor("Rosa"), "en");
     await f.addRecoveryBacklog();
+    // The bounded solver now repairs this backlog within its deadline. Timeout and retry
+    // controls are covered with explicit lookup failures in borrowed-phone.test.tsx.
     await page.reload();
-    await expect(page.locator("main").getByRole("alert")).toContainText(en.borrowed.revealFailed);
-    await expect(page.getByRole("button", {name: en.draw.person.tryAgain})).toBeVisible();
-    await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toHaveCount(0);
-    expect((await f.sessionsOf("Rosa"))[0].personHiddenAt).toBeNull();
-    const timeoutAccessibility = await new AxeBuilder({page}).analyze();
-    await test.info().attach("borrowed-timeout-accessibility", {
-      body: JSON.stringify(timeoutAccessibility.violations, null, 2), contentType: "application/json",
-    });
-    // Preserve the accessibility failure, but finish driving privacy and retry before reporting it.
-    await shot(page, "privacy-recoverable-draw-timeout", false);
-    await f.resolveRecoveryBacklog();
-    const refreshed = page.waitForResponse(response => response.request().method() === "GET"
-      && new URL(response.url()).pathname === "/en/welcome/borrowed");
-    await page.getByRole("button", {name: en.draw.person.tryAgain}).click();
-    const response = await refreshed;
-    await test.info().attach("borrowed-retry-response", {
-      body: await response.body(), contentType: response.headers()["content-type"] ?? "application/octet-stream",
-    });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", {name: en.draw.person.revealReady})).toBeVisible();
+    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toHaveCount(0);
+    expect(await f.version()).toBe(2);
+    await f.verifyRecoveryBacklog();
+    expect(await f.seen("Rosa")).toBeNull();
+    expect((await f.sessionsOf("Rosa"))[0].personHiddenAt).toBeNull();
+    await shot(page, "privacy-backlog-repaired-before-reveal");
     await page.getByRole("button", {name: en.draw.person.revealTap}).click();
     await expect(page.getByRole("button", {name: "Hide Beto"})).toBeVisible();
+    expect(await f.seen("Rosa")).toBe(2);
     expect((await f.sessionsOf("Rosa"))[0].personHiddenAt).toBeNull();
     await shot(page, "privacy-recovered-draw-opened");
-    expect.soft(timeoutAccessibility.violations).toEqual([]);
   } finally { await f.close(); }
 });
 

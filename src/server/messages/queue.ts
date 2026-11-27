@@ -20,7 +20,7 @@ export function isPushProduction() {
 
 export async function enqueueMessages(tx: FamilyTransaction, messages: Message[]) {
   if (messages.length === 0) return;
-  await tx.insert(outbox).values(messages.map((message) => ({
+  const insert = tx.insert(outbox).values(messages.map((message) => ({
     familyId: message.familyId,
     personId: message.personId,
     channel: "push" as const,
@@ -30,5 +30,11 @@ export async function enqueueMessages(tx: FamilyTransaction, messages: Message[]
     dedupeKey: message.dedupeKey,
     createdAt: message.createdAt,
     status: message.push === false ? "skipped" as const : isPushProduction() ? "pending" as const : "captured" as const,
-  }))).onConflictDoNothing({target: [outbox.familyId, outbox.personId, outbox.dedupeKey]});
+  })));
+  // Only messages with dedupe keys need the conflict target, which requires SELECT privileges.
+  if (messages.some(({dedupeKey}) => dedupeKey !== undefined)) {
+    await insert.onConflictDoNothing({target: [outbox.familyId, outbox.personId, outbox.dedupeKey]});
+  } else {
+    await insert;
+  }
 }

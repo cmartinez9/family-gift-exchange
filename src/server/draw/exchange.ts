@@ -39,10 +39,17 @@ export async function editExchange(
     await tx.update(exchanges).set({
       ...details, status: exchange.status === "setup" ? "open" : exchange.status,
     }).where(exchangeScope(familyId, exchange.id));
-    if (exchange.version && details.budgetAmount !== exchange.budgetAmount) {
+    const budgetChanged = details.budgetAmount !== exchange.budgetAmount;
+    const plansChanged = details.giftDay !== exchange.giftDay ||
+      details.giftTime?.slice(0, 5) !== exchange.giftTime?.slice(0, 5) ||
+      details.place !== exchange.place || details.listDeadline !== exchange.listDeadline;
+    if (budgetChanged || plansChanged) {
       const active = (await currentParticipants(tx, familyId, exchange.id)).filter(({status}) => status === "in");
-      await publishDraw(events, tx, {
+      if (budgetChanged) await publishDraw(events, tx, {
         kind: "budgetChanged", familyId, exchangeId: exchange.id, version: exchange.version,
+      }, active.map(({id}) => id));
+      if (plansChanged) await publishDraw(events, tx, {
+        kind: "detailsChanged", familyId, exchangeId: exchange.id, version: exchange.version,
       }, active.map(({id}) => id));
     }
   });

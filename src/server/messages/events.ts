@@ -9,8 +9,7 @@ import {enqueueMessages, type Message} from "./queue";
 
 type ExchangeEvent = {familyId: string; exchangeId: string};
 type PlansChangedEvent = ExchangeEvent & {personIds: readonly string[]};
-type ClaimedItemChangedEvent = {familyId: string; personId: string};
-type PinResetRequest = {familyId: string; personId: string};
+type PersonEvent = {familyId: string; personId: string};
 
 async function record(
   familyId: string,
@@ -22,26 +21,26 @@ async function record(
   schedulePushDelivery(familyId);
 }
 
-export async function exchangeRecipients(tx: FamilyTransaction, event: ExchangeEvent) {
+export async function exchangeRecipients(tx: FamilyTransaction, event: ExchangeEvent, status: "in" | "out" = "in") {
   return tx.select({personId: people.id, language: people.language})
     .from(participants)
     .innerJoin(people, and(eq(people.familyId, participants.familyId), eq(people.id, participants.personId)))
     .where(and(
       eq(participants.familyId, event.familyId),
       eq(participants.exchangeId, event.exchangeId),
-      eq(participants.status, "in"),
+      eq(participants.status, status),
       isNull(people.removedAt),
     ));
 }
 
 function notifyExchange(
   event: ExchangeEvent,
-  template: "names-drawn" | "budget-changed" | "plans-changed",
+  template: "names-drawn" | "budget-changed" | "plans-changed" | "draw-redrawn" | "exchange-details-changed" | "participation-cancelled",
   tx?: FamilyTransaction,
   personIds?: readonly string[],
 ) {
   return record(event.familyId, tx, async (transaction) => {
-    const recipients = await exchangeRecipients(transaction, event);
+    const recipients = await exchangeRecipients(transaction, event, template === "participation-cancelled" ? "out" : "in");
     const optedIn = personIds ? recipients.filter((recipient) => personIds.includes(recipient.personId)) : recipients;
     await enqueueMessages(transaction, optedIn.map((recipient): Message => ({
       ...recipient, familyId: event.familyId, template,
@@ -50,32 +49,36 @@ function notifyExchange(
 }
 
 export const drawEvents = {
-  namesDrawn: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "names-drawn", tx),
+  namesDrawn: (event: ExchangeEvent & {personIds?: readonly string[]}, tx?: FamilyTransaction) =>
+    notifyExchange(event, "names-drawn", tx, event.personIds),
   plansChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
     notifyExchange(event, "plans-changed", tx, event.personIds),
+  redrawn: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "draw-redrawn", tx, event.personIds),
+  detailsChanged: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "exchange-details-changed", tx, event.personIds),
+  participationCancelled: (event: PlansChangedEvent, tx?: FamilyTransaction) =>
+    notifyExchange(event, "participation-cancelled", tx, event.personIds),
+  questionAnswered: (event: PersonEvent, tx: FamilyTransaction) => notifyPerson(event, "question-answered", tx),
 };
+
+function notifyPerson(event: PersonEvent, template: "claimed-item-changed" | "question-answered", tx: FamilyTransaction) {
+  return record(event.familyId, tx, async (transaction) => {
+    const recipients = await transaction.select({personId: people.id, language: people.language}).from(people)
+      .where(and(eq(people.familyId, event.familyId), eq(people.id, event.personId), isNull(people.removedAt)));
+    await enqueueMessages(transaction, recipients.map((recipient): Message => ({
+      ...recipient, familyId: event.familyId, template,
+    })));
+  });
+}
 
 export const listEvents = {
   budgetChanged: (event: ExchangeEvent, tx?: FamilyTransaction) => notifyExchange(event, "budget-changed", tx),
-
-  claimedItemChanged(event: ClaimedItemChangedEvent, tx: FamilyTransaction) {
-    return record(event.familyId, tx, async (transaction) => {
-      const recipients = await transaction.select({personId: people.id, language: people.language})
-        .from(people)
-        .where(and(
-          eq(people.familyId, event.familyId),
-          eq(people.id, event.personId),
-          isNull(people.removedAt),
-        ));
-      await enqueueMessages(transaction, recipients.map((recipient): Message => ({
-        ...recipient, familyId: event.familyId, template: "claimed-item-changed",
-      })));
-    });
-  },
+  claimedItemChanged: (event: PersonEvent, tx: FamilyTransaction) => notifyPerson(event, "claimed-item-changed", tx),
 };
 
 /** Call from sign-in after recording an accepted reset request. */
-export function requestPinReset(event: PinResetRequest, tx?: FamilyTransaction) {
+export function requestPinReset(event: PersonEvent, tx?: FamilyTransaction) {
   return record(event.familyId, tx, async (transaction) => {
     const [requester] = await transaction.select({name: people.displayName}).from(people)
       .where(and(
