@@ -44,12 +44,13 @@ async function inFamily<T>(familyId: string, action: Parameters<typeof runForFam
 
 type Family = {
   familyId: string; keys: Record<string, string>; ids: Record<string, string>; organizer: string; organizerId: string;
+  sessions: Record<string, string>;
   /** The device cookie of the phone Tito joined on, so it greets Tito on the way back. */
   titoPhone: string;
 };
 
 /** The Martinez family: Christian organizes, Ana co-organizes, Rosa and Marta have keys waiting, Beto and Tito have joined. */
-async function seed(): Promise<Family> {
+async function seed(betoLanguage: "en" | "es" = "en"): Promise<Family> {
   const pepper = process.env.E2E_AUTH_SECRET ?? process.env.AUTH_SECRET;
   if (!pepper) throw new Error("E2E_AUTH_SECRET is required");
   const familyId = randomUUID();
@@ -61,22 +62,24 @@ async function seed(): Promise<Family> {
     const viewer = (await findViewer(t, parseSession(organizer.cookie)!))!;
     const ids: Record<string, string> = {};
     for (const name of ["Rosa", "Marta", "Ana", "Beto", "Tito"]) {
-      await saveMember(t, viewer, null, {name, language: "en", helperId: null, householdId: null});
+      await saveMember(t, viewer, null, {name, language: name === "Beto" ? betoLanguage : "en", helperId: null, householdId: null});
       const [person] = await t.select({id: people.id}).from(people).where(and(eq(people.familyId, familyId), eq(people.displayName, name)));
       ids[name] = person.id;
     }
     await changeCoOrganizer(t, viewer, ids.Ana);
     const keys: Record<string, string> = {};
+    const sessions: Record<string, string> = {};
     const titoPhone = secret();
     for (const name of ["Rosa", "Marta", "Ana", "Beto", "Tito"]) {
       const key = requireIssuedKey(await issueKey(t, viewer, ids[name], "share", pepper, now));
       keys[name] = `/en/key/${familyId}~${key.token}`;
       if (name === "Ana" || name === "Beto" || name === "Tito") {
         const on = name === "Tito" ? {...device(), hash: digest(titoPhone)} : device();
-        await redeemKey(t, {familyId, value: key.token, typed: false, pepper, pin, confirmation: pin, device: on, currentViewer: null, now});
+        const result = await redeemKey(t, {familyId, value: key.token, typed: false, pepper, pin, confirmation: pin, device: on, currentViewer: null, now});
+        sessions[name] = result.session!.cookie;
       }
     }
-    return {familyId, keys, ids, organizer: organizer.cookie, organizerId: viewer.personId, titoPhone};
+    return {familyId, keys, ids, organizer: organizer.cookie, organizerId: viewer.personId, sessions, titoPhone};
   });
 }
 
@@ -167,6 +170,64 @@ test("a chat app's preview names the key's owner, and fetching it leaves the key
   expect(nobody).toMatchObject({"og:title": en.home.title, "og:description": en.getIn.preview.generic});
   expect((await request.get(`${unknown}/preview`)).headers()["content-type"]).toBe("image/png");
 });
+
+for (const locale of ["en", "es"] as const) {
+  test(`opening a used key tells its owner after the browser renders (${locale})`, async ({page, request, browser}) => {
+    const f = await seed(locale);
+    const path = f.keys.Beto.replace("/en/", `/${locale}/`);
+    const words = locale === "es" ? es : en;
+    const owner = await browser.newContext({viewport: phone, ignoreHTTPSErrors: true});
+    const organizer = await browser.newContext({viewport: phone, ignoreHTTPSErrors: true});
+    const cookie = (value: string) => ({name: "__Host-fge-session", value, url: origin, secure: true, httpOnly: true, sameSite: "Lax" as const});
+    try {
+      const before = await keyState(f.familyId);
+      const {tags} = await previewTags(request, path, chatApps[0]);
+      expect(tags["og:title"]).toBe(words.home.title);
+      const picture = await request.get(new URL(tags["og:image"]).pathname, {headers: {"user-agent": chatApps[0]}});
+      expect(picture.ok()).toBe(true);
+      expect(picture.headers()["content-type"]).toBe("image/png");
+      expect(await keyState(f.familyId)).toEqual(before);
+
+      await owner.addCookies([cookie(f.sessions.Beto)]);
+      const ownerPage = await owner.newPage();
+      await ownerPage.goto(path);
+      await expect(ownerPage.getByRole("heading", {name: words.auth.yourKey})).toBeVisible();
+      await ownerPage.goto(`/${locale}/account/notices`);
+      const title = words.notify.templates["key-opened-elsewhere"].title;
+      await expect(ownerPage.getByText(title, {exact: true})).toHaveCount(0);
+
+      await page.goto(path);
+      await expect(page.getByRole("heading", {name: words.getIn.used.title})).toBeVisible();
+      const told = words.getIn.used.told.replace("{name}", "Beto");
+      await expect(page.getByText(told, {exact: true})).toBeVisible();
+      await page.reload();
+      await expect(page.getByText(told, {exact: true})).toBeVisible();
+      const {outbox: notices, events} = await keyState(f.familyId);
+      const opening = events.find(({kind}) => kind === "keyOpenedElsewhere")!;
+      expect(events.filter(({kind}) => kind === "keyOpenedElsewhere")).toEqual([opening]);
+      expect(notices).toEqual([expect.objectContaining({template: "key-opened-elsewhere", language: locale, personId: f.ids.Beto, createdAt: opening.at})]);
+
+      await ownerPage.reload();
+      const notice = ownerPage.getByRole("listitem").filter({hasText: title});
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toContainText(words.notify.templates["key-opened-elsewhere"].body);
+      await expect(notice.locator("time")).toHaveAttribute("datetime", opening.at.toISOString());
+
+      await organizer.addCookies([cookie(f.organizer)]);
+      const organizerPage = await organizer.newPage();
+      await organizerPage.goto(`/${locale}/account/activity`);
+      const activity = organizerPage.getByRole("listitem").filter({hasText: words.getIn.activity.secondPhone});
+      await expect(activity).toHaveCount(1);
+      await expect(activity).toContainText(words.getIn.activity.secondPhoneSub.split(" · ")[1]);
+      await expect(activity).not.toContainText("Beto");
+      await organizerPage.goto(`/${locale}/account/notices`);
+      await expect(organizerPage.getByText(title, {exact: true})).toHaveCount(0);
+    } finally {
+      await Promise.all([owner.close(), organizer.close()]);
+      await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)));
+    }
+  });
+}
 
 test("the preview picture: Rosa's stitched name, and the generic gift", async ({page}) => {
   for (const [name, path] of [["f1-1_1-preview-image", `${family.keys.Marta}/preview`], ["f1-1_1-generic-image", `/en/key/${family.familyId}~${secret()}/preview`]]) {

@@ -28,6 +28,7 @@ import {EnterPin, GroundNote, MakePin, pinForm} from "./pin-screens";
 import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
 import {AskForHelp, OrganizerRecovery, useHelpContact} from "./ask-for-help";
+import {UsedKeyOpening} from "./used-key-opening";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -248,8 +249,8 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
  * A key that was already opened (10.5): this phone only asks for the PIN, and the owner's phone is told.
  * "Forgot?" holds the ways out: a new key from the organizer, or saying you never opened it.
  */
-export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
-  familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string;
+export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noticeQueued}: {
+  familyId: string; value: string; typed: boolean; entry: KeyView; organizer: string; noticeQueued?: boolean;
 }) {
   const t = useTranslations("getIn.used");
   const enter = useTranslations("getIn.enter");
@@ -275,7 +276,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer}: {
         submit={(data) => enterPin(familyId, entry.personId, {}, data)}
         note={result.success
           ? <div role="status" className="px-edge"><Card className="text-body">{feedback(result.success as Parameters<typeof feedback>[0])}</Card></div>
-          : <GroundNote icon="bell">{t("told", {name: entry.name})}</GroundNote>}
+          : <UsedKeyOpening link={typed ? undefined : `${familyId}~${value}`} name={entry.name} queued={noticeQueued} />}
         left={<TextButton className="px-1 text-snow-white" onClick={() => setOpen(true)}>{enter("forgot")}</TextButton>}
         footer={<AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />} />
       <Sheet open={open} onClose={() => setOpen(false)} title={t("options")} closeLabel={ui("close")}>
@@ -476,7 +477,7 @@ export function CodeEntry({familyId, backHref, sender, organizer, names}: {
 
   if (result.key && result.code) {
     return result.key.usedAt
-      ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} />
+      ? <KeyAlreadyOpened familyId={familyId} value={result.code} typed entry={result.key} organizer={organizer} noticeQueued={result.noticeQueued} />
       : <KeyWelcome familyId={familyId} value={result.code} typed entry={result.key} sender={sender} organizer={organizer} />;
   }
   return (

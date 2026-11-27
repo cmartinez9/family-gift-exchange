@@ -6,6 +6,8 @@ import type {Viewer} from "./index";
 import {authEvents, passkeys, personalKeys, pinCredentials, sessionDisputes, sessions} from "./schema";
 import {revalidateViewer} from "./session";
 
+type AccountEventKind = Exclude<typeof authEvents.$inferSelect.kind, "keyOpenedElsewhere">;
+
 export async function account(tx: FamilyTransaction, viewer: Viewer) {
   const {familyId, personId} = viewer;
   const person = await activePerson(tx, familyId, personId);
@@ -13,11 +15,11 @@ export async function account(tx: FamilyTransaction, viewer: Viewer) {
     eq(people.familyId, familyId), eq(people.helperId, personId), isNull(people.removedAt),
   )).orderBy(people.displayName);
   const activity = await tx.select({
-    id: authEvents.id, kind: authEvents.kind, at: authEvents.at, deviceKind: authEvents.deviceKind,
+    id: authEvents.id, kind: sql<AccountEventKind>`${authEvents.kind}`, at: authEvents.at, deviceKind: authEvents.deviceKind,
     sessionId: authEvents.sessionId, disputed: sessionDisputes.eventId,
   }).from(authEvents).leftJoin(sessionDisputes, and(
     eq(sessionDisputes.familyId, authEvents.familyId), eq(sessionDisputes.eventId, authEvents.id),
-  )).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId)))
+  )).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), ne(authEvents.kind, "keyOpenedElsewhere")))
     .orderBy(desc(authEvents.at)).limit(50);
   return {name: person?.displayName ?? "", helpers, activity};
 }
@@ -109,7 +111,7 @@ export async function disputeEvent(tx: FamilyTransaction, viewer: Viewer, eventI
   const [event] = await tx.select({kind: authEvents.kind, sessionId: authEvents.sessionId, keyId: authEvents.keyId, at: authEvents.at})
     .from(authEvents).where(and(eq(authEvents.familyId, familyId), eq(authEvents.personId, personId), eq(authEvents.id, eventId)));
   if (!event || event.kind === "pinLocked" || event.kind === "newDevicesLocked" || event.kind === "keyDisputed" || event.kind === "familyLockdown"
-    || event.kind === "deviceSignedOut" || event.kind === "faceIdOff") return false;
+    || event.kind === "deviceSignedOut" || event.kind === "faceIdOff" || event.kind === "keyOpenedElsewhere") return false;
   const person = await activePerson(tx, familyId, personId);
   const organizer = person?.role === "organizer" || person?.role === "co_organizer";
   let targetId = event.sessionId;

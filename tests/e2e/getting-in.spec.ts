@@ -249,7 +249,7 @@ test("a key opened twice, and a key forwarded to someone else's phone", async ({
     const anaPage = await ana.newPage();
     await anaPage.goto(family.keys.Rosa);
     await expect(anaPage.getByRole("heading", {name: "This key is Rosa's"})).toBeVisible();
-    await expect(anaPage.getByText("This phone is signed in as Ana, so it can't open Rosa's key. Nothing was changed.")).toBeVisible();
+    await expect(anaPage.getByText("This phone is signed in as Ana and can't sign in as Rosa.")).toBeVisible();
     await shot(anaPage, "f10-10_6");
   } finally {
     await second.close();

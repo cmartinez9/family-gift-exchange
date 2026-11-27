@@ -89,7 +89,7 @@ it("shows family activity without naming who reset a PIN or reported a key", asy
     familyId, value: reset.token, typed: false, pepper, pin: "6285", confirmation: "6285", device: rosa.phone, currentViewer: null, now: new Date(),
   }));
   const rows = await withFamily(familyId, (t) => familyActivity(t, familyId));
-  expect(rows.map(({kind}) => kind).sort()).toEqual(["joined", "reset", "secondPhone"]);
+  expect(rows.map(({kind}) => kind).sort()).toEqual(["joined", "keyDisputed", "reset"]);
   expect(rows.find(({kind}) => kind === "joined")?.name).toBe("Rosa");
   for (const row of rows.filter(({kind}) => kind !== "joined")) expect(row).not.toHaveProperty("name");
 });

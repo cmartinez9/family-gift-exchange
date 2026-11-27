@@ -14,6 +14,7 @@ import FaceIdPage from "../../src/app/[locale]/face-id/page";
 const actions = vi.hoisted(() => ({
   forgotPin: vi.fn(), useKey: vi.fn(), enterPin: vi.fn(), previewCode: vi.fn(),
   beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(), finishFaceIdSignIn: vi.fn(), reportUsedKey: vi.fn(), openFamily: vi.fn(),
+  noticeUsedKeyLink: vi.fn().mockResolvedValue(false),
 }));
 const server = vi.hoisted(() => ({
   getViewer: vi.fn(), requireViewer: vi.fn(), organizerContacts: vi.fn(), peopleOnDevice: vi.fn(), signInFamily: vi.fn(),

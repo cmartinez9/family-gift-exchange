@@ -16,6 +16,7 @@ import {KeyAlreadyOpened, KeyWelcome} from "../../sign-in/get-in";
 import {SignInHelp} from "../../sign-in/screen";
 import {OrganizerHelpProvider} from "../../sign-in/ask-for-help";
 import {screenTitle} from "../../sign-in/title";
+import {UsedKeyOpening} from "../../sign-in/used-key-opening";
 import {linkPreview} from "./link-preview";
 
 /** Chat metadata must use linkPreview's read-only projection rather than the sign-in actions. */
@@ -60,6 +61,8 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
         <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
         <SignInHelp familyId={viewer?.familyId ?? key?.familyId} personId={viewer?.personId} />
       </>}>
+        {/* A used key for someone with a helper gets the same screen as an unknown key. */}
+        {key && <UsedKeyOpening link={raw} />}
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("missing")} lead={t("missingLead")} className="pt-6" />
         <p role="alert" className="sr-only">{auth("feedback.unavailable")}</p>
@@ -72,7 +75,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   const help = <SignInHelp familyId={key.familyId} personId={entry.personId} />;
   const other = viewer && (viewer.familyId !== key.familyId || viewer.personId !== entry.personId);
   if (other) {
-    // a forwarded key, refused (10.6): this phone stays signed in as someone else, and nothing changes
+    // A forwarded key keeps the current sign-in. A used key still generates a notice for its owner.
     const current = await withFamily(viewer.familyId, (tx) => activePerson(tx, viewer.familyId, viewer.personId));
     const currentName = current?.displayName ?? "";
     const device = auth(`device.${await currentDeviceKind()}`);
@@ -81,8 +84,9 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
         <ButtonLink href="/" icon="home">{t("home", {current: currentName})}</ButtonLink>
         {help}
       </>}>
+        {entry.usedAt && <UsedKeyOpening link={raw} />}
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
-        <PageTitle title={t("title", {name: entry.name})} lead={t("lead", {name: entry.name, current: currentName})} className="pt-6" />
+        <PageTitle title={t("title", {name: entry.name})} lead={t(entry.usedAt ? "usedLead" : "lead", {name: entry.name, current: currentName})} className="pt-6" />
         <div className="px-edge pt-5">
           <Card className="p-[18px]">
             <div className="flex items-center gap-3">

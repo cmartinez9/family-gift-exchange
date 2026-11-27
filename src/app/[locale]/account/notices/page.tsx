@@ -40,17 +40,21 @@ export default async function NoticesPage() {
   const format = await getFormatter();
   const [{activity}, inbox] = await Promise.all([withFamily(viewer.familyId, (tx) => account(tx, viewer)), listNotifications(viewer)]);
   const canHandleReset = viewer.isOrganizer && viewer.actingAs === viewer.personId;
-  const when = (at: Date, unread = false) => (
+  const when = (at: Date, unread = false, withTime = false) => (
     <span className="flex flex-col items-end gap-1.5 self-start pt-1.5">
-      <time dateTime={at.toISOString()} className="text-body whitespace-nowrap text-muted-ink">{format.dateTime(at, SHORT)}</time>
+      <time dateTime={at.toISOString()} className="text-body whitespace-nowrap text-muted-ink">
+        {format.dateTime(at, SHORT)}
+        {withTime && <span className="block text-right">{format.dateTime(at, {timeStyle: "short", timeZone: SHORT.timeZone})}</span>}
+      </time>
       {unread && <NewDot />}
     </span>
   );
   const rows: Row[] = [
-    ...inbox.map(({id, title, body, createdAt, isRead, isPinResetRequest, language}) => {
+    ...inbox.map(({id, title, body, createdAt, isRead, isPinResetRequest, language, template}) => {
+      const isKeyOpening = template === "key-opened-elsewhere";
       const content = (
-        <ListRow as="span" lead={<RowDisc icon={isPinResetRequest ? "lock" : "message"} tone={isRead ? "track" : "red"} />}
-          title={<span lang={language}>{title}</span>} sub={<span lang={language}>{body}</span>} trail={when(createdAt, !isRead)} />
+        <ListRow as="span" lead={<RowDisc icon={isPinResetRequest ? "lock" : isKeyOpening ? "phone" : "message"} tone={isRead ? "track" : "red"} />}
+          title={<span lang={language}>{title}</span>} sub={<span lang={language}>{body}</span>} trail={when(createdAt, !isRead, isKeyOpening)} />
       );
       const press = "fge-press block w-full cursor-pointer rounded-[20px] text-left";
       return {key: id, at: createdAt, row: (

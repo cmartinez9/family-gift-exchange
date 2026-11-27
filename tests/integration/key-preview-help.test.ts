@@ -13,8 +13,9 @@ import {createCodePreview} from "../../src/server/auth/code-preview";
 import {authEvents, authLimits, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "../../src/server/auth/schema";
 import {digest, findViewer, parseSession, secret} from "../../src/server/auth/session";
 import {authenticatorSecret} from "../../src/server/auth/pin";
-import {organizerContacts} from "../../src/server/auth/account";
-import {forgotPin} from "../../src/app/[locale]/sign-in/actions";
+import {familyActivity, organizerContacts} from "../../src/server/auth/account";
+import {listNotifications} from "../../src/server/messages/inbox";
+import {forgotPin, noticeUsedKeyLink, previewCode} from "../../src/app/[locale]/sign-in/actions";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
@@ -73,7 +74,7 @@ async function fixture() {
     const preview = key ? createCodePreview(pepper, familyId, key, value, on.hash) : null;
     return redeemKey(t, {familyId, value, typed, preview, pin, confirmation: pin, pepper, device: on, currentViewer: null, now});
   });
-  return {familyId, pepper, organizer, rosa, ana, add, issue, redeem};
+  return {familyId, pepper, organizer, organizerCookie: session.cookie, rosa, ana, add, issue, redeem};
 }
 
 /** Every row a sign-in can touch, to prove a preview changed none of them. */
@@ -129,6 +130,66 @@ it("gives revoked, used, expired, unknown and looked-after keys the generic prev
   const other = await fixture();
   const theirs = await other.issue();
   await expect(preview(theirs.token!)).resolves.toBeNull();
+});
+
+it("queues one used-key notice per key per hour across links and typed codes", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const unopened = await f.issue(f.ana);
+  const open = (token = key.token) => noticeUsedKeyLink(`${f.familyId}~${token}`);
+  await expect(open(unopened.token)).resolves.toBe(false);
+  await expect(open(secret())).resolves.toBe(false);
+  await expect(noticeUsedKeyLink(`${randomUUID()}~${key.token}`)).resolves.toBe(false);
+
+  const redeemed = await f.redeem(key.token);
+  const session = redeemed.session!.cookie;
+  cookieValues.set("__Host-fge-session", session);
+  await expect(open()).resolves.toBe(false);
+  const notices = async () => (await authState(f.familyId)).outbox.filter(({template}) => template === "key-opened-elsewhere");
+  expect(await notices()).toEqual([]);
+
+  cookieValues.delete("__Host-fge-session");
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(new Date());
+  const first = new Date();
+  await expect(Promise.all([open(), open(), open()])).resolves.toEqual([true, true, true]);
+  await expect(previewCode(f.familyId, key.code)).resolves.toMatchObject({noticeQueued: true, key: {personId: f.rosa}});
+  expect(await notices()).toEqual([expect.objectContaining({personId: f.rosa, createdAt: first, requesterName: null})]);
+  const activity = () => tx(f.familyId, (t) => familyActivity(t, f.familyId));
+  expect((await activity()).filter(({kind}) => kind === "secondPhone"))
+    .toEqual([{id: expect.any(String), kind: "secondPhone", at: first}]);
+
+  vi.setSystemTime(new Date(first.getTime() + 3_599_999));
+  await expect(open()).resolves.toBe(true);
+  expect(await notices()).toHaveLength(1);
+  await f.redeem(unopened.token);
+  await expect(open(unopened.token)).resolves.toBe(true);
+  expect(await notices()).toHaveLength(2);
+
+  vi.setSystemTime(new Date(first.getTime() + 3_600_000));
+  cookieValues.set("__Host-fge-session", f.organizerCookie);
+  await expect(open()).resolves.toBe(true);
+  expect((await notices()).filter(({personId}) => personId === f.rosa).map(({createdAt}) => createdAt).sort((a, b) => a.getTime() - b.getTime()))
+    .toEqual([first, new Date()]);
+  expect((await activity()).filter(({kind}) => kind === "secondPhone")).toHaveLength(3);
+});
+
+it("lets only the owner and assigned helper read the private used-key inbox", async () => {
+  const f = await fixture();
+  const key = await f.issue();
+  const used = await f.redeem(key.token);
+  const owner = (await resolve(used.session!.cookie))!;
+  const helperKey = await f.issue(f.ana);
+  const helper = (await resolve((await f.redeem(helperKey.token)).session!.cookie))!;
+  // Legacy data may have a used key for someone now looked after by a helper.
+  await tx(f.familyId, (t) => t.update(people).set({helperId: f.ana, language: "es"}).where(eq(people.id, f.rosa)));
+  await expect(previewCode(f.familyId, key.code)).resolves.toEqual({error: "unavailable"});
+  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`)).resolves.toBe(false);
+  const message = expect.objectContaining({title: "Tu llave se abrió en otro dispositivo", body: "¿Fuiste tú?", language: "es"});
+  await expect(listNotifications(owner)).resolves.toEqual([message]);
+  await expect(listNotifications({...helper, actingAs: f.rosa})).resolves.toEqual([message]);
+  await expect(listNotifications(helper)).resolves.toEqual([]);
+  await expect(listNotifications({...f.organizer, actingAs: f.rosa})).resolves.toEqual([]);
 });
 
 it("asks the organizers for help from an unopened key, and the request ends when the key is opened", async () => {

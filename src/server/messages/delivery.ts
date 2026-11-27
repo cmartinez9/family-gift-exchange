@@ -1,5 +1,5 @@
 import "server-only";
-import {and, asc, eq, gt, isNull, sql} from "drizzle-orm";
+import {and, asc, eq, gt, inArray, isNull, or, sql} from "drizzle-orm";
 import {after} from "next/server";
 import {sessions} from "../auth/schema";
 import {withFamily} from "../db/client";
@@ -50,7 +50,8 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
         .for("update", {of: outbox, skipLocked: true});
 
       async function deliverMessage(message: (typeof messages)[number]) {
-        const addressedTo = message.helperId ?? message.personId;
+        const keyOpening = message.template === "key-opened-elsewhere";
+        const addressedTo = message.helperId && keyOpening ? [message.personId, message.helperId] : [message.helperId ?? message.personId];
         const subscriptions = message.removedAt || message.reminderTtl === 0 ? [] : await tx.select({
           endpoint: pushSubscriptions.endpoint,
           p256dh: pushSubscriptions.p256dh,
@@ -63,14 +64,15 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
             eq(sessions.personId, pushSubscriptions.personId),
           ))
           .where(and(
-            eq(pushSubscriptions.familyId, familyId), eq(pushSubscriptions.personId, addressedTo), isNull(people.removedAt),
-            isNull(people.helperId), isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()),
+            eq(pushSubscriptions.familyId, familyId), inArray(pushSubscriptions.personId, addressedTo), isNull(people.removedAt),
+            keyOpening ? or(isNull(people.helperId), eq(people.id, message.personId)) : isNull(people.helperId),
+            isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date()),
           ));
 
         const content = readTemplateContent(message);
         const payload: PushPayload | null = content && {
-          // Requester names stay in the organizer's authenticated inbox.
-          ...(message.helperId || content.template === "pin-reset-request"
+          // Security details stay in the authenticated inbox.
+          ...(message.helperId || keyOpening || content.template === "pin-reset-request"
             ? renderPrivatePush(message.language) : renderMessage(message.language, content)),
           url: `/${message.language}/notifications`,
           tag: message.id,

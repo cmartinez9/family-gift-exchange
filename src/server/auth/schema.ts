@@ -147,7 +147,7 @@ export const authEvents = pgTable("auth_events", {
   personId: uuid("person_id").notNull(),
   kind: text("kind", {enum: [
     "signIn", "keyPrepared", "keySent", "keyUsed", "keyDisputed", "familyLockdown", "newDevice", "pinLocked", "newDevicesLocked",
-    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "deviceSignedOut", "faceIdOff",
+    "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "deviceSignedOut", "faceIdOff", "keyOpenedElsewhere",
   ]}).notNull(),
   deviceKind: text("device_kind"),
   sessionId: uuid("session_id"),

@@ -23,6 +23,7 @@ const ICONS: Readonly<Record<Template, IconName>> = {
   "plans-changed": "gift",
   "gift-day-reminder": "calendar",
   "pin-reset-request": "lock",
+  "key-opened-elsewhere": "phone",
   "claimed-item-changed": "gift",
   "budget-changed": "tag",
 };

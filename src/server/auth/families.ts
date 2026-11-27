@@ -85,9 +85,12 @@ export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date
     personId: pinResetRequests.personId, deviceKind: pinResetRequests.deviceKind, at: pinResetRequests.requestedAt,
   }).from(pinResetRequests).where(and(eq(pinResetRequests.familyId, familyId), isNull(pinResetRequests.answeredAt)))
     .orderBy(desc(pinResetRequests.requestedAt));
-  const activity = await tx.select({personId: authEvents.personId, kind: authEvents.kind, at: authEvents.at, deviceKind: authEvents.deviceKind})
+  const activityKinds = ["keyDisputed", "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"] as const;
+  const activity = await tx.select({
+    personId: authEvents.personId, kind: sql<typeof activityKinds[number]>`${authEvents.kind}`, at: authEvents.at, deviceKind: authEvents.deviceKind,
+  })
     .from(authEvents).where(and(eq(authEvents.familyId, familyId),
-      inArray(authEvents.kind, ["keyDisputed", "resetPrepared", "resetPreparedWithoutRequest", "resetSent", "resetUsed", "pinLocked", "newDevicesLocked"])))
+      inArray(authEvents.kind, activityKinds)))
     .orderBy(desc(authEvents.at)).limit(30);
   return {
     familyName: family.name, members, devices, groups, pairs, requests, sent, activity,

@@ -289,6 +289,31 @@ it("counts unread notices only within the newest 100 without deleting older noti
   expect(stored.filter(({readAt}) => readAt === null).map(({id}) => id)).toEqual([ids[100]]);
 });
 
+it("sends a generic used-key push to the owner and helper's enabled phones", async () => {
+  const owner = await signedInDevice(members[1].id);
+  const helper = await signedInDevice(members[0].id);
+  const other = await signedInDevice(organizers[0].id);
+  const subscriptions = await Promise.all([owner, helper, other].map(async (viewer) => {
+    const subscription = browserSubscription();
+    await subscribePush(viewer, subscription);
+    return subscription;
+  }));
+  await withFamily(familyId, (tx) => tx.update(people).set({helperId: helper.personId}).where(eq(people.id, owner.personId)));
+  vi.stubEnv("VERCEL_ENV", "production");
+  await sendMessage({familyId, personId: owner.personId, language: "es", template: "key-opened-elsewhere"});
+
+  const sender = vi.fn<PushSender>().mockResolvedValue("sent");
+  await deliverPendingPushForFamily(familyId, sender);
+  expect(sender.mock.calls.map(([subscription]) => subscription.endpoint).sort())
+    .toEqual(subscriptions.slice(0, 2).map(({endpoint}) => endpoint).sort());
+  const notice = (await listNotifications({...helper, actingAs: owner.personId}))[0];
+  for (const [, payload] of sender.mock.calls) {
+    expect(payload).toMatchObject({url: "/es/notifications", tag: notice.id});
+    expect(payload.title).not.toBe(notice.title);
+    expect(payload.body).not.toBe(notice.body);
+  }
+});
+
 it("prunes a gone endpoint, scopes subscriptions to sessions, and delivers only safe payloads", async () => {
   const owner = await signedInDevice(organizers[0].id);
   const gone = await signedInDevice(organizers[0].id);

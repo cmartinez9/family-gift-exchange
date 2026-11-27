@@ -82,6 +82,11 @@ export async function lookupKey(tx: FamilyTransaction, familyId: string, pepper:
 export async function inspectKey(tx: FamilyTransaction, familyId: string, token: string, now: Date, pepper?: string) {
   const key = await lookupKey(tx, familyId, pepper ?? "", token, Boolean(pepper));
   if (!key) return null;
+  return describeKey(tx, key, now);
+}
+
+export async function describeKey(tx: FamilyTransaction, key: typeof personalKeys.$inferSelect, now: Date) {
+  const {familyId} = key;
   const person = await activePerson(tx, familyId, key.personId);
   if (!person || person.helperId) return null;
   const [family] = await tx.select({name: families.name}).from(families).where(eq(families.id, familyId));

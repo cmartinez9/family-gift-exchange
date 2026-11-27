@@ -5,9 +5,10 @@ import {getLocale} from "next-intl/server";
 import {redirect} from "next/navigation";
 import {withFamily} from "@/server/db/client";
 import {notify} from "@/server/messages";
+import {schedulePushDelivery} from "@/server/messages/delivery";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
-  allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
+  allowCodeTry, describeKey, disputeUsedKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
   redeemKey, requestPinReset, signInWithPin,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
@@ -15,6 +16,7 @@ import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
 import {appOrigin, currentDeviceKind, requestDevice, setSession} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {createCodePreview} from "@/server/auth/code-preview";
+import {recordUsedKeyOpening} from "@/server/auth/used-key-notice";
 import {pinAttemptState} from "@/server/auth/account";
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from "@simplewebauthn/server";
 import {
@@ -107,24 +109,50 @@ export async function reportUsedKey(familyId: string, value: string, typed: bool
   return withFamily(familyId, (tx) => disputeUsedKey(tx, familyId, value, typed, authenticatorSecret(), device, new Date()));
 }
 
+export async function noticeUsedKeyLink(raw: string): Promise<boolean> {
+  const link = typeof raw === "string" && parseLinkKey(raw);
+  if (!link) return false;
+  const {familyId, token} = link;
+  const viewer = await getViewer();
+  const notice = await withFamily(familyId, async (tx) => {
+    const key = await lookupKey(tx, familyId, "", token);
+    if (!key?.usedAt || !await lockFamily(tx, familyId)) return null;
+    return recordUsedKeyOpening(tx, key, viewer, new Date());
+  });
+  if (notice?.queued) schedulePushDelivery(familyId);
+  return notice?.canConfirm ?? false;
+}
+
 export type CodeResult = AuthResult & {
   key?: {personId: string; name: string; familyName: string; available: boolean; usedAt: string | null; usedDevice?: string; preview?: string};
+  noticeQueued?: boolean;
 };
 
 export async function previewCode(familyId: string, code: string): Promise<CodeResult> {
   if (!uuidPattern.test(familyId) || typeof code !== "string" || !keyCodePattern.test(code)) return {error: "unavailable"};
   const device = await requestDevice();
   const viewer = await getViewer();
-  return withFamily(familyId, async (tx) => {
-    if (!await lockFamily(tx, familyId)) return {error: "unavailable"};
+  const {result, queued} = await withFamily<{result: CodeResult; queued?: boolean}>(familyId, async (tx) => {
+    if (!await lockFamily(tx, familyId)) return {result: {error: "unavailable"}};
     const now = new Date();
-    if (!await allowCodeTry(tx, familyId, device, now)) return {error: "tryLater"};
-    const key = await inspectKey(tx, familyId, code, now, authenticatorSecret());
-    if (!key || (!key.available && !key.usedAt)) return {error: "unavailable"};
-    if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) return {error: "otherPerson"};
-    return {key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
-      preview: createCodePreview(authenticatorSecret(), familyId, key, code, device.hash)}};
+    if (!await allowCodeTry(tx, familyId, device, now)) return {result: {error: "tryLater"}};
+    const pepper = authenticatorSecret();
+    const match = await lookupKey(tx, familyId, pepper, code, true);
+    if (!match) return {result: {error: "unavailable"}};
+    const notice = await recordUsedKeyOpening(tx, match, viewer, now);
+    const key = await describeKey(tx, match, now);
+    if (!key || (!key.available && !key.usedAt)) return {result: {error: "unavailable"}, queued: notice?.queued};
+    if (viewer && (viewer.familyId !== familyId || viewer.personId !== key.personId)) {
+      return {result: {error: "otherPerson"}, queued: notice?.queued};
+    }
+    return {
+      queued: notice?.queued,
+      result: {noticeQueued: notice?.canConfirm, key: {...key, usedAt: key.usedAt?.toISOString() ?? null,
+        preview: createCodePreview(pepper, familyId, key, code, device.hash)}},
+    };
   });
+  if (queued) schedulePushDelivery(familyId);
+  return result;
 }
 
 export async function useKey(familyId: string, value: string, typed: boolean, preview: string | null, _: AuthResult, data: FormData): Promise<AuthResult> {

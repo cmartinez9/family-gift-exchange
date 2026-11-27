@@ -5,6 +5,7 @@ import {NextIntlClientProvider} from "next-intl";
 import {redirect} from "next/navigation";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
+import es from "../../messages/es.json";
 import {CodeEntry, KeyAlreadyOpened, SignInWithPin} from "../../src/app/[locale]/sign-in/get-in";
 import {EnterPin, MakePin} from "../../src/app/[locale]/sign-in/pin-screens";
 import {AddStep, SizesStep} from "../../src/app/[locale]/welcome/steps";
@@ -13,6 +14,7 @@ import type {PreviewState} from "../../src/app/[locale]/lists/action-types";
 const actions = vi.hoisted(() => ({
   previewCode: vi.fn(), useKey: vi.fn(), beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(),
   finishFaceIdSignIn: vi.fn(), forgotPin: vi.fn(), reportUsedKey: vi.fn(), enterPin: vi.fn(), openFamily: vi.fn(),
+  noticeUsedKeyLink: vi.fn(),
 }));
 const lists = vi.hoisted(() => ({previewItemLink: vi.fn(), saveProfileField: vi.fn(), saveItem: vi.fn()}));
 const welcome = vi.hoisted(() => ({addFirstThing: vi.fn()}));
@@ -30,6 +32,7 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  actions.noticeUsedKeyLink.mockReset().mockResolvedValue(false);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
   vi.stubGlobal("URL", class extends URL {
@@ -51,11 +54,31 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function render(node: ReactNode) {
+async function render(node: ReactNode, locale: "en" | "es" = "en") {
   await act(async () => root.render(
-    <NextIntlClientProvider locale="en" messages={en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
+    <NextIntlClientProvider locale={locale} messages={locale === "es" ? es : en} timeZone="America/Chicago">{node}</NextIntlClientProvider>,
   ));
 }
+
+it("shows the Spanish used-key promise only after the server confirms the notice", async () => {
+  const result = Promise.withResolvers<boolean>();
+  actions.noticeUsedKeyLink.mockReturnValue(result.promise);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />, "es");
+  const told = es.getIn.used.told.replace("{name}", "Rosa");
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith("family~token");
+  expect(container.textContent).not.toContain(told);
+  await act(async () => result.resolve(true));
+  expect(container.textContent).toContain(told);
+});
+
+it("keeps PIN entry available if the used-key notice fails", async () => {
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  expect(container.textContent).not.toContain("Rosa's phone will be told.");
+  expect(button("4").disabled).toBe(false);
+});
 
 function button(label: string) {
   const found = [...container.querySelectorAll("button")].find((node) => node.textContent === label || node.getAttribute("aria-label") === label);
