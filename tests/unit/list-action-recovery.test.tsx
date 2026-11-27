@@ -19,6 +19,7 @@ vi.mock("../../src/app/[locale]/lists/actions", () => ({
   saveBudget: vi.fn(), saveItem: vi.fn(), saveProfileField: vi.fn(), setItemStar: vi.fn(),
 }));
 vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({refresh: vi.fn()}),
   Link: ({href, children, transitionTypes, ...rest}: {href: string; children: ReactNode; transitionTypes?: string[]}) => (
     <a href={href} data-transition={transitionTypes?.join(" ")} {...rest}>{children}</a>
   ),

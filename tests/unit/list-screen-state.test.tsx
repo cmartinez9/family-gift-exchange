@@ -14,10 +14,13 @@ import {ItemThumb, toItemView, type ListItemView} from "../../src/app/[locale]/l
 import {removeWithUndo} from "../../src/app/[locale]/lists/pending-removals";
 import {dismissToast, ToastHost} from "../../src/components/ui/toast";
 
+const {refresh} = vi.hoisted(() => ({refresh: vi.fn()}));
+
 vi.mock("../../src/app/[locale]/lists/actions", () => ({
   itemCommand: vi.fn(), removeItem: vi.fn(), setItemStar: vi.fn(), saveItem: vi.fn(), previewItemLink: vi.fn(), claimCommand: vi.fn(),
 }));
 vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({refresh}),
   Link: ({href, children, transitionTypes, ...rest}: {href: string; children: ReactNode; transitionTypes?: string[]}) => (
     <a href={href} data-transition={transitionTypes?.join(" ")} {...rest}>{children}</a>
   ),
@@ -242,6 +245,39 @@ it.each(["pagehide", "hidden"] as const)("flushes a removal once with keepalive 
   expect(container.querySelector("article")).toBeNull();
 });
 
+it.each(["pagehide", "hidden"] as const)("keeps a timer-started deletion alive across %s despite a blocked action queue", async (event) => {
+  vi.useFakeTimers();
+  const queued = Promise.withResolvers<FormState>();
+  const response = Promise.withResolvers<Response>();
+  vi.mocked(removeItem).mockReturnValueOnce(queued.promise);
+  vi.mocked(fetch).mockReturnValueOnce(response.promise);
+  refresh.mockImplementation(() => root.render(screen()));
+  await render();
+  await takeOff();
+  await act(async () => vi.advanceTimersByTimeAsync(5400));
+  await act(async () => {
+    if (event === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+    } else window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("pagehide"));
+  });
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(`/en/lists/${ownerId}/items/${item.id}/remove`, {method: "POST", keepalive: true});
+  expect(removeItem).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+  await act(async () => {
+    items = [];
+    response.resolve(Response.json({status: "saved"}));
+  });
+  expect(refresh).toHaveBeenCalledOnce();
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
+  expect(container.querySelector("article")).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(6000));
+  expect(fetch).toHaveBeenCalledOnce();
+});
+
 it("flushes every pending removal on exit even after leaving the list", async () => {
   vi.useFakeTimers();
   items.push({...item, id: "second", title: "Winter book"});
@@ -274,6 +310,7 @@ it.each(["returned", "rejected"] as const)("restores an item after a %s keepaliv
   await act(async () => vi.advanceTimersByTimeAsync(6000));
   expect(fetch).toHaveBeenCalledOnce();
   expect(removeItem).toHaveBeenCalledTimes(failure === "returned" ? 1 : 0);
+  expect(refresh).not.toHaveBeenCalled();
 });
 
 it("commits a removal once after leaving its Undo window unused", async () => {
@@ -286,6 +323,8 @@ it("commits a removal once after leaving its Undo window unused", async () => {
   expect(removeItem).not.toHaveBeenCalled();
   await act(async () => vi.advanceTimersByTimeAsync(1100));
   expect(removeItem).toHaveBeenCalledExactlyOnceWith(ownerId, item.id);
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(`/en/lists/${ownerId}/items/${item.id}/remove`, {method: "POST", keepalive: true});
+  expect(refresh).toHaveBeenCalledOnce();
   showingList = true;
   await render();
   expect(container.querySelector("article")).toBeNull();
@@ -330,7 +369,7 @@ it("shares cancellation when the same item removal is requested twice", async ()
   vi.useFakeTimers();
   await render();
   await takeOff();
-  await act(async () => removeWithUndo("en", ownerId, item.id, "Duplicate request", () => "Failed"));
+  await act(async () => removeWithUndo("en", ownerId, item.id, "Duplicate request", () => "Failed", refresh));
   await click(container.querySelector<HTMLButtonElement>(".fge-toast button")!);
   await act(async () => vi.advanceTimersByTimeAsync(6000));
   expect(removeItem).not.toHaveBeenCalled();

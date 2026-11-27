@@ -9,7 +9,7 @@ import {HeartToggle, ItemCard} from "@/components/ui/item-card";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {haptic} from "@/components/ui/motion/haptic";
 import {AppLink} from "@/components/ui/navigation";
-import {Link} from "@/i18n/navigation";
+import {Link, useRouter} from "@/i18n/navigation";
 import {Sheet} from "@/components/ui/sheet";
 import {toast} from "@/components/ui/toast";
 import type {ItemKind} from "@/server/lists/validation";
@@ -40,6 +40,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const t = useTranslations("lists");
   const format = useFormatter();
   const locale = useLocale();
+  const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [round, setRound] = useState(0);
@@ -60,7 +61,7 @@ export function OwnList({ownerId, items, sizes, closeLabel}: {
   const takeOff = (item: ListItemView) => {
     setEditing(null);
     haptic("soft");
-    removeWithUndo(locale, ownerId, item.id, t("tookOff", {title: item.title}), (error) => t(`feedback.${error}`));
+    removeWithUndo(locale, ownerId, item.id, t("tookOff", {title: item.title}), (error) => t(`feedback.${error}`), router.refresh);
   };
 
   const star = (item: ListItemView, on: boolean) => {
