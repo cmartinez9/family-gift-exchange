@@ -9,7 +9,7 @@ import {withFamily} from "../../src/server/db/client";
 import {exchanges, families, items, outbox, participants, people} from "../../src/server/db/schema";
 import {deliverPendingPushForFamily} from "../../src/server/messages/delivery";
 import {listNotifications} from "../../src/server/messages/inbox";
-import {noteEmptyListViewed, nudgeablePeople, nudgedToday, nudgeKey, nudgeList, queueViewedNudges} from "../../src/server/messages/nudges";
+import {noteEmptyListViewed, nudgedToday, nudgeKey, nudgeList, nudgeUnopened, queueViewedNudges} from "../../src/server/messages/nudges";
 import type {PushSender} from "../../src/server/messages/push";
 import {listNudges} from "../../src/server/messages/schema";
 import {subscribePush} from "../../src/server/messages/subscriptions";
@@ -139,15 +139,16 @@ it("nudges only people who can get it and only for organizers acting as themselv
   expect(await nudgedToday(viewers.giver, exchangeId, now)).toEqual([]);
 });
 
-it.each(["en", "es"] as const)("nudges an unopened person with a started list privately in %s", async (language) => {
+it.each(["en", "es"] as const)("reminds unopened participants privately in %s without reporting their identities", async (language) => {
   await withFamily(familyId, async (tx) => {
     await tx.update(people).set({language}).where(eq(people.id, ids.started));
+    await tx.update(participants).set({seenVersion: 1});
     await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.started));
   });
-  expect(await nudgeablePeople(viewers.organizer, exchangeId)).toContain(ids.started);
   expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.started, now)).toBe(false);
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, now)).toBe("sent");
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, later)).toBe("already");
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, now)).toBe("unavailable");
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, now)).toBe("sent");
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, later)).toBe("sent");
   expect(await notices()).toMatchObject([{
     personId: ids.started, language, template: "person-nudge", requesterName: null, dedupeKey: nudgeKey(exchangeId, "2033-01-10"),
   }]);
@@ -157,25 +158,121 @@ it.each(["en", "es"] as const)("nudges an unopened person with a started list pr
     expect(`${notice.title} ${notice.body}`).not.toContain(identity);
   }
   await withFamily(familyId, (tx) => tx.update(participants).set({seenVersion: 1}).where(eq(participants.personId, ids.started)));
-  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.started);
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, nextDay)).toBe("sent");
+  expect(await notices()).toHaveLength(1);
   expect(await nudgeList(viewers.organizer, exchangeId, ids.started, nextDay)).toBe("unavailable");
-  await withFamily(familyId, (tx) => tx.update(exchanges).set({drawVersion: 2}).where(eq(exchanges.id, exchangeId)));
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, nextDay)).toBe("sent");
 });
 
-it("requires a draw before reminding someone to open their person", async () => {
+it.each([
+  {unopened: []}, {unopened: [ids.started]}, {unopened: [ids.giver, ids.started]},
+  {unopened: [ids.organizer, ids.giver, ids.empty, ids.started, ids.helper, ids.lookedAfter, ids.notJoined]},
+])("keeps organizer responses identical with unopened participants $unopened", async ({unopened}) => {
   await withFamily(familyId, async (tx) => {
+    await tx.update(participants).set({seenVersion: 1});
+    for (const personId of unopened) {
+      await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, personId));
+    }
+  });
+  const responses = [
+    await nudgeList(viewers.organizer, exchangeId, ids.started, now),
+    await nudgedToday(viewers.organizer, exchangeId, now),
+    await nudgeUnopened(viewers.organizer, exchangeId, now),
+    await nudgeUnopened(viewers.organizer, exchangeId, later),
+    await nudgedToday(viewers.organizer, exchangeId, later),
+    await nudgeList(viewers.organizer, exchangeId, ids.started, later),
+  ];
+  expect(responses).toEqual(["unavailable", [], "sent", "sent", [], "unavailable"]);
+  const queued = await notices();
+  expect(queued.map(({personId}) => personId).sort()).toEqual([...unopened].sort());
+  expect(queued.every(({template}) => template === "person-nudge")).toBe(true);
+});
+
+it("does not identify a giver after their opening causes an automatic notice", async () => {
+  const others = [ids.giver, ids.empty, ids.helper, ids.lookedAfter, ids.notJoined];
+  await withFamily(familyId, (tx) => tx.insert(items).values(others.map((ownerId) => ({
+    familyId, ownerId, kind: "note" as const, title: "A scarf",
+  }))));
+  const before = await Promise.all([...others, ids.started].map((personId) => nudgeList(viewers.organizer, exchangeId, personId, now)));
+  await withFamily(familyId, (tx) => tx.update(participants).set({seenVersion: 1}).where(eq(participants.personId, ids.giver)));
+  expect(await noteEmptyListViewed(viewers.giver, exchangeId, ids.organizer, now)).toBe(true);
+  await queueViewedNudges(later);
+  expect(await listNotifications(viewers.organizer)).toMatchObject([{template: "list-nudge"}]);
+  const after = await Promise.all([...others, ids.started].map((personId) => nudgeList(viewers.organizer, exchangeId, personId, later)));
+  expect(before).toEqual([...others, ids.started].map(() => "unavailable"));
+  expect(after).toEqual(before);
+  expect(await nudgedToday(viewers.organizer, exchangeId, later)).toEqual([]);
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, later)).toBe("sent");
+});
+
+it("limits bulk reminders to one exchange day across organizers and concurrent requests", async () => {
+  await withFamily(familyId, async (tx) => {
+    await tx.update(people).set({role: "co_organizer"}).where(eq(people.id, ids.helper));
+    await tx.update(participants).set({seenVersion: 1});
     await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.started));
+  });
+  expect(await Promise.all([
+    nudgeUnopened(viewers.organizer, exchangeId, now), nudgeUnopened(viewers.helper, exchangeId, now),
+  ])).toEqual(["sent", "sent"]);
+  expect(await notices()).toHaveLength(1);
+  await withFamily(familyId, (tx) => tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.giver)));
+  expect(await nudgeUnopened(viewers.helper, exchangeId, later)).toBe("sent");
+  expect(await notices()).toHaveLength(1);
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, nextDay)).toBe("sent");
+  expect((await notices()).map(({personId}) => personId).sort()).toEqual([ids.started, ids.started, ids.giver].sort());
+});
+
+it("keeps the bulk reminder limit scoped to each exchange", async () => {
+  const secondExchangeId = randomUUID();
+  await withFamily(familyId, async (tx) => {
+    await tx.update(participants).set({seenVersion: 1});
+    await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.started));
+    await tx.insert(exchanges).values({familyId, id: secondExchangeId, name: "Another season", status: "drawn", drawVersion: 1});
+    await tx.insert(participants).values({familyId, exchangeId: secondExchangeId, personId: ids.started});
+  });
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, now)).toBe("sent");
+  expect(await nudgeUnopened(viewers.organizer, secondExchangeId, later)).toBe("sent");
+  expect((await notices()).map(({dedupeKey}) => dedupeKey).sort())
+    .toEqual([nudgeKey(exchangeId, "2033-01-10"), nudgeKey(secondExchangeId, "2033-01-10")].sort());
+});
+
+it("excludes people who left or were removed and follows the current draw version", async () => {
+  await withFamily(familyId, async (tx) => {
+    await tx.update(participants).set({seenVersion: 1});
+    await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.out));
+    await tx.update(people).set({removedAt: new Date()}).where(eq(people.id, ids.giver));
+    await tx.update(participants).set({seenVersion: null}).where(eq(participants.personId, ids.giver));
+  });
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, now)).toBe("sent");
+  expect(await notices()).toEqual([]);
+  await withFamily(familyId, (tx) => tx.update(exchanges).set({drawVersion: 2}).where(eq(exchanges.id, exchangeId)));
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, nextDay)).toBe("sent");
+  const recipients = (await notices()).map(({personId}) => personId);
+  expect(recipients).toContain(ids.started);
+  expect(recipients).not.toContain(ids.out);
+  expect(recipients).not.toContain(ids.giver);
+});
+
+it("requires an organizer acting as themselves and a drawn, open exchange for bulk reminders", async () => {
+  expect(await nudgeUnopened(viewers.giver, exchangeId, now)).toBe("forbidden");
+  expect(await nudgeUnopened(viewers.helping, exchangeId, now)).toBe("forbidden");
+  const organizerHelping = await signIn(ids.organizer);
+  await withFamily(familyId, async (tx) => {
+    await tx.update(people).set({helperId: ids.organizer}).where(eq(people.id, ids.notJoined));
+    await actFor(tx, organizerHelping, ids.notJoined);
+  });
+  expect(await nudgeUnopened({...organizerHelping, actingAs: ids.notJoined}, exchangeId, now)).toBe("forbidden");
+  expect(await nudgeUnopened(viewers.organizer, otherExchangeId, now)).toBe("unavailable");
+  expect(await nudgeUnopened(viewers.organizer, "not-an-exchange", now)).toBe("unavailable");
+  await withFamily(familyId, async (tx) => {
     await tx.update(exchanges).set({status: "open", drawVersion: 0}).where(eq(exchanges.id, exchangeId));
   });
-  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.started);
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.started, now)).toBe("unavailable");
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, now)).toBe("unavailable");
+  await withFamily(familyId, (tx) => tx.update(exchanges).set({status: "closed", drawVersion: 1}).where(eq(exchanges.id, exchangeId)));
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, now)).toBe("unavailable");
+  expect(await notices()).toEqual([]);
 });
 
 it("keeps a Not started participant's nudge in their inbox until they join", async () => {
-  expect(await nudgeablePeople(viewers.organizer, exchangeId)).toContain(ids.notJoined);
-  expect(await nudgeablePeople(viewers.giver, exchangeId)).toEqual([]);
-  expect(await nudgeablePeople(viewers.organizer, exchangeId)).not.toContain(ids.out);
   expect(await nudgeList(viewers.organizer, exchangeId, ids.notJoined, now)).toBe("sent");
   expect(await nudgeList(viewers.organizer, exchangeId, ids.notJoined, later)).toBe("already");
   await withFamily(familyId, (tx) => tx.insert(pinCredentials).values({familyId, personId: ids.notJoined, joinedAt: new Date()}));
@@ -183,13 +280,14 @@ it("keeps a Not started participant's nudge in their inbox until they join", asy
   expect(inbox).toMatchObject([{title: "Your wishlist is waiting"}]);
 });
 
-it("shares one daily limit when an empty-list participant starts a list before opening their person", async () => {
+it("shares one daily notification limit between list nudges and bulk reminders", async () => {
   expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, now)).toBe("sent");
   await withFamily(familyId, (tx) => tx.insert(items).values({familyId, ownerId: ids.empty, kind: "note", title: "A scarf"}));
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, later)).toBe("already");
-  expect(await notices()).toMatchObject([{template: "list-nudge"}]);
-  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, nextDay)).toBe("sent");
-  expect((await notices()).map(({template}) => template).sort()).toEqual(["list-nudge", "person-nudge"]);
+  expect(await nudgeList(viewers.organizer, exchangeId, ids.empty, later)).toBe("unavailable");
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, later)).toBe("sent");
+  expect((await notices()).filter(({personId}) => personId === ids.empty)).toMatchObject([{template: "list-nudge"}]);
+  expect(await nudgeUnopened(viewers.organizer, exchangeId, nextDay)).toBe("sent");
+  expect((await notices()).filter(({personId}) => personId === ids.empty).map(({template}) => template).sort()).toEqual(["list-nudge", "person-nudge"]);
 });
 
 it.each(["list-nudge", "person-nudge"] as const)("expires yesterday's retried %s before delivering today's nudge", async (template) => {

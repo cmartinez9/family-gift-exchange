@@ -865,6 +865,9 @@
       "nudgeSent": "{name} recibirá un aviso",
       "nudgeFailed": "No se envió. Inténtalo de nuevo.",
       "nudgeNote": "Un aviso es una notificación en su teléfono. Nunca dice quién le tiene.",
+      "remindUnopened": "Recordar que descubran a su persona",
+      "unopenedNudgeHint": "Un aviso privado para quienes aún no descubren a su persona. Una vez al día por intercambio.",
+      "unopenedNudgeSent": "Avisos enviados",
       "remindChat": "Recordarle al chat familiar"
     },
     "keys": {

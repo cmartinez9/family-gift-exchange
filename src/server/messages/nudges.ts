@@ -22,12 +22,8 @@ export function nudgeKey(exchangeId: string, day: string) {
   return `list-nudge:${exchangeId}:${day}`;
 }
 
-function nudgeTargets(tx: FamilyTransaction, familyId: string, exchangeId: string, kind: "organizer" | "viewed", personId?: string) {
-  const emptyList = notExists(tx.select({id: items.id}).from(items).where(and(
-    eq(items.familyId, familyId), eq(items.ownerId, participants.personId), isNull(items.archivedAt),
-  )));
-  const unopened = and(gt(exchanges.drawVersion, 0), or(isNull(participants.seenVersion), ne(participants.seenVersion, exchanges.drawVersion)));
-  return tx.select({personId: people.id, language: people.language, helperId: people.helperId, emptyList: sql<boolean>`${emptyList}`})
+async function nudgeTarget(tx: FamilyTransaction, familyId: string, exchangeId: string, personId: string, kind: "organizer" | "viewed") {
+  const [target] = await tx.select({language: people.language, helperId: people.helperId})
     .from(participants)
     .innerJoin(exchanges, and(eq(exchanges.familyId, participants.familyId), eq(exchanges.id, participants.exchangeId)))
     .innerJoin(people, and(eq(people.familyId, participants.familyId), eq(people.id, participants.personId)))
@@ -35,26 +31,20 @@ function nudgeTargets(tx: FamilyTransaction, familyId: string, exchangeId: strin
     .where(and(
       eq(participants.familyId, familyId),
       eq(participants.exchangeId, exchangeId),
-      personId ? eq(participants.personId, personId) : undefined,
+      eq(participants.personId, personId),
       eq(participants.status, "in"),
       ne(exchanges.status, "closed"),
       isNull(people.removedAt),
-      kind === "organizer" ? or(emptyList, unopened)
-        : and(emptyList, or(isNotNull(pinCredentials.personId), isNotNull(people.helperId))),
+      notExists(tx.select({id: items.id}).from(items).where(and(
+        eq(items.familyId, familyId), eq(items.ownerId, personId), isNull(items.archivedAt),
+      ))),
+      kind === "viewed" ? or(isNotNull(pinCredentials.personId), isNotNull(people.helperId)) : undefined,
     ));
+  return target;
 }
 
-export async function nudgeablePeople(viewer: NudgeViewer, exchangeId: string) {
-  if (!uuid.test(exchangeId)) return [];
-  return withFamily(viewer.familyId, async (tx) => {
-    if (!await isManager(tx, viewer)) return [];
-    const targets = await nudgeTargets(tx, viewer.familyId, exchangeId, "organizer");
-    return targets.filter(({personId}) => personId !== viewer.personId).map(({personId}) => personId);
-  });
-}
-
-function nudgeMessage(familyId: string, exchangeId: string, personId: string, language: Message["language"], day: string, template: "list-nudge" | "person-nudge"): Message {
-  return {familyId, personId, language, template, dedupeKey: nudgeKey(exchangeId, day)};
+function nudgeMessage(familyId: string, exchangeId: string, personId: string, language: Message["language"], day: string): Message {
+  return {familyId, personId, language, template: "list-nudge", dedupeKey: nudgeKey(exchangeId, day)};
 }
 
 /** An organizer, as themselves, nudges one person. Once per person per exchange day. */
@@ -67,7 +57,7 @@ export async function nudgeList(viewer: NudgeViewer, exchangeId: unknown, person
   const result = await withFamily(familyId, async (tx): Promise<NudgeResult> => {
     if (!await isManager(tx, viewer)) return "forbidden";
     if (personId === viewer.personId) return "unavailable";
-    const [target] = await nudgeTargets(tx, familyId, exchangeId, "organizer", personId);
+    const target = await nudgeTarget(tx, familyId, exchangeId, personId, "organizer");
     if (!target) return "unavailable";
     await tx.delete(listNudges).where(and(
       eq(listNudges.familyId, familyId), eq(listNudges.kind, "organizer"), lt(listNudges.day, day),
@@ -77,7 +67,34 @@ export async function nudgeList(viewer: NudgeViewer, exchangeId: unknown, person
       .onConflictDoNothing()
       .returning({personId: listNudges.personId});
     if (added.length === 0) return "already";
-    await enqueueMessages(tx, [nudgeMessage(familyId, exchangeId, personId, target.language, day, target.emptyList ? "list-nudge" : "person-nudge")]);
+    await enqueueMessages(tx, [nudgeMessage(familyId, exchangeId, personId, target.language, day)]);
+    return "sent";
+  });
+  if (result === "sent") schedulePushDelivery(familyId);
+  return result;
+}
+
+export async function nudgeUnopened(viewer: NudgeViewer, exchangeId: unknown, now = new Date()): Promise<Exclude<NudgeResult, "already">> {
+  if (typeof exchangeId !== "string" || !uuid.test(exchangeId)) return "unavailable";
+  const {familyId} = viewer;
+  const day = todayInExchangeCalendar(now);
+  const result = await withFamily(familyId, async (tx): Promise<Exclude<NudgeResult, "already">> => {
+    if (!await isManager(tx, viewer)) return "forbidden";
+    const scope = and(eq(exchanges.familyId, familyId), eq(exchanges.id, exchangeId));
+    const [exchange] = await tx.select({version: exchanges.drawVersion, nudgedOn: exchanges.personNudgedOn}).from(exchanges)
+      .where(and(scope, gt(exchanges.drawVersion, 0), ne(exchanges.status, "closed"))).for("update");
+    if (!exchange) return "unavailable";
+    if (exchange.nudgedOn && exchange.nudgedOn >= day) return "sent";
+    await tx.update(exchanges).set({personNudgedOn: day}).where(scope);
+    const targets = await tx.select({personId: people.id, language: people.language}).from(participants)
+      .innerJoin(people, and(eq(people.familyId, participants.familyId), eq(people.id, participants.personId)))
+      .where(and(
+        eq(participants.familyId, familyId), eq(participants.exchangeId, exchangeId), eq(participants.status, "in"),
+        isNull(people.removedAt), or(isNull(participants.seenVersion), ne(participants.seenVersion, exchange.version)),
+      ));
+    await enqueueMessages(tx, targets.map(({personId, language}) => ({
+      familyId, personId, language, template: "person-nudge", dedupeKey: nudgeKey(exchangeId, day),
+    })));
     return "sent";
   });
   if (result === "sent") schedulePushDelivery(familyId);
@@ -107,7 +124,7 @@ export async function noteEmptyListViewed(viewer: NudgeViewer, exchangeId: strin
   if (personId === viewer.personId || personId === viewer.actingAs) return false;
   const {familyId} = viewer;
   return withFamily(familyId, async (tx) => {
-    const [target] = await nudgeTargets(tx, familyId, exchangeId, "viewed", personId);
+    const target = await nudgeTarget(tx, familyId, exchangeId, personId, "viewed");
     // a helper looking for someone they also look after would only be nudging their own phone
     if (!target || target.helperId === viewer.personId) return false;
     await tx.insert(listNudges)
@@ -139,8 +156,8 @@ export async function queueViewedNudges(now = new Date()) {
       const waiting = new Map(viewed.map((row) => [`${row.exchangeId}:${row.personId}`, row]));
       const messages: Message[] = [];
       for (const {exchangeId, personId} of waiting.values()) {
-        const [target] = await nudgeTargets(tx, familyId, exchangeId, "viewed", personId);
-        if (target) messages.push(nudgeMessage(familyId, exchangeId, personId, target.language, day, "list-nudge"));
+        const target = await nudgeTarget(tx, familyId, exchangeId, personId, "viewed");
+        if (target) messages.push(nudgeMessage(familyId, exchangeId, personId, target.language, day));
       }
       await enqueueMessages(tx, messages);
     });

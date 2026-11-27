@@ -865,6 +865,9 @@
       "nudgeSent": "{name} will get a nudge",
       "nudgeFailed": "That didn’t send. Try again.",
       "nudgeNote": "A nudge is a notice on their phone. It never says who has them.",
+      "remindUnopened": "Remind people to open their person",
+      "unopenedNudgeHint": "A private reminder for anyone who hasn’t opened their person. Once a day for this exchange.",
+      "unopenedNudgeSent": "Reminders sent",
       "remindChat": "Remind the group chat"
     },
     "keys": {

@@ -4,11 +4,13 @@ import {createRoot, type Root} from "react-dom/client";
 import {NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
+import es from "../../messages/es.json";
 import {NudgeButton} from "../../src/app/[locale]/exchanges/nudge-button";
+import {RemindUnopenedButton} from "../../src/app/[locale]/exchanges/remind-unopened-button";
 
-const {nudgePerson} = vi.hoisted(() => ({nudgePerson: vi.fn()}));
-vi.mock("../../src/app/[locale]/exchanges/nudge-actions", () => ({nudgePerson}));
-vi.mock("@/components/ui/toast", () => ({toast: vi.fn()}));
+const {nudgePerson, remindUnopenedPeople, toast} = vi.hoisted(() => ({nudgePerson: vi.fn(), remindUnopenedPeople: vi.fn(), toast: vi.fn()}));
+vi.mock("../../src/app/[locale]/exchanges/nudge-actions", () => ({nudgePerson, remindUnopenedPeople}));
+vi.mock("@/components/ui/toast", () => ({toast}));
 vi.mock("@/i18n/navigation", () => ({Link: () => null}));
 
 let container: HTMLDivElement;
@@ -20,6 +22,8 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: true}));
   nudgePerson.mockReset().mockResolvedValue("sent");
+  remindUnopenedPeople.mockReset().mockResolvedValue("sent");
+  toast.mockClear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -93,4 +97,40 @@ it("keeps the nudge available when delivery is unavailable", async () => {
   await render();
   await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
   expect(container.querySelector("button")).not.toBeNull();
+});
+
+async function renderBulk(language: "en" | "es" = "en") {
+  await act(async () => root.render(
+    <NextIntlClientProvider locale={language} messages={language === "es" ? es : en} timeZone="America/Chicago">
+      <RemindUnopenedButton exchangeId="exchange" />
+    </NextIntlClientProvider>,
+  ));
+}
+
+it.each(["en", "es"] as const)("shows only a general success response to bulk reminders in %s", async (language) => {
+  const messages = language === "es" ? es : en;
+  await renderBulk(language);
+  const button = container.querySelector<HTMLButtonElement>("button")!;
+  expect(button.textContent).toBe(messages.draw.season.remindUnopened);
+  await act(async () => button.click());
+  expect(remindUnopenedPeople).toHaveBeenCalledExactlyOnceWith("exchange");
+  expect(toast).toHaveBeenLastCalledWith({message: messages.draw.season.unopenedNudgeSent, icon: "bell"});
+  expect(button.textContent).toBe(messages.draw.season.remindUnopened);
+  await act(async () => button.click());
+  expect(toast).toHaveBeenLastCalledWith({message: messages.draw.season.unopenedNudgeSent, icon: "bell"});
+});
+
+it("prevents concurrent bulk submissions and keeps the action available after a failure", async () => {
+  const pending = Promise.withResolvers<string>();
+  remindUnopenedPeople.mockReturnValue(pending.promise);
+  await renderBulk();
+  const button = container.querySelector<HTMLButtonElement>("button")!;
+  await act(async () => button.click());
+  expect(button.disabled).toBe(true);
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  button.click();
+  expect(remindUnopenedPeople).toHaveBeenCalledOnce();
+  await act(async () => pending.resolve("unavailable"));
+  expect(button.disabled).toBe(false);
+  expect(toast).toHaveBeenLastCalledWith({message: en.draw.season.nudgeFailed, icon: "alert"});
 });

@@ -98,6 +98,7 @@ export const exchanges = pgTable("exchanges", {
   rules: jsonb("rules").$type<Record<string, unknown>>().default({}).notNull(),
   seal: text("seal"),
   drawVersion: integer("draw_version").default(0).notNull(),
+  personNudgedOn: date("person_nudged_on"),
   disputedRevealRepairedAt: instant("disputed_reveal_repaired_at"),
 }, (table) => [
   primaryKey({columns: [table.familyId, table.id]}),

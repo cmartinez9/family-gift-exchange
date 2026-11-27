@@ -148,6 +148,13 @@
       "when": 1795756543588,
       "tag": "0020_list-nudge-permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795758051710,
+      "tag": "0021_exchange-person-nudge",
+      "breakpoints": true
     }
   ]
 }

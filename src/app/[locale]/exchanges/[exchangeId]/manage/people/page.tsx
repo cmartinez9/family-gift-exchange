@@ -11,12 +11,13 @@ import {readiness} from "@/server/auth/families";
 import {withFamily} from "@/server/db/client";
 import {DrawError, organizerExchange} from "@/server/draw";
 import {listFamilyWishlists} from "@/server/lists";
-import {nudgeablePeople, nudgedToday} from "@/server/messages";
+import {nudgedToday} from "@/server/messages";
 import {todayInExchangeCalendar} from "@/server/messages/calendar";
 import {saveRosterAndContinue} from "../../../actions";
 import {DrawRecovery, drawPage, PersonStatusScreen} from "../../../components";
 import {FormScreen} from "../../../form";
 import {NudgeButton} from "../../../nudge-button";
+import {RemindUnopenedButton} from "../../../remind-unopened-button";
 import {AddNames} from "../../../../family/add-names";
 import {RosterFields} from "../../../roster";
 import {SetupSteps} from "../../../setup";
@@ -50,11 +51,10 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
 
   const now = new Date();
   const day = todayInExchangeCalendar(now);
-  const [board, lists, nudged, eligible] = await Promise.all([
+  const [board, lists, nudged] = await Promise.all([
     withFamily(viewer.familyId, (tx) => readiness(tx, viewer, now)),
     listFamilyWishlists(viewer).catch(() => []),
     nudgedToday(viewer, id, now),
-    nudgeablePeople(viewer, id),
   ]);
   const byId = new Map(lists.map((list) => [list.id, list]));
   const members = new Map((board?.members ?? []).map((member) => [member.id, member]));
@@ -69,7 +69,7 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
     if (member?.joinedAt || helper) return t("season.noList");
     return board?.sent.some((key) => key.personId === personId) ? t("season.keySent") : t("season.notStarted");
   };
-  const canNudge = (personId: string) => eligible.includes(personId);
+  const canNudge = (personId: string) => personId !== viewer.personId && members.has(personId) && !byId.get(personId)?.itemCount;
   const anyNudge = taking.some(({id: personId}) => canNudge(personId));
   return (
     <Screen back={hub} actions={<ButtonLink href="/family/group-chat" transition="push" icon="share">{t("season.remindChat")}</ButtonLink>}>
@@ -100,6 +100,10 @@ export default async function PeoplePage({params}: {params: Promise<{exchangeId:
           </ul>
         </Card>
         <p className="text-body">{anyNudge ? t("season.nudgeNote") : t("season.whosInNote")}</p>
+        <Card className="flex flex-col gap-3">
+          <p className="text-body">{t("season.unopenedNudgeHint")}</p>
+          <RemindUnopenedButton exchangeId={id} />
+        </Card>
       </KnitIn>
     </Screen>
   );
