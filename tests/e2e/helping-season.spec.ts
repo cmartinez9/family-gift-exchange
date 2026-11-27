@@ -99,6 +99,8 @@ async function shot(page: Page, name: string, {axe = true, scope = "body", scale
   axe?: boolean; scope?: string; scale?: "css" | "device";
 } = {}) {
   await page.waitForLoadState("networkidle");
+  // The screen's title streams in just after a soft navigation.
+  await expect(page).toHaveTitle(/\S/);
   // `next dev` adds its own indicator; production builds have none.
   await page.evaluate(() => document.querySelector("nextjs-portal")?.remove());
   await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"

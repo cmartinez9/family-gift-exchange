@@ -155,7 +155,6 @@ async function removeForUndo(page: Page, t: Messages, title: string) {
   await page.getByRole("link", {name: t.lists.editNamedItem.replace("{title}", title), exact: true}).click();
   const dialog = page.getByRole("dialog", {name: t.lists.editItem});
   await expect(dialog).toBeVisible();
-  await page.clock.install();
   await page.clock.pauseAt(new Date());
   await dialog.getByRole("button", {name: t.lists.deleteItem, exact: true}).click();
   await page.clock.runFor(500);
@@ -413,7 +412,6 @@ const screens: Screen[] = [
   }},
   {name: "welcome-link-loading", who: "Christian", path: () => "/welcome/list", then: async (page, t) => {
     await page.getByRole("button", {name: t.getIn.add.paste, exact: true}).click();
-    await page.clock.install();
     await page.clock.pauseAt(new Date());
     await page.getByLabel(t.getIn.paste.field, {exact: true}).fill("https://www.target.com/p/wool-socks/-/A-12345");
     await page.clock.runFor(100);
