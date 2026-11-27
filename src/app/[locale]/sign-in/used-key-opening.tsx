@@ -16,3 +16,9 @@ export function useUsedKeyOpening({link, openingId, queued}: {link?: string; ope
 
   return queued ?? Boolean(link && confirmedLink === link);
 }
+
+export function UsedKeyOpening({link}: {link: string}) {
+  const [openingId] = useState(() => crypto.randomUUID());
+  useUsedKeyOpening({link, openingId});
+  return null;
+}

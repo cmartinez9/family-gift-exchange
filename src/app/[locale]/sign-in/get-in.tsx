@@ -29,6 +29,7 @@ import {tryAuthAction} from "./client-action";
 import {HelpingKey} from "./helping";
 import {AskForHelp, OrganizerRecovery, useHelpContact} from "./ask-for-help";
 import {useUsedKeyOpening} from "./used-key-opening";
+import type {KeyOpening} from "@/server/auth/access";
 
 /** The widest a stitched word may be: the 350px column. */
 const COLUMN = 350;
@@ -80,7 +81,7 @@ export function Bullet({icon, children, tone = "pine"}: {icon: IconName; childre
 // ---------------------------------------------------------------------------------------------
 
 /** Face ID setup (`enroll`) or sign-in, with its pending and failed states. The Face ID switch on You uses setup too. */
-export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => void) {
+export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => void, opening?: KeyOpening) {
   const [failed, setFailed] = useState(false);
   const [pending, start] = useTransition();
   function begin() {
@@ -94,7 +95,7 @@ export function useFaceId(enroll: boolean, onDone: () => void, onFail?: () => vo
         } else {
           const options = await beginFaceId(false);
           if (!options || "user" in options) throw new Error();
-          if (!await finishFaceIdSignIn(await startAuthentication({optionsJSON: options}))) throw new Error();
+          if (!await finishFaceIdSignIn(await startAuthentication({optionsJSON: options}), opening)) throw new Error();
         }
         haptic("success");
         onDone();
@@ -135,10 +136,10 @@ export function FaceIdTile({next = "/account?face=1"}: {next?: string}) {
 }
 
 /** "Use Face ID instead": the same sign-in, as a text link. */
-export function FaceIdLink({label, next = "/account?face=1"}: {label: string; next?: string}) {
+export function FaceIdLink({label, next = "/account?face=1", opening}: {label: string; next?: string; opening?: KeyOpening}) {
   const auth = useTranslations("auth");
   const router = useRouter();
-  const {failed, pending, begin} = useFaceId(false, () => router.replace(next));
+  const {failed, pending, begin} = useFaceId(false, () => router.replace(next), undefined, opening);
   return (
     <div className="flex flex-col items-center">
       <TextButton onClick={begin} disabled={pending}>{label}</TextButton>
@@ -279,7 +280,7 @@ export function KeyAlreadyOpened({familyId, value, typed, entry, organizer, noti
   const recovery = recipient === null || result.error === "organizerRecovery";
 
   if (locked !== null) return <Locked minutes={locked} name={entry.name} familyId={familyId} personId={entry.personId} organizer={organizer}
-    onRetry={() => setLocked(null)} />;
+    onRetry={() => setLocked(null)} opening={{value, typed, openingId}} />;
 
   return (
     <Screen>
@@ -409,8 +410,9 @@ function Forgot({familyId, personId, organizer, doneHref, onKeep}: {
 }
 
 /** Let's take a break (10.4): the minutes stitched, what is safe, and the ways forward. */
-function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
+function Locked({minutes, name, familyId, personId, organizer, onRetry, opening}: {
   minutes: number; name: string; familyId: string; personId: string; organizer: string; onRetry: () => void;
+  opening?: KeyOpening;
 }) {
   const t = useTranslations("getIn.locked");
   const forgot = useTranslations("getIn.forgot");
@@ -441,7 +443,7 @@ function Locked({minutes, name, familyId, personId, organizer, onRetry}: {
           setResult({...response, at: new Date()});
         })}>{t("ask", {organizer: helper})}</Button>
       )}
-      <FaceIdLink label={t("face")} />
+      <FaceIdLink label={t("face")} opening={opening} />
     </>}>
       {remaining > 0 ? <div className="flex flex-col items-center gap-3 pt-[26px] text-snow-white" role="img"
         aria-label={`${t("tryAgainIn")} ${remaining} ${t("minutes", {count: remaining})}`}>

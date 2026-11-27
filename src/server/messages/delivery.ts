@@ -1,5 +1,5 @@
 import "server-only";
-import {and, asc, eq, gt, inArray, isNull, or, sql} from "drizzle-orm";
+import {and, asc, eq, gt, isNull, or, sql} from "drizzle-orm";
 import {after} from "next/server";
 import {sessions} from "../auth/schema";
 import {withFamily} from "../db/client";
@@ -51,7 +51,6 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
 
       async function deliverMessage(message: (typeof messages)[number]) {
         const keyOpening = message.template === "key-opened-elsewhere";
-        const addressedTo = message.helperId && keyOpening ? [message.personId, message.helperId] : [message.helperId ?? message.personId];
         const subscriptions = message.removedAt || message.reminderTtl === 0 ? [] : await tx.select({
           endpoint: pushSubscriptions.endpoint,
           p256dh: pushSubscriptions.p256dh,
@@ -64,8 +63,8 @@ export async function deliverPendingPushForFamily(familyId: string, sender?: Pus
             eq(sessions.personId, pushSubscriptions.personId),
           ))
           .where(and(
-            eq(pushSubscriptions.familyId, familyId), inArray(pushSubscriptions.personId, addressedTo), isNull(people.removedAt),
-            keyOpening ? or(isNull(people.helperId), eq(people.id, message.personId)) : isNull(people.helperId),
+            eq(pushSubscriptions.familyId, familyId), eq(pushSubscriptions.personId, message.helperId ?? message.personId),
+            isNull(people.removedAt), isNull(people.helperId),
             or(isNull(sessions.revokedAt), keyOpening ? eq(sessions.resetNoticeEligible, true) : undefined),
             gt(sessions.expiresAt, new Date()),
           ));

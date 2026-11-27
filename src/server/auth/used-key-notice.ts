@@ -17,7 +17,7 @@ export async function recordUsedKeyOpening(
   if (!key.usedAt) return null;
   if (viewer?.familyId === familyId && viewer.personId === personId && await revalidateViewer(tx, viewer)) return null;
   const [owner] = await tx.select().from(people).where(and(
-    eq(people.familyId, familyId), eq(people.id, personId), isNull(people.removedAt),
+    eq(people.familyId, familyId), eq(people.id, personId), isNull(people.removedAt), isNull(people.helperId),
   ));
   if (!owner) return null;
 
@@ -25,7 +25,7 @@ export async function recordUsedKeyOpening(
   const [existing] = await tx.select({id: outbox.id}).from(outbox).where(and(
     eq(outbox.familyId, familyId), eq(outbox.personId, personId), eq(outbox.dedupeKey, dedupeKey),
   )).limit(1);
-  if (existing) return {queued: false, canConfirm: !owner.helperId};
+  if (existing) return {queued: false};
 
   const [recentPush] = await tx.select({id: outbox.id}).from(outbox).where(and(
     eq(outbox.familyId, familyId), eq(outbox.personId, personId),
@@ -37,5 +37,5 @@ export async function recordUsedKeyOpening(
     familyId, personId, language: owner.language, template: "key-opened-elsewhere", createdAt: now,
     dedupeKey, push: !recentPush,
   }]);
-  return {queued: true, canConfirm: !owner.helperId};
+  return {queued: true};
 }

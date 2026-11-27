@@ -19,6 +19,8 @@ const actions = vi.hoisted(() => ({
 const lists = vi.hoisted(() => ({previewItemLink: vi.fn(), saveProfileField: vi.fn(), saveItem: vi.fn()}));
 const welcome = vi.hoisted(() => ({addFirstThing: vi.fn()}));
 const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn()}));
+const passkeyBrowser = vi.hoisted(() => ({startAuthentication: vi.fn(), startRegistration: vi.fn()}));
+vi.mock("@simplewebauthn/browser", () => passkeyBrowser);
 vi.mock("../../src/app/[locale]/sign-in/actions", () => actions);
 vi.mock("../../src/app/[locale]/lists/actions", () => lists);
 vi.mock("../../src/app/[locale]/welcome/actions", () => welcome);
@@ -103,6 +105,25 @@ it("keeps the opening identity and notice lifecycle through a wrong PIN and reco
   expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
   expect(actions.enterPin.mock.calls[0][4]).toEqual({value: "token", typed: false, openingId});
   expect(button("2").disabled).toBe(false);
+});
+
+it("carries a failed opening POST's identity through the lock screen to Face ID recovery", async () => {
+  vi.useFakeTimers();
+  actions.noticeUsedKeyLink.mockRejectedValue(new Error("offline"));
+  actions.enterPin.mockResolvedValue({error: "pinLocked", minutes: 2});
+  actions.beginFaceId.mockResolvedValue({challenge: "challenge"});
+  const response = {id: "credential", response: {userHandle: "owner"}};
+  passkeyBrowser.startAuthentication.mockResolvedValue(response);
+  actions.finishFaceIdSignIn.mockResolvedValue(true);
+  await render(<KeyAlreadyOpened familyId="family" value="token" typed={false}
+    entry={{personId: "rosa", name: "Rosa", familyName: "Family", usedAt: "2030-12-24", available: false}} organizer="Ana" />);
+  const openingId = actions.noticeUsedKeyLink.mock.calls[0][1];
+  await type("4268");
+  await advance(260);
+  await click(en.getIn.locked.face);
+  expect(actions.finishFaceIdSignIn).toHaveBeenCalledExactlyOnceWith(response, {value: "token", typed: false, openingId});
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledOnce();
+  expect(router.replace).toHaveBeenCalledExactlyOnceWith("/account?face=1");
 });
 
 it.each([true, false])("switches a stale welcome to PIN entry without recording the opening twice (typed: %s)", async (typed) => {

@@ -122,7 +122,7 @@ export async function noticeUsedKeyLink(raw: string, openingId: string): Promise
     return recordUsedKeyOpening(tx, key, viewer, new Date(), openingId);
   });
   if (notice?.queued) schedulePushDelivery(familyId);
-  return notice?.canConfirm ?? false;
+  return Boolean(notice);
 }
 
 export type CodeResult = AuthResult & {
@@ -149,7 +149,7 @@ export async function previewCode(familyId: string, code: string): Promise<CodeR
     }
     return {
       queued: notice?.queued,
-      result: {noticeQueued: notice?.canConfirm, key: {...key, openingId, usedAt: key.usedAt?.toISOString() ?? null,
+      result: {noticeQueued: Boolean(notice), key: {...key, openingId, usedAt: key.usedAt?.toISOString() ?? null,
         preview: createCodePreview(pepper, familyId, key, code, device.hash)}},
     };
   });
@@ -192,15 +192,16 @@ export async function finishFaceIdEnrollment(response: RegistrationResponseJSON)
   }
 }
 
-export async function finishFaceIdSignIn(response: AuthenticationResponseJSON) {
+export async function finishFaceIdSignIn(response: AuthenticationResponseJSON, opening?: KeyOpening) {
   const viewer = await getViewer();
   let authenticated;
   try {
-    authenticated = await authenticationFinish(await requestDevice(), response, viewer);
+    authenticated = await authenticationFinish(await requestDevice(), response, viewer, opening);
   } catch {
     return false;
   }
   if (!authenticated) return false;
+  if (authenticated.queued) schedulePushDelivery(authenticated.familyId);
   await setSession(authenticated.familyId, authenticated.session.cookie);
   return true;
 }

@@ -443,21 +443,18 @@ it("refuses key sign-in when the key belongs to someone else", async () => {
   expect(cookieValues.has("__Host-fge-session")).toBe(false);
 });
 
-it("lets only the owner and assigned helper read the private used-key inbox", async () => {
+it("lets only the owner read the private used-key inbox", async () => {
   const f = await fixture();
   const key = await f.issue();
   const used = await f.redeem(key.token);
   const owner = (await resolve(used.session!.cookie))!;
-  const helperKey = await f.issue(f.ana);
-  const helper = (await resolve((await f.redeem(helperKey.token)).session!.cookie))!;
-  // Legacy data may have a used key for someone now looked after by a helper.
-  await tx(f.familyId, (t) => t.update(people).set({helperId: f.ana, language: "es"}).where(eq(people.id, f.rosa)));
-  await expect(previewCode(f.familyId, key.code)).resolves.toEqual({error: "unavailable"});
-  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`, randomUUID())).resolves.toBe(false);
+  await expect(tx(f.familyId, (t) => saveMember(t, f.organizer, f.rosa,
+    {name: "Rosa", language: "es", helperId: null, householdId: null}))).resolves.toBeNull();
+  await expect(previewCode(f.familyId, key.code)).resolves.toMatchObject({noticeQueued: true});
+  await expect(noticeUsedKeyLink(`${f.familyId}~${key.token}`, randomUUID())).resolves.toBe(true);
   const message = expect.objectContaining({title: "Tu llave se abrió en otro dispositivo", body: "¿Fuiste tú?", language: "es"});
   await expect(listNotifications(owner)).resolves.toEqual([message, message]);
-  await expect(listNotifications({...helper, actingAs: f.rosa})).resolves.toEqual([message, message]);
-  await expect(listNotifications(helper)).resolves.toEqual([]);
+  await expect(listNotifications(f.organizer)).resolves.toEqual([]);
   await expect(listNotifications({...f.organizer, actingAs: f.rosa})).resolves.toEqual([]);
 });
 

@@ -61,8 +61,6 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
         <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
         <SignInHelp familyId={viewer?.familyId ?? key?.familyId} personId={viewer?.personId} />
       </>}>
-        {/* A used key for someone with a helper gets the same screen as an unknown key. */}
-        {key && <UsedKeyOpening link={raw} />}
         <div aria-hidden="true" className="flex justify-center pt-12"><KnitMotif name="lock" cell={10} /></div>
         <PageTitle title={t("missing")} lead={t("missingLead")} className="pt-6" />
         <p role="alert" className="sr-only">{auth("feedback.unavailable")}</p>

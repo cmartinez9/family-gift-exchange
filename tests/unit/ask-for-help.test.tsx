@@ -356,8 +356,17 @@ it.each(["missing", "unavailable", "already-yours", "forwarded"] as const)("offe
   }
   actions.forgotPin.mockResolvedValue({success: "resetRequested"});
   await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
+  expect(actions.noticeUsedKeyLink).not.toHaveBeenCalled();
   await tap("Ask Christian for help");
   expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
+  expect(actions.useKey).not.toHaveBeenCalled();
+});
+
+it("records a used key opened while someone else is signed in", async () => {
+  server.inspectKey.mockResolvedValue({...keyEntry, available: false, usedAt: new Date("2026-01-01")});
+  server.getViewer.mockResolvedValue({familyId: routeFamilyId, personId: "ana"});
+  await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
+  expect(actions.noticeUsedKeyLink).toHaveBeenCalledExactlyOnceWith(routeKey, expect.any(String));
   expect(actions.useKey).not.toHaveBeenCalled();
 });
 
