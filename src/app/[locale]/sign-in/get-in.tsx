@@ -203,8 +203,10 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
   const [openingId] = useState(() => entry.openingId ?? crypto.randomUUID());
   const help = <AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />;
 
-  if (used?.usedAt) return <KeyAlreadyOpened familyId={familyId} value={value} typed={typed}
-    entry={{...entry, usedAt: used.usedAt, available: false, openingId: used.openingId}} organizer={organizer} noticeQueued={used.noticeQueued} />;
+  // A cookie refresh can mark this key used before the action returns. Keep this opening's identity.
+  const usedAt = used?.usedAt ?? entry.usedAt;
+  if (usedAt) return <KeyAlreadyOpened familyId={familyId} value={value} typed={typed}
+    entry={{...entry, usedAt, available: false, openingId}} organizer={organizer} noticeQueued={used?.noticeQueued} />;
 
   if (phase === "pin") {
     const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null, openingId);

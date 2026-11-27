@@ -12,7 +12,7 @@ import {keySender, organizerContacts} from "@/server/auth/account";
 import {PREVIEW_SIZE, previewPieces} from "@/server/auth/key-preview-svg";
 import {appOrigin, currentDeviceKind} from "@/server/auth/request";
 import {withFamily} from "@/server/db/client";
-import {KeyAlreadyOpened, KeyWelcome} from "../../sign-in/get-in";
+import {KeyWelcome} from "../../sign-in/get-in";
 import {SignInHelp} from "../../sign-in/screen";
 import {OrganizerHelpProvider} from "../../sign-in/ask-for-help";
 import {screenTitle} from "../../sign-in/title";
@@ -113,12 +113,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
       </Screen>
     );
   }
-  if (entry.usedAt) {
-    return <OrganizerHelpProvider organizers={organizers}>
-      <KeyAlreadyOpened familyId={key.familyId} value={key.token} typed={false} entry={view} organizer={organizer} />
-    </OrganizerHelpProvider>;
-  }
-  if (!entry.available) {
+  if (!entry.available && !entry.usedAt) {
     return (
       <Screen actions={<>
         <ButtonLink href="/sign-in" transition="push">{t("toSignIn")}</ButtonLink>
