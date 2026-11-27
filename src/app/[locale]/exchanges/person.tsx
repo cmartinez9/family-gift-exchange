@@ -254,9 +254,9 @@ function QuestionCard({question, name, onAskAnother}: {question: Outgoing; name?
   if (question.answer === null) {
     return (
       <Card className="flex flex-col gap-3" data-question="waiting">
-        <div className="flex items-start gap-3.5">
+        <div className={cn("flex items-start gap-3.5", stackRow)}>
           <IconDisc icon="message" className="bg-pine" />
-          <div className="flex min-w-0 flex-col">
+          <div className={cn("flex min-w-0 flex-col", stackWords)}>
             <p className="text-card-title">{name ? t("person.sentTo", {name}) : t("person.sentToAnonymous")}</p>
             <p className="text-body text-muted-ink">{t("person.sentHint")}</p>
           </div>

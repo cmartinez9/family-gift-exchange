@@ -1,7 +1,8 @@
 import {getFormatter, getLocale, getTranslations} from "next-intl/server";
 import {redirect} from "next/navigation";
 import {ButtonLink} from "@/components/ui/button";
-import {Card, IconDisc} from "@/components/ui/card";
+import {Card, IconDisc, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {Tick} from "@/components/ui/inputs";
 import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
@@ -41,9 +42,9 @@ export default async function NoticePage({params}: {params: Promise<{eventId: st
         <PageTitle title={safe("title")} className="pt-10" />
         <div className="flex flex-col gap-3 px-edge pt-5">
           <Card className="fge-drop px-[18px] py-4" role="status">
-            <div className="flex items-center gap-3">
+            <div className={cn("flex items-center gap-3", stackRow)}>
               <Tick done />
-              <div className="flex min-w-0 flex-col">
+              <div className={cn("flex min-w-0 flex-col", stackWords)}>
                 <p className="text-card-title">{text.issuance ? safe("keyOff") : safe("signedOut", {device: text.device})}</p>
                 <p className="text-body text-muted-ink">{text.issuance ? safe("keyOffSub") : safe("signedOutSub")}</p>
                 <p className="sr-only">{feedback("reported")}</p>
@@ -67,9 +68,9 @@ export default async function NoticePage({params}: {params: Promise<{eventId: st
       <PageTitle title={text.issuance ? t("expected") : t("title")} className="pt-10" />
       <div className="px-edge pt-5">
         <Card tone="next">
-          <div className="flex items-center gap-3.5">
+          <div className={cn("flex items-center gap-3.5", stackRow)}>
             <IconDisc icon={text.icon} />
-            <div className="flex min-w-0 flex-col">
+            <div className={cn("flex min-w-0 flex-col", stackWords)}>
               <h2 className="text-card-title">{text.title}</h2>
               <p className="text-body text-gold-ink">{format.dateTime(event.at, LONG)}</p>
             </div>

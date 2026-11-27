@@ -7,7 +7,7 @@ import {eq} from "drizzle-orm";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {aboutMe, claims, exchanges, families, items, outbox, participants, people, sizes} from "../../src/server/db/schema";
 import {issueKey} from "../../src/server/auth/access";
-import {pinCredentials} from "../../src/server/auth/schema";
+import {authEvents, pinCredentials} from "../../src/server/auth/schema";
 import {hashPin} from "../../src/server/auth/pin";
 import {createSession, digest, secret} from "../../src/server/auth/session";
 import {assignments, drawRuleSnapshots, practiceFamilies} from "../../src/server/draw/schema";
@@ -21,7 +21,7 @@ import es from "../../messages/es.json" with {type: "json"};
 // CSS pixels), in English and Spanish, with reduced motion: nothing scrolls sideways or runs off the
 // phone, no text is cut off, no word breaks in two that a line could hold whole, and axe finds nothing.
 // Each screen is saved whole to E2E_EVIDENCE_DIR (default test-results/largest-text/).
-const names = ["Christian", "Rosa", "Tito", "Ana", "Beto", "Leo", "Marta"] as const;
+const names = ["Christian", "Rosa", "Tito", "Ana", "Beto", "Leo", "Marta", "Christopher"] as const;
 type Name = (typeof names)[number];
 const messages = {en, es} as const;
 const longTitle = "PREMIUM NOISE CANCELLING WIRELESS HEADPHONES WITH RECHARGEABLE BATTERY AND COMFORTABLE EAR CUSHIONS FOR MUSIC MOVIES AND TRAVEL ".repeat(2).slice(0, 200);
@@ -32,7 +32,7 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
   const familyId = randomUUID();
   const exchangeId = randomUUID();
   const ids = Object.fromEntries(names.map((name) => [name, randomUUID()])) as Record<Name, string>;
-  const playing = [ids.Christian, ids.Rosa, ids.Ana, ids.Tito, ids.Beto, ids.Leo];
+  const playing = [ids.Christian, ids.Rosa, ids.Ana, ids.Tito, ids.Leo, ids.Beto];
   const next = new Map(playing.map((id, index) => [id, playing[(index + 1) % playing.length]]));
   const key = Buffer.from(process.env.E2E_ASSIGNMENT_ENCRYPTION_KEY!, "base64");
   const pinHash = await hashPin(process.env.E2E_AUTH_SECRET!, "4268");
@@ -52,7 +52,7 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
     giftTime: "19:00", place: "Ana's house", budgetAmount: "50", listDeadline: "2026-12-10", status,
     ...status === "drawn" ? {drawVersion: 1, seal: drawSeal(key, familyId, exchangeId, 1, next)} : {}});
   await database.db.insert(participants).values(playing.map((personId) => ({familyId, exchangeId, personId, status: "in" as const,
-    seenVersion: status === "drawn" && personId === ids.Christian ? 1 : null})));
+    seenVersion: status === "drawn" && (personId === ids.Christian || personId === ids.Beto) ? 1 : null})));
   if (status === "drawn") {
     await database.db.insert(drawRuleSnapshots).values({familyId, exchangeId,
       roster: playing.map((id) => ({id, helperId: helpers[id] ?? null, householdId: null})), keepApart: []});
@@ -102,7 +102,12 @@ async function family(browser: Browser, origin: string, status: "setup" | "drawn
       issueKey(tx, organizer, ids[name], "share", process.env.E2E_AUTH_SECRET!, new Date())));
     return `${familyId}~${issued.token}`;
   }
-  return {exchangeId, ids, gifts, open, keyFor, async installHome() {
+  return {familyId, exchangeId, ids, gifts, open, keyFor, async notice() {
+    const session = await runForFamily(database.db, familyId, (tx) => createSession(tx, familyId, ids.Christian, digest(secret()), "computer", new Date()));
+    const [event] = await database.db.insert(authEvents).values({familyId, personId: ids.Christian,
+      kind: "newDevice", deviceKind: "computer", sessionId: session.id}).returning({id: authEvents.id});
+    return `/account/notices/${event.id}`;
+  }, async installHome() {
     await database.db.update(outbox).set({readAt: new Date()}).where(eq(outbox.personId, ids.Christian));
     return "/";
   }, async loadingList() {
@@ -126,7 +131,7 @@ type Family = Awaited<ReturnType<typeof family>>;
 type Messages = (typeof messages)[keyof typeof messages];
 type Screen = {
   name: string; who: Name | "guest"; family?: "setup" | "drawn";
-  path: (f: Family) => string | Promise<string>;
+  path: (f: Family, other: Family) => string | Promise<string>;
   options?: BrowserContextOptions;
   /** What to do once the page is open, such as opening a sheet. */
   then?: (page: Page, t: Messages) => Promise<void>;
@@ -265,14 +270,24 @@ const screens: Screen[] = [
   {name: "edit-item", who: "Christian", path: (f) => `/lists/${f.ids.Christian}/items/${f.gifts[2].id}/edit`},
   {name: "lists", who: "Christian", path: () => "/lists"},
   {name: "someones-list", who: "Christian", path: (f) => `/lists/${f.ids.Rosa}`},
+  {name: "christians-list", who: "Rosa", path: (f) => `/lists/${f.ids.Christian}`},
   {name: "getting", who: "Christian", path: () => "/lists/getting"},
   {name: "family", who: "Christian", path: () => "/family"},
   {name: "family-keys", who: "Christian", path: () => "/family/keys"},
+  {name: "family-key-print", who: "Christian", path: () => "/family/keys", then: async (page, t) => {
+    await page.getByRole("button", {name: t.draw.keys.printCards, exact: true}).click();
+    const dialog = page.getByRole("dialog", {name: t.auth.sendKeys, exact: true});
+    await expect(dialog.getByRole("img", {name: t.auth.keyQr, exact: true}).first()).toBeVisible();
+    await expect(dialog.locator('[aria-busy="true"]')).toHaveCount(0);
+  }},
   {name: "group-chat", who: "Christian", path: () => "/family/group-chat"},
   {name: "account", who: "Christian", path: () => "/account"},
   {name: "account-helper", who: "Rosa", path: () => "/account"},
   {name: "activity", who: "Christian", path: () => "/account/activity"},
   {name: "notices", who: "Christian", path: () => "/account/notices"},
+  {name: "notice-details", who: "Christian", path: (f) => f.notice(), then: async (page, t) => {
+    await expect(page.getByRole("heading", {name: t.getIn.wasThat.title, exact: true})).toBeVisible();
+  }},
   {name: "phones", who: "Christian", path: () => "/account/phones"},
   {name: "pin", who: "Christian", path: () => "/account/pin"},
   {name: "notifications", who: "Rosa", path: () => "/notifications"},
@@ -282,6 +297,17 @@ const screens: Screen[] = [
     await page.waitForURL(/\/helping$/);
   }},
   {name: "your-person", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}`},
+  {name: "your-person-christian-list", who: "Beto", path: (f) => `/exchanges/${f.exchangeId}`, then: async (page, t) => {
+    await page.getByRole("button", {name: t.draw.reveal, exact: true}).click();
+    await expect(page.getByRole("heading", {name: t.draw.person.listTitle.replace("{name}", "Christian"), exact: true})).toBeVisible();
+  }},
+  {name: "your-person-question-waiting", who: "Beto", path: (f) => `/exchanges/${f.exchangeId}`, then: async (page, t) => {
+    await page.getByRole("button", {name: t.draw.reveal, exact: true}).click();
+    await page.getByRole("button", {name: t.draw.person.ask.replace("{name}", "Christian"), exact: true}).click();
+    await page.getByLabel(t.draw.askLabel, {exact: true}).fill("What color would you like?");
+    await page.getByRole("button", {name: t.draw.askButton, exact: true}).click();
+    await expect(page.locator('[data-question="waiting"]')).toContainText(t.draw.person.sentTo.replace("{name}", "Christian"));
+  }},
   {name: "your-person-reveal", who: "Rosa", path: (f) => `/exchanges/${f.exchangeId}`},
   {name: "your-person-opened", who: "Rosa", path: (f) => `/exchanges/${f.exchangeId}`, then: async (page, t) => {
     await page.getByRole("button", {name: t.draw.person.revealTap, exact: true}).click();
@@ -295,6 +321,10 @@ const screens: Screen[] = [
   {name: "manage", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/manage`},
   {name: "preview", who: "Christian", path: (f) => `/exchanges/${f.exchangeId}/preview/${f.ids.Rosa}`},
   {name: "practice", who: "Christian", path: () => "/exchanges/practice"},
+  {name: "practice-started", who: "Christian", path: () => "/exchanges/practice", then: async (page, t) => {
+    await page.getByRole("button", {name: t.draw.practiceStart, exact: true}).click();
+    await expect(page.getByRole("heading", {name: t.draw.practiceViewAs, exact: true})).toBeVisible();
+  }},
   {name: "welcome-sizes", who: "Christian", path: () => "/welcome/sizes"},
   {name: "welcome-no-clothes", who: "Beto", path: () => "/welcome/sizes", then: async (page, t) => {
     const toggle = page.getByRole("switch", {name: t.getIn.sizes.noClothes, exact: true});
@@ -364,6 +394,12 @@ const screens: Screen[] = [
   {name: "setup-family", who: "Christian", family: "setup", path: () => "/family"},
   {name: "setup-draw", who: "Christian", family: "setup", path: (f) => `/exchanges/${f.exchangeId}/manage/draw`},
   {name: "sign-in", who: "guest", path: () => "/sign-in"},
+  {name: "replacement-key-asked", who: "guest", path: (f) => `/sign-in?family=${f.familyId}&person=${f.ids.Rosa}`, then: async (page, t) => {
+    await page.getByRole("button", {name: t.getIn.enter.forgot, exact: true}).click();
+    await page.getByRole("button", {name: t.getIn.forgot.ask.replace("{organizer}", "Christian"), exact: true}).click();
+    await expect(page.getByRole("status").filter({hasText: t.getIn.forgot.asked.replace("{organizer}", "Christian")})).toBeVisible();
+  }},
+  {name: "signed-in-key", who: "Christian", path: async (_f, other) => `/key/${await other.keyFor("Marta")}`},
   {name: "start", who: "guest", path: () => "/start"},
   {name: "key", who: "guest", path: async (f) => `/key/${await f.keyFor("Marta")}`},
 ];
@@ -385,7 +421,7 @@ for (const locale of ["en", "es"] as const) {
         const f = screen.family === "setup" ? setup : drawn;
         const page = await f.open(screen.who, {...largest, reducedMotion: "reduce", locale: locale === "en" ? "en-US" : "es-US", ...screen.options});
         try {
-          const response = await page.goto(`/${locale}${await screen.path(f)}`);
+          const response = await page.goto(`/${locale}${await screen.path(f, screen.family === "setup" ? drawn : setup)}`);
           expect(response?.ok(), "the screen opens").toBe(true);
           await screen.then?.(page, messages[locale]);
           await settle(page);
@@ -400,5 +436,39 @@ for (const locale of ["en", "es"] as const) {
         }
       });
     }
+
+    test("pending and ready QR fit the phone", async () => {
+      const page = await drawn.open("Christian", {...largest, reducedMotion: "reduce", serviceWorkers: "block", locale: locale === "en" ? "en-US" : "es-US"});
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      try {
+        const t = messages[locale];
+        await page.goto(`/${locale}/family/keys`);
+        await settle(page);
+        await page.route("**/family/keys", async (route) => {
+          if (route.request().method() === "POST") await gate;
+          await route.continue();
+        });
+        await page.getByRole("button", {name: t.auth.showQr, exact: true}).click();
+        const dialog = page.getByRole("dialog", {name: t.auth.sendKeys, exact: true});
+        const placeholder = dialog.locator('[aria-busy="true"]');
+        await expect(placeholder).toBeVisible();
+        const square = await placeholder.boundingBox();
+        expect(square!.width).toBeLessThanOrEqual(147);
+        expect(Math.abs(square!.width - square!.height)).toBeLessThanOrEqual(1);
+        expect(await layoutProblems(page)).toEqual([]);
+        await page.screenshot({path: test.info().outputPath(`${locale}-qr-pending.png`), fullPage: true, animations: "disabled"});
+        release();
+        await expect(dialog.getByRole("img", {name: t.auth.keyQr, exact: true})).toBeVisible();
+        await expect(placeholder).toHaveCount(0);
+        await settle(page);
+        expect(await layoutProblems(page)).toEqual([]);
+        await page.screenshot({path: test.info().outputPath(`${locale}-qr-ready.png`), fullPage: true});
+        expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+      } finally {
+        release();
+        await page.context().close();
+      }
+    });
   });
 }

@@ -2,7 +2,8 @@ import type {Metadata} from "next";
 import {getLocale, getTranslations} from "next-intl/server";
 import {Avatar} from "@/components/ui/avatar";
 import {ButtonLink} from "@/components/ui/button";
-import {Card, NoteTrack} from "@/components/ui/card";
+import {Card, NoteTrack, stackRow, stackWords} from "@/components/ui/card";
+import {cn} from "@/components/ui/cn";
 import {KnitMotif} from "@/components/ui/knit/knit-motif";
 import {PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
@@ -92,9 +93,9 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
         <PageTitle title={t("title", {name: entry.name})} lead={t(entry.usedAt ? "usedLead" : "lead", {name: entry.name, current: currentName})} className="pt-6" />
         <div className="px-edge pt-5">
           <Card className="p-[18px]">
-            <div className="flex items-center gap-3">
+            <div className={cn("flex items-center gap-3", stackRow)}>
               <Avatar name={currentName} />
-              <div className="flex min-w-0 flex-col">
+              <div className={cn("flex min-w-0 flex-col", stackWords)}>
                 <p className="text-card-title">{t("signedInAs", {current: currentName})}</p>
                 <p className="text-body text-muted-ink">{t("onDevice", {device})}</p>
               </div>

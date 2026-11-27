@@ -75,8 +75,8 @@ export function SectionHeading({title, count, as: Tag = "h2", className}: {
   title: ReactNode; count?: string; as?: "h2" | "h3"; className?: string;
 }) {
   return (
-    <div className={cn("flex items-baseline justify-between px-edge pt-6 pb-3 text-snow-white", className)}>
-      <Tag className="text-section">{title}</Tag>
+    <div className={cn("flex items-baseline justify-between px-edge pt-6 pb-3 text-snow-white max-[299px]:flex-col max-[299px]:items-start max-[299px]:gap-1", className)}>
+      <Tag className="text-section max-[299px]:min-w-0 max-[299px]:max-w-full max-[299px]:break-words">{title}</Tag>
       {count && <p className="text-label uppercase whitespace-nowrap">{count}</p>}
     </div>
   );

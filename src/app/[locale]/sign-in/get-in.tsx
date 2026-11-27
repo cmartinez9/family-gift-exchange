@@ -7,7 +7,7 @@ import {Link, useRouter} from "@/i18n/navigation";
 import {Avatar} from "@/components/ui/avatar";
 import {ErrorBlock} from "@/components/ui/blocks";
 import {Button, TextButton, TextLink} from "@/components/ui/button";
-import {Card} from "@/components/ui/card";
+import {Card, stackRow, stackWords} from "@/components/ui/card";
 import {cn} from "@/components/ui/cn";
 import {Icon, type IconName} from "@/components/ui/icon";
 import {TextField} from "@/components/ui/inputs";
@@ -358,9 +358,9 @@ function AskedCard({organizer, at}: {organizer: string; at: Date}) {
   const format = useFormatter();
   return (
     <Card role="status" className="px-5 py-[18px]">
-      <div className="flex items-center gap-3.5">
+      <div className={cn("flex items-center gap-3.5", stackRow)}>
         <Avatar name={organizer} size={52} />
-        <div className="flex min-w-0 flex-col">
+        <div className={cn("flex min-w-0 flex-col", stackWords)}>
           <p className="text-card-title">{t("asked", {organizer})}</p>
           <p className="text-body text-muted-ink">{t("when", {time: format.dateTime(at, {hour: "numeric", minute: "2-digit"})})}</p>
         </div>

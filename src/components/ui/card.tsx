@@ -50,9 +50,9 @@ export function Track({className, children}: {className?: string; children: Reac
 /** A note on a track, with the note icon. */
 export function NoteTrack({children, className}: {children: ReactNode; className?: string}) {
   return (
-    <div className={cn("flex min-h-12 items-center gap-2.5 rounded-[24px] bg-[var(--track)] px-3.5 py-2.5 text-body", className)}>
+    <div className={cn("flex min-h-12 items-center gap-2.5 rounded-[24px] bg-[var(--track)] px-3.5 py-2.5 text-body", stackRow, className)}>
       <Icon name="note" size={20} strokeWidth={2} />
-      <p>{children}</p>
+      <p className={stackWords}>{children}</p>
     </div>
   );
 }
