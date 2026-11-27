@@ -716,7 +716,9 @@
       "practiceViewAsHint": "Sus pantallas, nunca su persona",
       "seeingAs": "Viéndolo como {name}",
       "stop": "Salir",
-      "hiddenPerson": "La persona de {name} está oculta"
+      "hiddenPerson": "La persona de {name} está oculta",
+      "startExchange": "Empezar por el intercambio",
+      "startExchangeLead": "Primero ponle nombre al intercambio, un día de regalos y un presupuesto. Puedes agregar personas aquí cuando quieras."
     },
     "season": {
       "lead": "Tú organizas. Nunca ves quién tiene a quién.",

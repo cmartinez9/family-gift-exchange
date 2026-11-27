@@ -83,10 +83,12 @@ export default async function FamilyPage() {
   const viewer = await requireViewer();
   const board = await withFamily(viewer.familyId, (tx) => readiness(tx, viewer, new Date()));
   if (!board) notFound();
-  if (board.exchangeId) {
-    const exchange = (await listExchanges(viewer)).find(({id}) => id === board.exchangeId);
-    if (exchange?.status === "setup") redirect(`/${await getLocale()}/exchanges/${exchange.id}/manage`);
-  }
+  // details never saved: the exchange (step 1) comes first. A brand-new family starts there; once
+  // anyone else is in the family, it stays manageable here with the way back to step 1.
+  const unnamed = board.exchangeId
+    ? (await listExchanges(viewer)).find(({id}) => id === board.exchangeId)?.status === "setup"
+    : false;
+  if (unnamed && board.members.length <= 1) redirect(`/${await getLocale()}/exchanges/${board.exchangeId}/manage`);
   const [t, draw, ui, format, chat, inbox, lists, unread] = await Promise.all([
     getTranslations("auth"), getTranslations("draw"), getTranslations("ui"), getFormatter(),
     getTranslations("notify.groupChat"), getTranslations("notify.inbox"), getTranslations("lists"), getUnreadCount(viewer),
@@ -145,11 +147,13 @@ export default async function FamilyPage() {
 
   return (
     <Screen back={setup ? (board.exchangeId ? `${hub}/people` : "/exchanges") : hub}
-      actions={setup && board.exchangeId ? <ButtonLink href={`${hub}/draw`} transition="push" icon="arrow">{draw("setup.nextDraw")}</ButtonLink> : undefined}>
+      actions={setup && board.exchangeId ? (unnamed
+        ? <ButtonLink href={hub} transition="push" icon="arrow">{draw("setup.startExchange")}</ButtonLink>
+        : <ButtonLink href={`${hub}/draw`} transition="push" icon="arrow">{draw("setup.nextDraw")}</ButtonLink>) : undefined}>
       {setup ? (
         <>
           <SetupSteps step={3} />
-          <PageTitle title={draw("setup.housesTitle")} lead={draw("setup.housesLead")} />
+          <PageTitle title={draw("setup.housesTitle")} lead={unnamed ? draw("setup.startExchangeLead") : draw("setup.housesLead")} />
         </>
       ) : (
         <>
