@@ -4,6 +4,7 @@ import {cookies, headers} from "next/headers";
 import {authenticatorSecret, keyedHash} from "./pin";
 import {borrowedCookie, digest, seasonSeconds, secret, sessionCookie, uuidPattern} from "./session";
 import type {Device, DeviceKind} from "./access";
+import type {Viewer} from "./index";
 
 const familyCookie = "__Host-fge-family";
 const deviceCookie = "__Host-fge-device";
@@ -38,6 +39,10 @@ export async function setBorrowedSession(value: string) {
 /** The phone is its owner's again. */
 export async function clearBorrowedSession() {
   (await cookies()).set(borrowedCookie, "", {...privateCookie, maxAge: 0});
+}
+
+export async function clearStaleBorrowedSession(viewer: Viewer | null) {
+  if (!viewer?.borrowed && (await cookies()).get(borrowedCookie)?.value) await clearBorrowedSession();
 }
 
 export function identifyDevice(agent: string): DeviceKind {

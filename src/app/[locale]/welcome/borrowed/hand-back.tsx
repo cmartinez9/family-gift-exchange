@@ -45,7 +45,7 @@ function Note({icon, children}: {icon: "lock" | "phone"; children: string}) {
  * holding the phone knows whom to hand it to, and the owner goes on with the sizes and the list.
  * `shown` is false when there was no person to open, so nothing was ever on the screen.
  */
-export function HandBack({name, owner, shown, sealed}: {name: string; owner: string; shown: boolean; sealed: boolean}) {
+export function HandBack({name, owner, shown, sealed, borrowedSessionId}: {name: string; owner: string; shown: boolean; sealed: boolean; borrowedSessionId?: string}) {
   const t = useTranslations("borrowed");
   const draw = useTranslations("draw");
   const router = useRouter();
@@ -77,7 +77,7 @@ export function HandBack({name, owner, shown, sealed}: {name: string; owner: str
   return (
     <Screen actions={<Button onClick={() => {
       haptic("light");
-      router.replace("/welcome/sizes");
+      router.replace(borrowedSessionId ? `/welcome/sizes?borrowed=${borrowedSessionId}` : "/welcome/sizes");
     }}>{t("ownerHas", {owner})}</Button>}>
       <WelcomeSteps step={3} waitingStep={shown ? undefined : 2} />
       <div className="flex flex-col items-center gap-3.5 px-edge pt-10 text-center">

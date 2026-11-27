@@ -44,7 +44,6 @@ export async function getViewer(): Promise<Viewer | null> {
 export async function requireViewer({borrowed}: {borrowed?: "reveal" | "help"} = {}): Promise<Viewer> {
   const viewer = await getViewer();
   const locale = await getLocale();
-  if (borrowed && !viewer?.borrowed && (await cookies()).get(borrowedCookie)?.value) redirect(`/${locale}`);
   if (viewer) {
     if (viewer.borrowed && (!borrowed || (borrowed === "help" && !viewer.borrowed.hidden))) {
       redirect(`/${locale}/welcome/${viewer.borrowed.hidden ? "done" : "borrowed"}`);

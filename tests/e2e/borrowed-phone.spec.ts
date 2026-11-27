@@ -192,11 +192,11 @@ for (const language of ["en", "es"] as const) {
 
       // Ana helps with the sizes and the list, then 9.5.
       await page.getByRole("button", {name: fill(t.borrowed.ownerHas, {owner: "Ana"})}).click();
-      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/sizes$`));
+      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/sizes(?:\\?.*)?$`));
       await page.getByRole("button", {name: t.getIn.sizes.next}).click();
-      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/list$`));
+      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/list(?:\\?.*)?$`));
       await page.getByRole("link", {name: t.getIn.add.later}).click();
-      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/done$`));
+      await expect(page).toHaveURL(new RegExp(`/${language}/welcome/done(?:\\?.*)?$`));
       await expect(page.getByRole("heading", {name: fill(t.borrowed.doneTitle, {name: "Rosa"})})).toBeVisible();
       await expect(page.getByText(fill(t.borrowed.allDone, {total: 4, owner: "Ana"}))).toBeVisible();
       await expect(page.getByText(fill(t.borrowed.nextTime, {name: "Rosa", organizer: "Christian"}))).toBeVisible();
@@ -252,12 +252,12 @@ test("More sizes cannot lead a borrowed session into My list, Family, or the len
     await page.getByRole("button", {name: "Hide Beto"}).click();
     await page.getByRole("button", {name: "Ana has the phone"}).click();
     await page.getByRole("link", {name: en.getIn.sizes.more}).click();
-    await expect(page).toHaveURL(/\/en\/welcome\/sizes\/more$/);
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes\/more(?:\?.*)?$/);
     await expect(page.getByRole("link", {name: en.lists.myList, exact: true})).toHaveCount(0);
     await expect(page.getByRole("link", {name: en.ui.tabs.family, exact: true})).toHaveCount(0);
     for (const path of ["lists", "family", `lists/${f.ids.Ana}`, `lists/${f.ids.Rosa}`, "account"]) {
       await page.goto(`/en/${path}`);
-      await expect(page).toHaveURL(/\/en\/welcome\/done$/);
+      await expect(page).toHaveURL(/\/en\/welcome\/done(?:\?.*)?$/);
       await expect(page.getByRole("button", {name: "Sign Rosa out of this phone"})).toBeVisible();
       await expect(page.locator("body")).not.toContainText("Beto");
     }
@@ -276,18 +276,25 @@ test("expired borrowed sizes onboarding returns to Ana before selecting a new li
     await page.getByRole("button", {name: en.draw.person.revealTap}).click();
     await page.getByRole("button", {name: "Hide Beto"}).click();
     await page.getByRole("button", {name: "Ana has the phone"}).click();
-    await expect(page).toHaveURL(/\/en\/welcome\/sizes$/);
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes(?:\?.*)?$/);
+    const borrowedSessionId = (await f.sessionsOf("Rosa"))[0].id;
     await f.expireRosa();
     await page.getByRole("button", {name: en.getIn.sizes.next}).click();
     await expect(page).toHaveURL(/\/en$/);
     for (const path of ["sizes", "sizes/more", "list", "done"]) {
-      await page.goto(`/en/welcome/${path}`);
+      await page.goto(`/en/welcome/${path}?borrowed=${borrowedSessionId}`);
       await expect(page).toHaveURL(/\/en$/);
     }
     await page.goto("/en/account");
     await expect(page.getByRole("heading", {name: "Ana", exact: true})).toBeVisible();
     const cookies = await page.context().cookies();
     expect(cookies.find(({name}) => name === "__Host-fge-session")?.value).toBe(ana.sessionCookie);
+    expect(cookies.find(({name}) => name === "__Host-fge-borrowed")).toBeUndefined();
+    await page.goto(`/en/lists/${f.ids.Ana}/profile`);
+    await page.getByRole("group", {name: en.lists.size.tops}).getByText("L", {exact: true}).click();
+    await expect(page.getByText(en.lists.saved, {exact: true}).first()).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("group", {name: en.lists.size.tops}).getByRole("radio", {name: "L", exact: true})).toBeChecked();
   } finally {
     await f.close();
   }
@@ -349,7 +356,7 @@ test("the borrowed-phone screens reflow at the largest text size", async ({brows
     await expect(page.getByRole("heading", {name: "Hand this phone back to Ana"})).toBeVisible();
     await shot(page, "f13-13_5-largest-9_4-hand-the-phone-back");
     await page.getByRole("button", {name: "Ana has the phone"}).click();
-    await expect(page).toHaveURL(/\/en\/welcome\/sizes$/);
+    await expect(page).toHaveURL(/\/en\/welcome\/sizes(?:\?.*)?$/);
     await page.goto("/en/welcome/done");
     await expect(page.getByRole("heading", {name: "Rosa's all set"})).toBeVisible();
     await shot(page, "f13-13_5-largest-9_5-rosa-all-set");

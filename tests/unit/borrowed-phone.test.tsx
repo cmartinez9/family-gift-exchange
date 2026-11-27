@@ -5,21 +5,23 @@ import {NextIntlClientProvider} from "next-intl";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import en from "../../messages/en.json";
 import {HelpingKey} from "../../src/app/[locale]/sign-in/helping";
+import {DrawError} from "../../src/server/draw";
+import BorrowedPhoneError from "../../src/app/[locale]/welcome/borrowed/error";
 import BorrowedPhonePage from "../../src/app/[locale]/welcome/borrowed/page";
 import {BorrowedPerson} from "../../src/app/[locale]/welcome/borrowed/person";
 import {SizesStep} from "../../src/app/[locale]/welcome/steps";
 import {BorrowedAllSet, HandBack} from "../../src/app/[locale]/welcome/borrowed/hand-back";
 
 const borrowed = vi.hoisted(() => ({returnPhone: vi.fn(), hideOnBorrowedPhone: vi.fn(), revealOnBorrowedPhone: vi.fn()}));
-const drawState = vi.hoisted(() => ({version: 1, status: "drawn"}));
+const drawState = vi.hoisted(() => ({version: 1, status: "drawn", listExchanges: vi.fn(), memberDrawStatus: vi.fn()}));
 vi.mock("@/server/auth", () => ({requireViewer: async () => ({familyId: "family", personId: "rosa", borrowed: {hidden: false}})}));
 vi.mock("@/server/auth/access", () => ({activePerson: async () => ({displayName: "Rosa"})}));
 vi.mock("@/server/auth/borrowed", () => ({phoneOwnerName: async () => "Ana"}));
 vi.mock("@/server/db/client", () => ({withFamily: (_family: string, action: () => unknown) => action()}));
 vi.mock("@/server/draw", () => ({
-  DrawError: class extends Error {},
-  listExchanges: async () => [{id: "christmas", status: drawState.status}],
-  memberDrawStatus: async () => ({status: "ready", exchange: {id: "christmas", version: drawState.version}}),
+  DrawError: class extends Error {constructor(readonly code: string) {super(code);}},
+  listExchanges: drawState.listExchanges,
+  memberDrawStatus: drawState.memberDrawStatus,
 }));
 vi.mock("next-intl/server", () => ({getLocale: async () => "en", getTranslations: vi.fn()}));
 const router = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn(), refresh: vi.fn()}));
@@ -40,6 +42,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   drawState.version = 1;
   drawState.status = "drawn";
+  drawState.listExchanges.mockImplementation(async () => [{id: "christmas", status: drawState.status}]);
+  drawState.memberDrawStatus.mockImplementation(async () => ({status: "ready", exchange: {id: "christmas", version: drawState.version}}));
   borrowed.hideOnBorrowedPhone.mockResolvedValue({hidden: true});
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({matches: true, addEventListener() {}, removeEventListener() {}}));
@@ -169,4 +173,33 @@ it("signs the relative out of the borrowed phone, and says so when that fails", 
   await click("Sign Rosa out of this phone");
   expect(borrowed.returnPhone).toHaveBeenCalledTimes(1);
   expect(container.querySelector("[role=alert]")?.textContent).toBe("Couldn't sign Rosa out. Check the connection and try again.");
+});
+
+
+it.each(["listExchanges", "memberDrawStatus"] as const)("keeps a %s timeout retryable without sealing the session", async (boundary) => {
+  const error = new DrawError("checkTimedOut");
+  drawState[boundary].mockRejectedValueOnce(error);
+  await expect(BorrowedPhonePage()).rejects.toBe(error);
+  const reset = vi.fn();
+  await render(<BorrowedPhoneError reset={reset} />);
+  expect(container.textContent).not.toContain("Hand this phone back");
+  expect(borrowed.hideOnBorrowedPhone).not.toHaveBeenCalled();
+  await click(en.draw.person.tryAgain);
+  expect(router.refresh).toHaveBeenCalledOnce();
+  expect(reset).toHaveBeenCalledOnce();
+  borrowed.revealOnBorrowedPhone.mockResolvedValue({name: "Beto"});
+  await render(await BorrowedPhonePage());
+  await click(en.draw.person.revealTap);
+  expect(container.textContent).toContain("Hide Beto");
+  expect(borrowed.hideOnBorrowedPhone).not.toHaveBeenCalled();
+});
+
+it("preserves the borrowed session identity in onboarding links", async () => {
+  await render(<HandBack name="Rosa" owner="Ana" shown sealed borrowedSessionId="borrowed-rosa" />);
+  await click("Ana has the phone");
+  expect(router.replace).toHaveBeenCalledWith("/welcome/sizes?borrowed=borrowed-rosa");
+  await render(<SizesStep ownerId="rosa" initial={{noClothes: false, sizes: {}}}
+    profileHref="/welcome/sizes/more?borrowed=borrowed-rosa" replace borrowedSessionId="borrowed-rosa" />);
+  await click(en.getIn.sizes.next);
+  expect(router.replace).toHaveBeenCalledWith("/welcome/list?borrowed=borrowed-rosa");
 });

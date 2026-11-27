@@ -315,9 +315,10 @@ it("returns expired borrowed onboarding to the owner's Home without losing the o
   jar.set("__Host-fge-session", f.anaSession.cookie);
   jar.set("__Host-fge-borrowed", cookie);
   try {
-    const {getViewer, requireViewer} = await import("../../src/server/auth");
+    const {getViewer} = await import("../../src/server/auth");
+    const {requireWelcomeViewer} = await import("../../src/app/[locale]/welcome/viewer");
     expect(await getViewer()).toEqual(f.ana);
-    await expect(requireViewer({borrowed: "help"})).rejects.toThrow(/^redirect:\/en$/);
+    await expect(requireWelcomeViewer()).rejects.toThrow(/^redirect:\/en\/welcome\/borrowed\/expired$/);
     expect(await resolve(f.anaSession.cookie)).toEqual(f.ana);
   } finally {
     jar.clear();

@@ -19,11 +19,12 @@ import {HandBack, useForgetOnRestore} from "./hand-back";
  * whole screen turns pine, and the one button hides it again before the phone goes back to its owner.
  * With no person to open yet, or once hidden, it goes straight to handing the phone back (9.4).
  */
-export function BorrowedPerson({name, owner, exchange, hidden}: {
+export function BorrowedPerson({name, owner, exchange, hidden, borrowedSessionId}: {
   name: string;
   owner: string;
   exchange: {id: string; version: number} | null;
   hidden: boolean;
+  borrowedSessionId?: string;
 }) {
   const t = useTranslations("borrowed");
   const draw = useTranslations("draw");
@@ -40,7 +41,7 @@ export function BorrowedPerson({name, owner, exchange, hidden}: {
   useForgetOnRestore();
 
   if (view === "back") return <HandBack name={name} owner={owner} shown={hidden || Boolean(exchange)}
-    sealed={hidden || Boolean(exchange)} />;
+    sealed={hidden || Boolean(exchange)} borrowedSessionId={borrowedSessionId} />;
 
   /** The hold has started: only now is the person opened, and the name knits in as soon as it arrives. */
   function open() {

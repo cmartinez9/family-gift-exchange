@@ -4,7 +4,7 @@ import {Card} from "@/components/ui/card";
 import {Tick} from "@/components/ui/inputs";
 import {KnitIn} from "@/components/ui/motion/knit-in";
 import {Screen} from "@/components/ui/screen";
-import {requireViewer} from "@/server/auth";
+import {requireWelcomeViewer, type WelcomeProps} from "../viewer";
 import {faceIdOnDevice, listCount, mySizes, organizerName} from "@/server/auth/account";
 import {activePerson} from "@/server/auth/access";
 import {phoneOwnerName} from "@/server/auth/borrowed";
@@ -30,8 +30,8 @@ export async function generateMetadata() {
 }
 
 /** All set (2.10): the step bar knits up, ALL SET! knits in, and what you did is ticked. */
-export default async function WelcomeDonePage() {
-  const viewer = await requireViewer({borrowed: "help"});
+export default async function WelcomeDonePage(props: WelcomeProps = {}) {
+  const viewer = await requireWelcomeViewer(props);
   if (viewer.borrowed) {
     // on someone else's phone (9.5): the owner signs the relative out of it
     const names = await withFamily(viewer.familyId, async (tx) => ({
