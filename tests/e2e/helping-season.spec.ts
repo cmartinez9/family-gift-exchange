@@ -95,14 +95,16 @@ async function family(browser: Browser) {
 }
 
 /** Waits for arrivals and sheets to settle, checks the screen for overflow and axe, then saves it. */
-async function shot(page: Page, name: string, {axe = true} = {}) {
+async function shot(page: Page, name: string, {axe = true, scope = "body", scale = "device"}: {
+  axe?: boolean; scope?: string; scale?: "css" | "device";
+} = {}) {
   await page.waitForLoadState("networkidle");
   // `next dev` adds its own indicator; production builds have none.
   await page.evaluate(() => document.querySelector("nextjs-portal")?.remove());
   await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"
     || (animation.effect?.getComputedTiming().iterations ?? 1) === Infinity));
   // Anything wider than the screen, or text that spills out of its own box.
-  const overflow = await page.evaluate(() => [...document.querySelectorAll("body *")]
+  const overflow = await page.locator(scope).evaluate((root) => [...root.querySelectorAll("*")]
     .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 0.5
       || (element.scrollWidth > element.clientWidth + 1 && element.clientWidth > 0 && getComputedStyle(element).overflowX === "visible"))
     .map((element) => `${element.tagName.toLowerCase()}.${element.getAttribute("class") ?? ""}`.slice(0, 120)));
@@ -110,7 +112,7 @@ async function shot(page: Page, name: string, {axe = true} = {}) {
   if (axe) expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
   const folder = join(process.env.E2E_EVIDENCE_DIR ?? join(process.cwd(), "test-results", "design"), test.info().project.name);
   mkdirSync(folder, {recursive: true});
-  await page.screenshot({path: join(folder, `${name}.png`)});
+  await page.screenshot({path: join(folder, `${name}.png`), scale});
 }
 
 for (const exit of ["navigation", "Done", "home"] as const) {
@@ -278,6 +280,68 @@ test("the notice badge reaches zero after reading the newest 100 while an older 
 });
 
 for (const locale of ["en", "es"] as const) {
+  test(`confirms season close before clearing gift marks and checklist entries (${locale})`, async ({browser}) => {
+    const f = await family(browser);
+    const {draw, lists, season} = locale === "en" ? en : es;
+    const title = "Warm mittens";
+    const reducedMotion = "reduce" as const;
+    try {
+      const owner = await f.signedIn("Ana");
+      const ownerList = `/${locale}/lists/${f.ids.Ana}`;
+      await owner.goto(`${ownerList}/items/new?kind=note`);
+      await owner.getByLabel(lists.title, {exact: true}).fill(title);
+      await owner.getByRole("button", {name: lists.saveItem, exact: true}).click();
+      const item = owner.getByRole("article", {name: title});
+      await expect(item).toBeVisible();
+
+      const buyer = await f.signedIn("Rosa");
+      await buyer.goto(ownerList);
+      await buyer.getByRole("button", {name: lists.claim, exact: true}).click();
+      await expect(buyer.getByText(lists.mine, {exact: true})).toBeVisible();
+      await buyer.goto(`/${locale}/lists/getting`);
+      const entry = buyer.getByRole("heading", {name: title, exact: true});
+      await expect(entry).toBeVisible();
+
+      const closing = await f.signedIn("Christian", {...phone, reducedMotion});
+      const zoomed = await f.signedIn("Christian", {...largest, deviceScaleFactor: 2, reducedMotion});
+      const management = `/${locale}/exchanges/${f.exchangeId}/manage`;
+      const confirm = season.closeConfirm.replace("{name}", "Christmas 2026");
+      for (const [label, page] of [["390x844", closing], ["200-percent", zoomed]] as const) {
+        await page.goto(management);
+        await page.getByRole("button", {name: draw.close, exact: true}).click();
+        const dialog = page.getByRole("dialog", {name: season.closeTitle.replace("{name}", "Christmas 2026")});
+        const marks = dialog.getByText(season.closeMarks, {exact: true});
+        await expect(marks).toBeVisible();
+        await expect(dialog.getByRole("button", {name: confirm, exact: true})).toBeEnabled();
+        if (label === "200-percent") {
+          await marks.scrollIntoViewIfNeeded();
+          await expect(marks).toBeInViewport();
+        }
+        await shot(page, `f12-12_2-close-marks-${locale}-${label}`, {
+          scope: "dialog[open]", scale: label === "390x844" ? "css" : "device",
+        });
+        await dialog.getByRole("button", {name: season.notYet, exact: true}).click();
+        await expect(dialog).toBeHidden();
+      }
+      await buyer.reload();
+      await expect(entry).toBeVisible();
+
+      await closing.getByRole("button", {name: draw.close, exact: true}).click();
+      await closing.getByRole("dialog").getByRole("button", {name: confirm, exact: true}).click();
+      await expect(closing.getByRole("heading", {name: season.wrapTitle, exact: true})).toBeVisible();
+
+      await buyer.reload();
+      await expect(buyer.getByText(lists.emptyGetting, {exact: true})).toBeVisible();
+      await expect(entry).toHaveCount(0);
+      await buyer.goto(ownerList);
+      await expect(buyer.getByRole("article", {name: title}).getByRole("button", {name: lists.claim, exact: true})).toBeVisible();
+      await owner.reload();
+      await expect(item).toBeVisible();
+    } finally {
+      await f.close();
+    }
+  });
+
   for (const value of ["50", "75"]) {
     test(`rejects a stale ${value} budget after closing the exchange in ${locale}`, async ({browser}) => {
       const f = await family(browser);

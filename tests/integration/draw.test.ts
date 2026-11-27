@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from "next-intl";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {audit, families, households, keepApart, participants, people} from "../../src/server/db/schema";
+import {audit, claims, exchanges, families, households, items, keepApart, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
   DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
@@ -21,6 +21,7 @@ import {digest, findViewer, parseSession, secret} from "../../src/server/auth/se
 import {requireIssuedKey} from "../helpers/issued-key";
 import {readiness, removeMember} from "../../src/server/auth/families";
 import {addListItem, getListExchangeCard, getWishlist} from "../../src/server/lists";
+import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
 import {renderServerTree} from "../helpers/render-server";
 import {modelOneLoop, possibleDraws} from "../helpers/possible-draws";
 import * as member from "../../src/server/draw/member";
@@ -406,12 +407,55 @@ it("creates, edits and closes an exchange manually regardless of its gift day", 
   })]);
   await revealMyPerson(viewers[1], exchangeId, 1);
   await askYourPerson(viewers[1], exchangeId, 1, "Any favorite snacks?");
+  const {seal} = (await organizerExchange(organizer, exchangeId)).exchange;
+  expect(seal).toBeTruthy();
   await closeExchange(organizer, exchangeId);
   expect(await checkSealedDraw(organizer, exchangeId)).toEqual({status: "closed"});
+  expect((await organizerExchange(organizer, exchangeId)).exchange).toMatchObject({status: "closed", seal});
   expect(await admin.db.select().from(assignments).where(eq(assignments.familyId, familyId))).toEqual([]);
   expect(await admin.db.select().from(questions).where(eq(questions.familyId, familyId))).toEqual([]);
   await expect(runDraw(organizer, exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "closed"});
   expect(await memberDrawStatus(viewers[1], exchangeId)).toMatchObject({status: "closed"});
+});
+
+it("clears only the closing exchange's marks and checklist entries while keeping its wishlists", async () => {
+  const {organizer, viewers, exchangeId, familyId} = await fixture();
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const otherExchangeId = randomUUID();
+  const createItem = (title: string) => addListItem(owner, owner.actingAs, {kind: "note", title});
+  const season = await createItem("Season gift");
+  const other = await createItem("Other season gift");
+  const standalone = await createItem("Birthday gift");
+  const scoped = <T,>(action: Parameters<typeof runForFamily<T>>[2]) => runForFamily(app.db, familyId, action);
+  const claimRows = () => scoped((tx) => tx.select().from(claims).orderBy(claims.id));
+  const itemRows = () => scoped((tx) => tx.select().from(items).orderBy(items.id));
+  await scoped(async (tx) => {
+    await tx.insert(exchanges).values({familyId, id: otherExchangeId, name: "Other season", status: "closed"});
+    await tx.insert(claims).values([
+      {familyId, itemId: other.id, exchangeId: otherExchangeId, claimerId: buyer.actingAs},
+      {familyId, itemId: standalone.id, claimerId: buyer.actingAs},
+    ]);
+  });
+  const wishlist = await getWishlist(owner, owner.actingAs);
+  const savedItems = await itemRows();
+  const survivingClaims = await claimRows();
+
+  await claimItem(buyer, season.id);
+  await setClaimTick(buyer, season.id, "bought", true);
+  await setClaimTick(buyer, season.id, "wrapped", true);
+  expect(await claimRows()).toContainEqual(expect.objectContaining({itemId: season.id, exchangeId}));
+  expect(await getGettingList(buyer)).toContainEqual(expect.objectContaining({
+    itemId: season.id, bought: true, wrapped: true,
+  }));
+
+  await closeExchange(organizer, exchangeId);
+
+  expect(await claimRows()).toEqual(survivingClaims);
+  expect(await itemRows()).toEqual(savedItems);
+  expect(await getWishlist(owner, owner.actingAs)).toEqual(wishlist);
+  expect((await getWishlist(buyer, owner.actingAs)).items.find(({id}) => id === season.id)?.claim).toBeUndefined();
+  expect((await getGettingList(buyer)).map(({itemId}) => itemId)).toEqual([standalone.id, other.id]);
 });
 
 it("rejects a stale Family lists budget form after the exchange closes", async () => {

@@ -120,6 +120,13 @@
       "when": 1795741439692,
       "tag": "0016_session-last-used",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795741439693,
+      "tag": "0017_close-exchange-claims",
+      "breakpoints": true
     }
   ]
 }
