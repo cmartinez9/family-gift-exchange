@@ -30,6 +30,8 @@ const ICONS: Readonly<Record<Template, IconName>> = {
   "claimed-item-changed": "gift",
   "budget-changed": "tag",
   "question-answered": "message",
+  "list-nudge": "list",
+  "person-nudge": "gift",
 };
 
 export default async function NotificationsPage() {

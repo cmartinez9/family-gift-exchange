@@ -7,7 +7,7 @@ import en from "../../messages/en.json" with {type: "json"};
 import es from "../../messages/es.json" with {type: "json"};
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
 import {families, items} from "../../src/server/db/schema";
-import {openKey, skipFaceId} from "../helpers/pin-pad";
+import {openKey, settled, skipFaceId} from "../helpers/pin-pad";
 import {openFamilyAfterDetails} from "../helpers/family-setup";
 
 const pin = "4268";
@@ -163,6 +163,7 @@ for (const language of ["en", "es"] as const) {
       await expect(page.getByRole("link", {name: new RegExp(lists.mySizes)})).toContainText(lists.noClothes);
 
       await expect(page).toHaveTitle(/\S/);
+      await settled(page);
       expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
       await takeOff(page, "Winter puzzle", language);
       await page.reload();

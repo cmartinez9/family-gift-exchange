@@ -58,6 +58,12 @@ Participating members receive a notice when names are drawn or the draw is repla
 
 Every opening of your used key outside your signed-in session adds a private notice and an anonymous family activity entry, even if nobody signs in. Retrying the PIN or switching to Face ID during that opening does not add another notice or activity entry; only push alerts are limited to one per key per hour. Redeeming a replacement key also adds a key-opening notice and activity entry and alerts your existing phones, even though it signs them out. Those phones keep receiving key-use alerts through further resets until you next sign in with your PIN or Face ID; phones you deliberately signed out stay excluded.
 
+After the draw, organizers can use **Who's in → Nudge** beside another participant with an empty list, including **Not started** rows. It queues a gentle notice to add something; someone who has not joined can read it after joining. Device alerts go to the person's enabled devices, or their helper's for someone looked after. **Nudged** marks only that day's per-person organizer action and resets on the next exchange calendar day.
+
+On the same page, **Remind people to open their person** privately reminds everyone who has not opened their current person. This runs once a day per exchange, shared across organizers. It always confirms **Reminders sent**, including repeat requests or when nobody needs a reminder, without showing identities or a recipient count.
+
+Opening your person and finding their list empty also requests a list nudge through the next daily notification run, if they have joined or are looked after. All three routes share a limit of one nudge per person per exchange calendar day. List nudges read the same whoever prompted them; neither kind of reminder names a giver, the organizer or a pairing.
+
 For home-screen setup, open **Put this on your home screen? Show me how** on **You** and follow the instructions for your phone. Open the app from its new icon, sign in, then open **Notifications** as described above, choose **Turn on notifications for this device**, and allow the browser prompt. Enable notifications on each device and after each new sign-in. Use **Turn off notifications for this device** to stop alerts there; the inbox remains available. If permission was denied, allow notifications in your device or browser settings and try again.
 
 Helpers receive device alerts for the people they help on their enabled devices. [Switch to the person's profile](#join-and-return), then open **Notices** to read their messages.

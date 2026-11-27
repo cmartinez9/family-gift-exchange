@@ -1,0 +1,1 @@
+ALTER TABLE "exchanges" ADD COLUMN "person_nudged_on" date;

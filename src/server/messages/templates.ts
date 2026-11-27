@@ -16,6 +16,8 @@ export const templates = [
   "claimed-item-changed",
   "budget-changed",
   "question-answered",
+  "list-nudge",
+  "person-nudge",
 ] as const;
 
 export type Template = (typeof templates)[number];

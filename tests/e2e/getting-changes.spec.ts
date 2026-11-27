@@ -263,6 +263,8 @@ test("a second owner edit cannot be acknowledged from an older changed card", as
     await page.goto(`/en/lists/${ana}`);
     await page.getByRole("article", {name: "Cozy slipper socks"}).getByRole("button", {name: lists.claim}).click();
     await expect(page.getByRole("article", {name: "Cozy slipper socks"}).getByText(lists.mine, {exact: true})).toBeVisible();
+    // The claim label is optimistic; its comparison baseline must be saved before Ana edits.
+    await expect(page.getByRole("article", {name: "Cozy slipper socks"})).toHaveAttribute("aria-busy", "false");
     await anaEdits(familyId, socks, {note: "Large"});
     await page.goto("/en/lists/getting");
     const card = page.getByRole("article", {name: "Cozy slipper socks"});
@@ -276,6 +278,7 @@ test("a second owner edit cannot be acknowledged from an older changed card", as
     await shoot(page, "stale-acknowledgment-rejected", true);
     await card.getByRole("button", {name: changed.keep}).click();
     await expect(card.getByLabel(lists.bought)).toBeVisible();
+    await expect(page.getByRole("status").filter({hasText: changed.kept})).toBeVisible();
     await page.reload();
     await expect(card.getByLabel(lists.bought)).toBeVisible();
     const [accepted] = await withDatabase(familyId, (tx) => tx.select().from(claims).where(eq(claims.itemId, socks)));

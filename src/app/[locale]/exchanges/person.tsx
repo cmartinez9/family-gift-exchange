@@ -24,7 +24,7 @@ import {memberAction, readPersonList, reveal, type FormState, type MemberContext
 
 export type Outgoing = {id: string; text: string; answer: string | null};
 
-type Person = {id: string; name: string; list?: PersonList};
+type Person = {id: string; name: string; list?: PersonList; nudged?: boolean};
 
 const SUGGESTIONS = ["size", "color", "have"] as const;
 
@@ -85,7 +85,7 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
         setError(result.error ?? t("errors.unavailable"));
         return;
       }
-      setPerson({id: result.personId, name: result.personName, list: result.list});
+      setPerson({id: result.personId, name: result.personName, list: result.list, nudged: result.nudged});
       then?.();
     });
   }
@@ -187,7 +187,7 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
         )}
       </KnitIn>
 
-      {name && list && <PersonListSection name={name} id={person!.id} list={list} budget={budget}
+      {name && list && <PersonListSection name={name} id={person!.id} list={list} budget={budget} nudged={person?.nudged}
         onAsk={canAsk ? () => setAsk(true) : undefined} />}
       {exchangeFacts}
 
@@ -197,8 +197,8 @@ export function MemberPerson({context, seen, canReport, canAsk, budget, outgoing
   );
 }
 
-function PersonListSection({name, id, list, budget, onAsk}: {
-  name: string; id: string; list: PersonList; budget: number | null; onAsk?: () => void;
+function PersonListSection({name, id, list, budget, nudged, onAsk}: {
+  name: string; id: string; list: PersonList; budget: number | null; nudged?: boolean; onAsk?: () => void;
 }) {
   const t = useTranslations("draw");
   const format = useFormatter();
@@ -213,7 +213,7 @@ function PersonListSection({name, id, list, budget, onAsk}: {
         <div className="px-edge">
           <Card tone="next" className="flex flex-col gap-1">
             <h3 className="text-card-title">{t("person.emptyTitle", {name})}</h3>
-            <p className="pb-3 text-body text-gold-ink">{t("person.emptyHint")}</p>
+            <p className="pb-3 text-body text-gold-ink">{nudged ? t("person.emptyHintNudge") : t("person.emptyHint")}</p>
             {onAsk && <Button variant="card" icon="message" onClick={onAsk}>{t("person.askForIdeas", {name})}</Button>}
           </Card>
         </div>
