@@ -6,6 +6,7 @@ import {enqueueMessages, type Message} from "./queue";
 
 export type {Message} from "./queue";
 export {drawEvents, listEvents, requestPinReset};
+export {noteEmptyListViewed, nudgedToday, nudgeList, type NudgeResult} from "./nudges";
 
 export const notify = {drawEvents, listEvents, requestPinReset};
 

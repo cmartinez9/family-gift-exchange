@@ -5,10 +5,13 @@ import {exchanges} from "../db/schema";
 import {tomorrowInExchangeCalendar} from "./calendar";
 import {deliverPendingPushForFamily} from "./delivery";
 import {exchangeRecipients} from "./events";
+import {queueViewedNudges} from "./nudges";
 import {enqueueMessages, isPushProduction, type Message} from "./queue";
 
 export async function runDailyReminders(now = new Date()) {
   const tomorrow = tomorrowInExchangeCalendar(now);
+  // Queued first, so the pending-push discovery below delivers them with the reminders.
+  await queueViewedNudges(now);
   // The discovery function can return only family IDs with work. All tenant
   // data is read or written as fge_app in the corresponding family scope.
   const families = await getDatabase().transaction(async (tx) => {

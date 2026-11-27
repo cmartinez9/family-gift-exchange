@@ -422,6 +422,10 @@
       "budget-changed": {
         "title": "Cambió el presupuesto de los regalos",
         "body": "Abre la aplicación para ver el nuevo presupuesto."
+      },
+      "list-nudge": {
+        "title": "Tu lista de deseos te espera",
+        "body": "Agrega una o dos ideas de regalos para que tu familia sepa qué te gustaría recibir."
       }
     },
     "privatePush": {

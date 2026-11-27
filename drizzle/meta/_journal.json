@@ -127,6 +127,20 @@
       "when": 1795745352340,
       "tag": "0017_close-exchange-claims",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795752718544,
+      "tag": "0018_list-nudges",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795752720002,
+      "tag": "0019_list-nudge-permissions",
+      "breakpoints": true
     }
   ]
 }

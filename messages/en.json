@@ -422,6 +422,10 @@
       "budget-changed": {
         "title": "The gift budget changed",
         "body": "Open the app to see the new budget."
+      },
+      "list-nudge": {
+        "title": "Your wishlist is waiting",
+        "body": "Add a gift idea or two so your family knows what you’d like."
       }
     },
     "privatePush": {

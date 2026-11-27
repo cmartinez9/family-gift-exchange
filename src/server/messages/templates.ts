@@ -11,6 +11,7 @@ export const templates = [
   "pin-reset-request",
   "claimed-item-changed",
   "budget-changed",
+  "list-nudge",
 ] as const;
 
 export type Template = (typeof templates)[number];
