@@ -92,7 +92,7 @@ afterEach(async () => {
 it("captures every event in both recipient languages and confines sensitive events to their intended recipients", async () => {
   await notify.drawEvents.namesDrawn(event);
   await notify.drawEvents.plansChanged({...event, personIds: members.map(({id}) => id).concat(outOfExchange.id, outsider.id)});
-  await setExchangeBudget({...await signedInDevice(organizers[0].id), isOrganizer: true}, exchangeId, "50");
+  await setExchangeBudget(await signedInDevice(organizers[0].id), exchangeId, "50");
   for (const [index, itemId] of itemIds.entries()) {
     const owner = await signedInDevice(members[1 - index].id);
     await editListItem(owner, owner.personId, itemId, {note: "Any color"});
@@ -217,7 +217,7 @@ it("rolls back default callback messages with the item savepoint and budget tran
   } finally {
     warning.mockRestore();
   }
-  await expect(setExchangeBudget({...await signedInDevice(organizers[0].id), isOrganizer: true}, exchangeId, "75", rollbackEvents))
+  await expect(setExchangeBudget(await signedInDevice(organizers[0].id), exchangeId, "75", rollbackEvents))
     .rejects.toThrow("rollback");
   expect(seen[0]).toMatchObject([{personId: members[0].id, language: "en", template: "claimed-item-changed"}]);
   expect(seen[1].map(({personId}) => personId).toSorted())

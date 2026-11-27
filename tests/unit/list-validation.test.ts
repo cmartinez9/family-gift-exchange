@@ -6,7 +6,7 @@ import {isListReady, isOverBudget, listText, sizeValue, usdAmount} from "../../s
 vi.mock("server-only", () => ({}));
 
 it("hides claims for the signed-in owner and the person a helper is acting for", () => {
-  const viewer = {personId: "helper", familyId: "family", actingAs: "child"};
+  const viewer = {personId: "helper", familyId: "family", actingAs: "child", sessionId: "session"};
   expect(hidesClaims(viewer, "helper")).toBe(true);
   expect(hidesClaims(viewer, "child")).toBe(true);
   expect(hidesClaims(viewer, "other")).toBe(false);

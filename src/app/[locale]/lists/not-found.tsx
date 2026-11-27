@@ -1,13 +1,17 @@
 import {getTranslations} from "next-intl/server";
-import {Link} from "@/i18n/navigation";
-import {linkClass} from "./styles";
+import {ButtonLink} from "@/components/ui/button";
+import {ErrorBlock} from "@/components/ui/blocks";
+import {Screen} from "@/components/ui/screen";
 
 export default async function ListNotFound() {
   const t = await getTranslations("lists");
   return (
-    <>
-      <h1 className="text-2xl font-semibold">{t("feedback.not-found")}</h1>
-      <Link className={linkClass} href="/lists">{t("familyLists")}</Link>
-    </>
+    <Screen label={t("feedback.not-found")}>
+      <div className="flex flex-col gap-4 px-edge pt-12">
+        <h1 className="sr-only">{t("feedback.not-found")}</h1>
+        <ErrorBlock live={false} title={t("feedback.not-found")}
+          action={<ButtonLink variant="card" href="/lists" transition="back" icon="family">{t("familyLists")}</ButtonLink>} />
+      </div>
+    </Screen>
   );
 }

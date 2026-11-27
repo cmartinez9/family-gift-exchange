@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useLayoutEffect, useRef, type ReactNode} from "react";
+import {useEffect, useLayoutEffect, useRef, useState, type ReactNode} from "react";
 import {YarnTag} from "../item-card";
 import {DURATION, EASE} from "./easing";
 import {haptic} from "./haptic";
@@ -17,9 +17,13 @@ import {prefersReducedMotion} from "./reduced-motion";
 export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactNode; mine: ReactNode}) {
   const wrap = useRef<HTMLDivElement>(null);
   const dye = useRef<HTMLDivElement>(null);
+  const plain = useRef<HTMLDivElement>(null);
   const tag = useRef<HTMLSpanElement>(null);
   const origin = useRef("60px 150px");
   const previous = useRef(claimed);
+  const settle = useRef<number | undefined>(undefined);
+  // the first paint, server included, already hides the covered layer; after that the effect owns it
+  const [initial] = useState(claimed);
 
   // remember where the claim was pressed
   useEffect(() => {
@@ -40,8 +44,8 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
   }, []);
 
   useLayoutEffect(() => {
-    const layer = dye.current, knot = tag.current;
-    if (!layer || !knot) return;
+    const layer = dye.current, knot = tag.current, under = plain.current;
+    if (!layer || !knot || !under) return;
     const was = previous.current;
     previous.current = claimed;
     const reduce = prefersReducedMotion();
@@ -51,11 +55,18 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
       layer.style.clipPath = claimed ? "none" : `circle(0px at ${origin.current})`;
       knot.style.opacity = claimed ? "1" : "0";
       knot.style.transform = claimed ? "rotate(5deg)" : "";
+      // the layer that is not showing is hidden outright, so it cannot be found, read or clicked
+      layer.style.visibility = claimed ? "" : "hidden";
+      under.style.visibility = claimed ? "hidden" : "";
       void layer.offsetWidth;
       layer.style.transition = "";
       return;
     }
     knot.getAnimations().forEach((animation) => animation.cancel());
+    window.clearTimeout(settle.current);
+    // both layers show while the dye moves; the covered one hides once it settles
+    layer.style.visibility = "";
+    under.style.visibility = "";
     if (claimed) {
       haptic("firm");
       layer.style.transition = "none";
@@ -63,6 +74,12 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
       void layer.offsetWidth;
       layer.style.transition = "";
       layer.style.clipPath = `circle(160% at ${origin.current})`;
+      // once dyed, drop the clip: some engines miss clicks inside a large clip circle
+      settle.current = window.setTimeout(() => {
+        if (!previous.current) return;
+        layer.style.clipPath = "none";
+        under.style.visibility = "hidden";
+      }, DURATION.claimDye + 80);
       const swing = reduce
         ? knot.animate([{opacity: 0}, {opacity: 1}], {duration: DURATION.reduced, fill: "forwards"})
         : knot.animate([
@@ -86,15 +103,27 @@ export function ClaimCard({claimed, base, mine}: {claimed: boolean; base: ReactN
         knot.style.transform = "";
         lift.cancel();
       };
+      if (layer.style.clipPath === "none") {
+        layer.style.transition = "none";
+        layer.style.clipPath = `circle(160% at ${origin.current})`;
+        void layer.offsetWidth;
+        layer.style.transition = "";
+      }
       layer.style.clipPath = `circle(0px at ${origin.current})`;
+      settle.current = window.setTimeout(() => {
+        if (!previous.current) layer.style.visibility = "hidden";
+      }, DURATION.claimDye + 80);
     }
   }, [claimed]);
 
+  useEffect(() => () => window.clearTimeout(settle.current), []);
+
   return (
     <div ref={wrap} className="relative grid grid-cols-[minmax(0,1fr)]" data-claimed={claimed}>
-      <div className="[grid-area:1/1]" inert={claimed}>{base}</div>
-      <div ref={dye} className="fge-claim-mine [grid-area:1/1]" inert={!claimed} aria-hidden={!claimed}>{mine}</div>
-      <span ref={tag} aria-hidden="true" className="pointer-events-none absolute -top-2.5 right-[42px] flex flex-col items-center opacity-0"
+      <div ref={plain} className="[grid-area:1/1]" inert={claimed} style={initial ? {visibility: "hidden"} : undefined}>{base}</div>
+      <div ref={dye} className="fge-claim-mine [grid-area:1/1]" inert={!claimed} aria-hidden={!claimed}
+        style={initial ? undefined : {visibility: "hidden"}}>{mine}</div>
+      <span ref={tag} aria-hidden="true" className="pointer-events-none absolute -top-2.5 right-4 flex flex-col items-center opacity-0"
         style={{transformOrigin: "50% 0"}} data-claim-tag="">
         <span className="block h-3.5 w-[2.5px] bg-yarn-white" />
         <YarnTag />

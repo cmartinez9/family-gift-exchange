@@ -1,65 +1,87 @@
 import {getFormatter, getTranslations} from "next-intl/server";
-import {Link} from "@/i18n/navigation";
+import {Avatar} from "@/components/ui/avatar";
+import {Card, Chevron, ListRow, Rows} from "@/components/ui/card";
+import {TextField} from "@/components/ui/inputs";
+import {KnitIn} from "@/components/ui/motion/knit-in";
+import {AppLink} from "@/components/ui/navigation";
+import {PageTitle, SectionHeading} from "@/components/ui/page-header";
+import {Pass} from "@/components/ui/pass";
+import {Screen} from "@/components/ui/screen";
 import {requireViewer} from "@/server/auth";
 import {getListExchangeCard, listFamilyWishlists} from "@/server/lists";
 import {getListRecipient} from "@/server/lists/my-person";
 import {saveBudget} from "./actions";
 import {ListForm} from "./controls";
 import {splitFamilyLists} from "./family-list-order";
-import {inputClass, linkClass, panelClass} from "./styles";
+import {tabHrefs} from "./tabs";
 
+/**
+ * Family: your person first, on the pass, then everyone else. Your own list is the My list tab, so it is
+ * not repeated here.
+ */
 export default async function FamilyListsPage() {
   const viewer = await requireViewer();
   const [members, exchange, t, format] = await Promise.all([
     listFamilyWishlists(viewer), getListExchangeCard(viewer), getTranslations("lists"), getFormatter(),
   ]);
   const recipientId = await getListRecipient(viewer, exchange?.id);
-  const {recipient, others} = splitFamilyLists(members, recipientId);
+  const names = new Map(members.map(({id, name}) => [id, name]));
+  const family = members.filter(({id}) => id !== viewer.actingAs);
+  const {recipient, others} = splitFamilyLists(family, recipientId);
   const canSetBudget = viewer.isOrganizer && viewer.actingAs === viewer.personId;
+  const money = (amount: string) => format.number(Number(amount), {style: "currency", currency: "USD"});
+  const sub = ({helperId, itemCount, ready}: (typeof members)[number]) => {
+    // a list with things but no sizes yet says so; an empty one already does
+    const things = itemCount && !ready ? `${t("itemCount", {count: itemCount})} · ${t("notReady")}` : t("itemCount", {count: itemCount});
+    if (helperId === viewer.personId) return `${t("helpedByYou")} · ${things}`;
+    const helper = helperId ? names.get(helperId) : undefined;
+    return helper ? `${t("helpedBy", {name: helper})} · ${things}` : things;
+  };
   return (
-    <>
-      <h1 className="text-2xl font-semibold">{t("familyLists")}</h1>
-      {recipient && (
-        <section className={panelClass} aria-labelledby="recipient-heading">
-          <h2 id="recipient-heading" className="text-xl font-semibold">{t("givingTo", {name: recipient.name})}</h2>
-          <p>{t("itemCount", {count: recipient.itemCount})}</p>
-          <Link className={linkClass} href={`/lists/${recipient.id}`}>{t("openList")}</Link>
-        </section>
-      )}
-      <section className="space-y-2">
-        {recipient && <h2 className="text-xl font-semibold">{t("otherLists")}</h2>}
-        <ul className="divide-y divide-current/25">
-          {others.map(({id, name, itemCount, ready}) => (
-            <li key={id} className="pb-3">
-              <Link className={`${linkClass} font-medium`} href={`/lists/${id}`}>{name}</Link>
-              <p>{t("itemCount", {count: itemCount})} · {t(ready ? "ready" : "notReady")}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-      {exchange && (
-        <section className={panelClass} aria-labelledby="exchange-heading">
-          <h2 id="exchange-heading" className="text-xl font-semibold">{exchange.name}</h2>
-          {exchange.giftDay && <p>{t("giftDay", {day: format.dateTime(new Date(exchange.giftDay), {dateStyle: "long", timeZone: "UTC"})})}</p>}
-          {exchange.place && <p className="break-words">{exchange.place}</p>}
-          <p>{exchange.budgetAmount === null ? t("noBudget") : t("budgetAmount", {
-            amount: format.number(Number(exchange.budgetAmount), {style: "currency", currency: "USD"}),
-          })}</p>
-          {canSetBudget && (
-            <details className="space-y-3">
-              <summary className={linkClass}>{t("budget")}</summary>
-              <ListForm action={saveBudget.bind(null, exchange.id)} label={t("saveBudget")}>
-                <label className="block">
-                  {t("budget")}
-                  <input name="budget" className={inputClass} defaultValue={exchange.budgetAmount ?? ""}
-                    inputMode="decimal" maxLength={11} aria-describedby="budget-help" />
-                </label>
-                <p id="budget-help">{t("budgetHelp")}</p>
-              </ListForm>
-            </details>
-          )}
-        </section>
-      )}
-    </>
+    <Screen tab="family" tabHrefs={tabHrefs(viewer)}>
+      <PageTitle title={t("familyLists")} count={t("peopleCount", {count: family.length})} />
+      <KnitIn className="flex flex-col">
+        {recipient && (
+          <div className="px-edge pt-4">
+            <Pass name={recipient.name} lead={t("passLead")} onlyYou={t("onlyYou")} href={`/lists/${recipient.id}`}
+              openLabel={t("openPerson", {name: recipient.name})}
+              budget={exchange?.budgetAmount ? money(exchange.budgetAmount) : undefined} />
+          </div>
+        )}
+        {recipient && others.length > 0 && <SectionHeading title={t("restOfFamily")} />}
+        {others.length > 0 && (
+          <div className={recipient ? "px-edge" : "px-edge pt-4"}>
+            <Card flush className="px-[18px] py-1">
+              <Rows as="ul">
+                {others.map((member) => (
+                  <li key={member.id}>
+                    <AppLink href={`/lists/${member.id}`} transition="push" className="fge-press block rounded-[24px]">
+                      <ListRow as="span" lead={<Avatar name={member.name} />} title={member.name} sub={sub(member)}
+                        trail={<Chevron />} className="min-h-[76px]" />
+                    </AppLink>
+                  </li>
+                ))}
+              </Rows>
+            </Card>
+          </div>
+        )}
+        {exchange && (canSetBudget || exchange.budgetAmount !== null) && (
+          <section aria-label={exchange.name} className="flex flex-col">
+            <SectionHeading title={exchange.name} className="[&_h2]:break-words" />
+            <div className="px-edge pb-6">
+              <Card>
+                <p className="text-card-title">{exchange.budgetAmount === null ? t("noBudget") : t("budgetAmount", {amount: money(exchange.budgetAmount)})}</p>
+                {canSetBudget && (
+                  <ListForm action={saveBudget.bind(null, exchange.id)} label={t("saveBudget")} className="pt-3">
+                    <TextField name="budget" label={t("budget")} hint={t("budgetHelp")} defaultValue={exchange.budgetAmount ?? ""}
+                      inputMode="decimal" maxLength={11} />
+                  </ListForm>
+                )}
+              </Card>
+            </div>
+          </section>
+        )}
+      </KnitIn>
+    </Screen>
   );
 }

@@ -76,7 +76,7 @@ export async function touchSession(tx: FamilyTransaction, viewer: Viewer, now: D
   ));
 }
 
-export async function revalidateViewer(tx: FamilyTransaction, viewer: Viewer): Promise<(Viewer & {deviceHash: string}) | null> {
+export async function revalidateViewer(tx: FamilyTransaction, viewer: Pick<Viewer, "familyId" | "sessionId" | "personId">): Promise<(Viewer & {deviceHash: string}) | null> {
   const {familyId, sessionId, personId} = viewer;
   const row = await sessionIdentity(tx, familyId, sessionId);
   return row?.personId === personId ? {...viewerIdentity(row, familyId, sessionId), deviceHash: row.deviceHash} : null;
