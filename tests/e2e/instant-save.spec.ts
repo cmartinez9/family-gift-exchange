@@ -85,7 +85,9 @@ async function seedComing(familyId: string, rosa: string) {
 }
 
 async function shoot(page: Page, name: string, options: {axe?: boolean} = {}) {
-  await page.waitForTimeout(700);
+  // Let the entrance animations settle while the loading stitches keep shimmering.
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"
+    || animation.effect?.getComputedTiming().iterations === Infinity));
   if (options.axe !== false) {
     const results = await new AxeBuilder({page}).analyze();
     expect(results.violations, `${name}: ${results.violations.map(({id}) => id).join(", ")}`).toEqual([]);
@@ -98,13 +100,15 @@ test("a typed link saves with the first tap while the link field is focused", as
   await page.setViewportSize(phone);
   const {familyId, rosa} = await startFamily(page);
   try {
-    await page.goto(`/en/lists/${rosa}/items/new?kind=link`);
+    const listPath = `/en/lists/${rosa}`;
+    await page.goto(`${listPath}/items/new?kind=link`);
     const link = page.getByLabel(lists.url);
     await link.fill("https://gifts.invalid/winter/wool-socks");
     await expect(link).toBeFocused();
     const started = Date.now();
     await page.getByRole("button", {name: lists.saveItem}).tap();
     await expect(page.getByRole("status").filter({hasText: lists.added})).toBeVisible();
+    await expect(page).toHaveURL((url) => url.pathname === listPath);
     expect(Date.now() - started).toBeLessThan(10_000);
     const saved = await seed(familyId, (tx) => tx.select({url: items.url}).from(items).where(eq(items.ownerId, rosa)));
     expect(saved).toEqual([{url: "https://gifts.invalid/winter/wool-socks"}]);
@@ -121,18 +125,21 @@ test("a pasted link saves at once and its picture follows without a reload", asy
   await page.setViewportSize(phone);
   const {familyId, rosa} = await startFamily(page);
   try {
+    const listPath = `/en/lists/${rosa}`;
     await addPhotos(page, rosa);
 
     // 4.4: added, the picture on its way, and the toast
     const robeId = await seedComing(familyId, rosa);
-    await page.goto(`/en/lists/${rosa}?done=added`);
+    await page.goto(`${listPath}?done=added`);
     const card = page.getByRole("status").filter({hasText: coming("Target")});
     await expect(card).toBeVisible();
     await expect(card).toContainText(lists.pictureComingSub);
     await expect(page.getByText("3 things")).toBeVisible();
+    await expect(page.getByRole("status").filter({hasText: lists.added})).toBeVisible();
     await shoot(page, "f4-4_4-picture-coming");
 
     // The store's page arrives: the card becomes the item, with its name and price, without a reload
+    const documentStart = await page.evaluate(() => performance.timeOrigin);
     await seed(familyId, (tx) => tx.update(items).set({
       title: "Cozy Fleece Robe", price: "39.99", updatedAt: new Date(),
       preview: {title: "Cozy Fleece Robe", price: "39.99", icon: "target", productId: "12345"},
@@ -141,32 +148,37 @@ test("a pasted link saves at once and its picture follows without a reload", asy
     await expect(robe).toBeVisible({timeout: 10_000});
     await expect(robe.getByText("$39.99")).toBeVisible();
     await expect(page.getByText(coming("Target"))).toHaveCount(0);
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentStart);
     await shoot(page, "f4-4_4-picture-landed");
     await seed(familyId, (tx) => tx.delete(items).where(and(eq(items.familyId, familyId), eq(items.id, robeId))).execute());
 
-    // Spanish
-    await seedComing(familyId, rosa);
-    await page.goto(`/es/lists/${rosa}`);
-    await expect(page.getByRole("status").filter({hasText: coming("Target", es.lists)})).toContainText(es.lists.pictureComingSub);
-    await shoot(page, "es-f4-4_4-picture-coming");
-
     // The largest text size: about 135% of the default
-    await page.goto(`/en/lists/${rosa}`);
+    await seedComing(familyId, rosa);
+    await page.goto(listPath);
     await page.evaluate(() => {
       document.documentElement.style.zoom = "1.35";
     });
-    await expect(page.getByText(coming("Target"))).toBeVisible();
+    await expect(card).toBeVisible();
     await shoot(page, "large-text-f4-4_4-picture-coming", {axe: false});
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
 
     // Reduced motion: the stitches hold still
+    await page.evaluate(() => document.documentElement.style.removeProperty("zoom"));
     await page.emulateMedia({reducedMotion: "reduce"});
-    await page.goto(`/en/lists/${rosa}`);
     const stitch = page.locator("[data-picture-coming] .fge-ts").first();
     await expect(stitch).toBeAttached();
-    expect(await stitch.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+    await expect(stitch).toHaveCSS("animation-name", "none");
     await shoot(page, "reduced-motion-f4-4_4-picture-coming");
+
+    // Keep the locale change in its own tab so the pending card's refresh cannot interrupt it.
+    const spanish = await page.context().newPage();
+    await spanish.setViewportSize(phone);
+    await spanish.goto(`/es/lists/${rosa}`);
+    const spanishCard = spanish.getByRole("status").filter({hasText: coming("Target", es.lists)});
+    await expect(spanishCard).toBeVisible();
+    await expect(spanishCard).toContainText(es.lists.pictureComingSub);
+    await shoot(spanish, "es-f4-4_4-picture-coming");
   } finally {
     await seed(familyId, (tx) => tx.delete(families).where(eq(families.id, familyId)).execute());
   }
