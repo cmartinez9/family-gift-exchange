@@ -366,6 +366,56 @@ it.each([1125, 2026, 343])("bounds ordinary recovery for a helper and ten depend
   }
 });
 
+it("continues past a capped ten-change layer to a private eleven-change repair", () => {
+  const first = [..."ABCDEF"];
+  const second = [..."GHIJKLMNOP"];
+  const ids = [...first, ...second];
+  const people = ids.map((id) => ({id, householdId: null, helperId: null}));
+  const excluded = first.flatMap((personA) => second.map((personB) => ({personA, personB})));
+  const previous = new Map([first, second].flatMap((group) =>
+    group.map((id, index) => [id, group[(index + 1) % group.length]] as const)));
+  const disputedSecond = second.slice(0, 8);
+  const mustChange = ["B", ...disputedSecond];
+  const changed = (pairs: Pairs) => [...pairs].filter(([id, recipient]) => recipient !== previous.get(id)).length;
+  const firstRepairs = possibleDraws(first).filter((pairs) => pairs.get("B") !== previous.get("B"));
+  const minimumFirst = Math.min(...firstRepairs.map(changed));
+  expect(minimumFirst).toBe(2);
+  expect(new Set(firstRepairs.filter((pairs) => changed(pairs) === minimumFirst).map((pairs) => pairs.get("B"))))
+    .toEqual(new Set(["F"]));
+  const secondPeople = people.filter(({id}) => second.includes(id));
+  const model = new Map(second.map((id) => [id, previous.get(id)!]));
+  let minimumSecondCount = 0;
+  function countMinimumRepairs(recipients: string[], index = 0) {
+    if (index === disputedSecond.length) {
+      if (validate(secondPeople, [], model)) minimumSecondCount++;
+      return;
+    }
+    const giver = disputedSecond[index];
+    for (const recipient of recipients) {
+      if (minimumSecondCount > 1024) break;
+      if (recipient === previous.get(giver)) continue;
+      model.set(giver, recipient);
+      countMinimumRepairs(recipients.filter((id) => id !== recipient), index + 1);
+    }
+    model.set(giver, previous.get(giver)!);
+  }
+  countMinimumRepairs(disputedSecond.map((id) => previous.get(id)!));
+  expect(minimumSecondCount).toBeGreaterThan(1024);
+  const shuffle = vi.spyOn(solver, "shuffled").mockImplementation(seededShuffle(1125));
+  const started = performance.now();
+  try {
+    const next = repairDraw(drawRules(people, excluded), previous, mustChange, () => {
+      if (performance.now() - started > 1500) throw new Error("Recovery search exceeded its deadline");
+    }, {observers: ["E", "G"], seenGivers: [], questionGivers: []});
+    expect(next).not.toBeNull();
+    expect(validate(people, excluded, next!)).toBe(true);
+    expect(mustChange.every((id) => next!.get(id) !== previous.get(id))).toBe(true);
+    expect(changed(next!)).toBe(11);
+  } finally {
+    shuffle.mockRestore();
+  }
+});
+
 it("keeps B ambiguous after conditioning on the opened count with only B D E seen", () => {
   const ids = ["A", "B", "C", "D", "E", "F"];
   const people = ids.map((id) => ({id, householdId: null, helperId: null}));

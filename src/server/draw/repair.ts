@@ -128,7 +128,6 @@ export function repairDraw(
       }
       if (!found) break;
     }
-    if (candidates.length === 1024) return null;
   }
   return null;
 }
