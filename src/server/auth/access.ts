@@ -322,28 +322,6 @@ export async function requestPinReset(
   return {success: "resetRequested"} as const;
 }
 
-/**
- * "Ask the organizer for help" from an unopened key (1.2 to 1.5): the key says whose request it is, so it works
- * before the person has a PIN. A typed code must carry the signed preview from checking it, so asking never
- * becomes a way to try codes.
- */
-export async function requestHelpWithKey(
-  tx: FamilyTransaction, input: {
-    familyId: string; value: string; typed: boolean; preview: string | null; pepper: string; device: Device; now: Date;
-  },
-) {
-  const {familyId, value, typed, preview, pepper, device, now} = input;
-  if (!(typed ? keyCodePattern : keyTokenPattern).test(value)) return {error: "unavailable"} as const;
-  if (!await lockFamily(tx, familyId)) return {error: "unavailable"} as const;
-  const key = await lookupKey(tx, familyId, pepper, value, typed);
-  if (!key || key.revokedAt || key.expiresAt <= now) return {error: "unavailable"} as const;
-  if (typed && (typeof preview !== "string" || !validCodePreview(preview, pepper, familyId, key, value, device.hash))) {
-    return {error: "unavailable"} as const;
-  }
-  const result = await requestPinReset(tx, familyId, key.personId, device, now);
-  return result.success ? {...result, personId: key.personId} : result;
-}
-
 async function answerResetRequests(tx: FamilyTransaction, familyId: string, personId: string, now: Date) {
   await tx.update(pinResetRequests).set({answeredAt: now}).where(and(
     eq(pinResetRequests.familyId, familyId), eq(pinResetRequests.personId, personId), isNull(pinResetRequests.answeredAt),

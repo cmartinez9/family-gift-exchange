@@ -9,13 +9,8 @@ import {cn} from "@/components/ui/cn";
 import {Icon} from "@/components/ui/icon";
 import {haptic} from "@/components/ui/motion/haptic";
 import {Sheet} from "@/components/ui/sheet";
-import {askForHelpWithKey, forgotPin, type AuthResult} from "./actions";
+import {forgotPin, type AuthResult} from "./actions";
 import {tryAuthAction} from "./client-action";
-
-/** Who is asking: a person by name, or the owner of the key on screen, before they have a PIN. */
-export type HelpAsker =
-  | {familyId: string; personId: string}
-  | {familyId: string; key: {value: string; typed: boolean; preview: string | null}};
 
 /** The organizer as the getting-in screens name them: "Christian", not "Christian Martinez". */
 export function firstName(name: string) {
@@ -27,7 +22,8 @@ export function firstName(name: string) {
  * Forgot my PIN, so the organizers see it in Manage my family and in their notices; then it says so in place.
  */
 export function AskForHelp({asker, organizer, className}: {
-  asker: HelpAsker | {familyId: string; names: Array<{id: string; name: string}>}; organizer: string; className?: string;
+  asker: {familyId: string; personId: string} | {familyId: string; names: Array<{id: string; name: string}>};
+  organizer: string; className?: string;
 }) {
   const t = useTranslations("getIn.help");
   const ui = useTranslations("ui");
@@ -37,11 +33,9 @@ export function AskForHelp({asker, organizer, className}: {
   const name = firstName(organizer);
   if (!name || ("names" in asker && !asker.names.length)) return null;
 
-  function ask(target: HelpAsker) {
+  function ask(personId: string) {
     start(async () => {
-      const response = await tryAuthAction(() => "key" in target
-        ? askForHelpWithKey(target.familyId, target.key.value, target.key.typed, target.key.preview)
-        : forgotPin(target.familyId, target.personId));
+      const response = await tryAuthAction(() => forgotPin(asker.familyId, personId));
       if (response.success) haptic("success");
       else if (response.error !== "tryLater") haptic("error");
       setResult(response);
@@ -62,7 +56,7 @@ export function AskForHelp({asker, organizer, className}: {
     <div className={cn("flex flex-col items-center", className)}>
       <TextButton disabled={pending} aria-busy={pending || undefined} className="disabled:opacity-60" onClick={() => {
         if ("names" in asker) setChoosing(true);
-        else ask(asker);
+        else ask(asker.personId);
       }}>{t("ask", {organizer: name})}</TextButton>
       {result.error && <p role="alert" className="px-3 text-center text-body">{t("failed")}</p>}
       {"names" in asker && (
@@ -74,7 +68,7 @@ export function AskForHelp({asker, organizer, className}: {
                 <button type="button" disabled={pending} className="fge-press block w-full cursor-pointer rounded-[20px] text-left"
                   onClick={() => {
                     setChoosing(false);
-                    ask({familyId: asker.familyId, personId: id});
+                    ask(id);
                   }}>
                   <ListRow as="span" lead={<Avatar name={personName} />} title={personName} trail={<Chevron />} />
                 </button>

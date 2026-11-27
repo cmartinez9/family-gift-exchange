@@ -195,7 +195,7 @@ export function KeyWelcome({familyId, value, typed, entry, sender, organizer, ot
 }) {
   const t = useTranslations("getIn.hello");
   const [phase, setPhase] = useState<"hello" | "helper" | "pin">("hello");
-  const help = <AskForHelp organizer={organizer} asker={{familyId, key: {value, typed, preview: entry.preview ?? null}}} />;
+  const help = <AskForHelp organizer={organizer} asker={{familyId, personId: entry.personId}} />;
 
   if (phase === "pin") {
     const save = useKey.bind(null, familyId, value, typed, entry.preview ?? null);

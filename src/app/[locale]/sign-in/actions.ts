@@ -8,7 +8,7 @@ import {notify} from "@/server/messages";
 import {getViewer, requireViewer} from "@/server/auth";
 import {
   allowCodeTry, disputeUsedKey, inspectKey, keyCodePattern, lockFamily, lookupKey, parseLinkKey,
-  redeemKey, requestHelpWithKey, requestPinReset, signInWithPin,
+  redeemKey, requestPinReset, signInWithPin,
 } from "@/server/auth/access";
 import {createFamily, permitCreation} from "@/server/auth/families";
 import {authenticatorSecret, pinProblem} from "@/server/auth/pin";
@@ -97,19 +97,6 @@ export async function forgotPin(familyId: string, personId: string): Promise<Aut
     const result = await requestPinReset(tx, familyId, personId, device, new Date());
     if (result.success) await notify.requestPinReset({familyId, personId}, tx);
     return result;
-  });
-}
-
-/** "Ask the organizer for help" from an unopened key: the forgot-PIN request, for the key's owner. */
-export async function askForHelpWithKey(familyId: string, value: string, typed: boolean, preview: string | null): Promise<AuthResult> {
-  if (!uuidPattern.test(familyId) || typeof value !== "string" || typeof typed !== "boolean"
-    || (preview !== null && typeof preview !== "string")) return {error: "unavailable"};
-  const device = await requestDevice();
-  return withFamily(familyId, async (tx) => {
-    const result = await requestHelpWithKey(tx, {familyId, value, typed, preview, pepper: authenticatorSecret(), device, now: new Date()});
-    if (!result.success) return {error: result.error};
-    await notify.requestPinReset({familyId, personId: result.personId}, tx);
-    return {success: result.success};
   });
 }
 

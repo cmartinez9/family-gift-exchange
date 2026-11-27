@@ -12,7 +12,7 @@ import KeyPage from "../../src/app/[locale]/key/[key]/page";
 import FaceIdPage from "../../src/app/[locale]/face-id/page";
 
 const actions = vi.hoisted(() => ({
-  askForHelpWithKey: vi.fn(), forgotPin: vi.fn(), useKey: vi.fn(), enterPin: vi.fn(), previewCode: vi.fn(),
+  forgotPin: vi.fn(), useKey: vi.fn(), enterPin: vi.fn(), previewCode: vi.fn(),
   beginFaceId: vi.fn(), finishFaceIdEnrollment: vi.fn(), finishFaceIdSignIn: vi.fn(), reportUsedKey: vi.fn(), openFamily: vi.fn(),
 }));
 const server = vi.hoisted(() => ({
@@ -102,7 +102,7 @@ async function tap(label: string) {
   await act(async () => link(label)!.click());
 }
 
-const keyAsker = {familyId: "family", key: {value: "token", typed: false, preview: null}};
+const personAsker = {familyId: "family", personId: "rosa"};
 const routeFamilyId = "11111111-1111-4111-8111-111111111111";
 const routeKey = `${routeFamilyId}~${"x".repeat(43)}`;
 const keyEntry = {id: "key", personId: "rosa", name: "Rosa", familyName: "Martinez", available: true, usedAt: null};
@@ -144,23 +144,23 @@ async function submitCode(code = "BAD234") {
 
 it("names the organizer by first name", async () => {
   expect(firstName("  Christian  Martinez ")).toBe("Christian");
-  await render(<AskForHelp organizer="Christian Martinez" asker={keyAsker} />);
+  await render(<AskForHelp organizer="Christian Martinez" asker={personAsker} />);
   expect(link("Ask Christian for help")).toBeDefined();
-  await render(<AskForHelp organizer="Christian" asker={keyAsker} />, "es");
+  await render(<AskForHelp organizer="Christian" asker={personAsker} />, "es");
   expect(link("Pedirle ayuda a Christian")).toBeDefined();
 });
 
 it("shows nothing when the family has no organizer to ask", async () => {
-  await render(<AskForHelp organizer="" asker={keyAsker} />);
+  await render(<AskForHelp organizer="" asker={personAsker} />);
   expect(container.textContent).toBe("");
 });
 
-it("asks with the key before joining, then says so in plain words", async () => {
-  actions.askForHelpWithKey.mockResolvedValue({success: "resetRequested"});
-  await render(<AskForHelp organizer="Christian" asker={{familyId: "family", key: {value: "ABC234", typed: true, preview: "signed"}}} />);
+it("asks for the key's owner before joining, then says so in plain words", async () => {
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
+  await render(<KeyWelcome familyId="family" value="ABC234" typed entry={keyEntry} sender="Christian" organizer="Christian" />);
   await tap("Ask Christian for help");
-  expect(actions.askForHelpWithKey).toHaveBeenCalledWith("family", "ABC234", true, "signed");
-  expect(actions.forgotPin).not.toHaveBeenCalled();
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "rosa");
+  expect(actions.useKey).not.toHaveBeenCalled();
   expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian has been asked. Watch your chat.");
   expect(link("Ask Christian for help")).toBeUndefined();
 });
@@ -233,7 +233,6 @@ it.each([
   expect(actions.forgotPin).not.toHaveBeenCalled();
   await chooseLastName();
   expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "ana");
-  expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
   expect(container.querySelector('[role="status"]')?.textContent).toBe(message);
 });
 
@@ -261,8 +260,8 @@ it("does not offer an empty name choice", async () => {
   expect(container.textContent).toBe("");
 });
 
-it.each([false, true])("can ask with the key from each helper view (typed: %s)", async (typed) => {
-  actions.askForHelpWithKey.mockResolvedValue({success: "resetRequested"});
+it.each([false, true])("can ask for the key's owner from each helper view (typed: %s)", async (typed) => {
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
   const entry = {personId: "rosa", name: "Rosa", familyName: "Martinez", available: true, usedAt: null, preview: "signed"};
   await render(<KeyWelcome familyId="family" value="token" typed={typed} entry={entry} sender="Christian" organizer="Christian Martinez" />);
   await tap("No, I'm helping Rosa");
@@ -272,7 +271,7 @@ it.each([false, true])("can ask with the key from each helper view (typed: %s)",
   await tap(en.auth.back);
   await tap(en.helping.noPhoneTitle.replace("{name}", "Rosa"));
   await tap("Ask Christian for help");
-  expect(actions.askForHelpWithKey).toHaveBeenCalledExactlyOnceWith("family", "token", typed, "signed");
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith("family", "rosa");
   expect(actions.useKey).not.toHaveBeenCalled();
 });
 
@@ -289,7 +288,6 @@ it.each(["unavailable", "tryLater", "connectionFailed"] as const)("keeps help av
   expect(sheet.open).toBe(true);
   await chooseLastName();
   expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "ana");
-  expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
   expect(actions.useKey).not.toHaveBeenCalled();
   expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian has been asked. Watch your chat.");
 });
@@ -306,14 +304,14 @@ it("asks from code entry without checking or using a code", async () => {
   expect(container.querySelector('[role="status"]')?.textContent).toBe("Christian was already asked today. Watch your chat.");
 });
 
-it("uses the checked code's proof when asking from its welcome screen", async () => {
+it("asks for the checked code's owner from its welcome screen", async () => {
   actions.previewCode.mockResolvedValue({key: {...keyEntry, preview: "signed"}});
-  actions.askForHelpWithKey.mockResolvedValue({success: "resetRequested"});
+  actions.forgotPin.mockResolvedValue({success: "resetRequested"});
   await render(await SignInFlow({search: {family: routeFamilyId, join: "1"}}));
   await submitCode();
   await tap("Ask Christian for help");
-  expect(actions.askForHelpWithKey).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "BAD234", true, "signed");
-  expect(actions.forgotPin).not.toHaveBeenCalled();
+  expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
+  expect(actions.useKey).not.toHaveBeenCalled();
 });
 
 it.each([true, false])("asks from a paused family with remembered identity: %s", async (remembered) => {
@@ -357,7 +355,6 @@ it.each(["missing", "unavailable", "already-yours", "forwarded"] as const)("offe
   await render(await KeyPage({params: Promise.resolve({key: routeKey})}));
   await tap("Ask Christian for help");
   expect(actions.forgotPin).toHaveBeenCalledExactlyOnceWith(routeFamilyId, "rosa");
-  expect(actions.askForHelpWithKey).not.toHaveBeenCalled();
   expect(actions.useKey).not.toHaveBeenCalled();
 });
 

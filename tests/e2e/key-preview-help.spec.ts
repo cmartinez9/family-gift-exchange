@@ -434,3 +434,44 @@ test("an invited member can ask after a failed code or expired key on someone el
     await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
   }
 });
+
+for (const screen of ["welcome", "PIN", "helper"] as const) {
+  test(`help still sends when a QR expires on its displayed ${screen} screen`, async ({page}) => {
+    const f = await seed();
+    try {
+      const pepper = process.env.E2E_AUTH_SECRET ?? process.env.AUTH_SECRET;
+      if (!pepper) throw new Error("E2E_AUTH_SECRET is required");
+      const qr = await inFamily(f.familyId, async (t) => {
+        const viewer = (await findViewer(t, parseSession(f.organizer)!))!;
+        return requireIssuedKey(await issueKey(t, viewer, f.ids.Rosa, "qr", pepper, new Date()));
+      });
+      const path = `/en/key/${f.familyId}~${qr.token}`;
+      await page.goto(path);
+      await expect(page.getByRole("heading", {name: en.getIn.hello.title})).toBeVisible();
+      if (screen === "PIN") {
+        await page.getByRole("button", {name: en.getIn.hello.yes}).click();
+        await expect(page.getByRole("heading", {name: en.getIn.pin.makeTitle})).toBeVisible();
+      } else if (screen === "helper") {
+        await page.getByRole("button", {name: "No, I'm helping Rosa"}).click();
+      }
+      const help = page.getByRole("button", {name: "Ask Christian for help"});
+      await expect(help).toBeVisible();
+      await inFamily(f.familyId, (t) => t.update(personalKeys).set({expiresAt: new Date(Date.now() - 1000)})
+        .where(eq(personalKeys.id, qr.id)));
+      const before = await keyState(f.familyId);
+      await help.click();
+      await expect(page.getByRole("status").filter({hasText: "Christian has been asked. Watch your chat."})).toBeVisible();
+      await expect(page).toHaveURL(new URL(path, origin).toString());
+      const after = await keyState(f.familyId);
+      expect(after.requests).toEqual([expect.objectContaining({personId: f.ids.Rosa})]);
+      expect(after.keys).toEqual(before.keys);
+      expect(after.sessions).toEqual(before.sessions);
+      expect(after.pins).toEqual(before.pins);
+      const notices = after.outbox.filter(({template}) => template === "pin-reset-request");
+      expect(notices.map(({personId, requesterName}) => [personId, requesterName]).toSorted())
+        .toEqual([[f.ids.Ana, "Rosa"], [f.organizerId, "Rosa"]].toSorted());
+    } finally {
+      await inFamily(f.familyId, (t) => t.delete(families).where(eq(families.id, f.familyId)).execute());
+    }
+  });
+}
