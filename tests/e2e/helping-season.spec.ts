@@ -161,6 +161,8 @@ test("refreshes shared helping context when a tab regains focus or visibility", 
     await other.goto("/en/account");
     await other.bringToFront();
     await other.getByRole("button", {name: "Done", exact: true}).click();
+    // Done returns to the same URL. Rosa can help Tito again once the switch has committed.
+    await expect(other.getByRole("button", {name: "Help Tito", exact: true})).toBeVisible();
     await expect(other).toHaveURL(/\/en\/account$/);
 
     await helping.bringToFront();
