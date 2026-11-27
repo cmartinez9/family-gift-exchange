@@ -75,7 +75,7 @@ export default async function KeyPage({params}: {params: Promise<{key: string}>}
   const other = viewer && (viewer.familyId !== key.familyId || viewer.personId !== entry.personId);
   if (other && viewer.familyId === key.familyId && !viewer.borrowed && entry.available && entry.first) {
     // helping on a borrowed phone (9.1, 9.2): the relative signs in beside the owner, who stays signed in
-    return <KeyOnBorrowedPhone familyId={key.familyId} value={key.token} name={entry.name} />;
+    return <KeyOnBorrowedPhone familyId={key.familyId} value={key.token} personId={entry.personId} name={entry.name} organizer={organizer} />;
   }
   if (other) {
     // A forwarded key keeps the current sign-in. A used key still generates a notice for its owner.
