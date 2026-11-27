@@ -171,6 +171,7 @@
       "otherPerson": "Ya hay una sesión abierta en este dispositivo. Cambia de persona para continuar.",
       "usedKey": "Esta llave ya se usó. Inicia sesión con tu PIN o pídele una llave nueva al organizador.",
       "resetRequested": "Ya le avisamos al organizador. Te enviará una llave nueva por mensaje privado.",
+      "organizerRecovery": "Tú organizas el intercambio. Usa Face ID o tu PIN, o pídele un enlace de recuperación a quien administra la app.",
       "saved": "Guardado.",
       "sent": "Marcada como enviada.",
       "reported": "Registramos el aviso. Cerramos la sesión de cualquier otro dispositivo vinculado a esta actividad.",
@@ -803,6 +804,22 @@
       "helperTitle": "Ábrela en el teléfono de {name}",
       "helperBack": "Volver"
     },
+    "preview": {
+      "title": "La llave de {name}",
+      "family": "Familia {family}",
+      "season": "Navidad {year}",
+      "generic": "Una llave para un intercambio familiar de regalos. Ábrela en tu propio teléfono.",
+      "picture": "{name}, bordado en lana",
+      "genericPicture": "Un regalo tejido entre dos copos de nieve"
+    },
+    "help": {
+      "ask": "Pedirle ayuda a {organizer}",
+      "who": "¿Quién necesita ayuda?",
+      "chooseName": "Elige tu nombre para pedirle ayuda a {organizer}.",
+      "asked": "Ya le avisamos a {organizer}. Revisa tu chat.",
+      "already": "Ya le avisamos a {organizer} hoy. Revisa tu chat.",
+      "failed": "No se pudo enviar. Inténtalo de nuevo."
+    },
     "pin": {
       "makeTitle": "Crea un PIN de 4 dígitos",
       "makeLead": "Lo usarás para volver a entrar.",
@@ -1158,7 +1175,7 @@
     "closeTitle": "¿Cerrar {name}?",
     "closeLists": "Las listas de todos se quedan. Pueden seguir agregando cosas para los cumpleaños.",
     "closeSealed": "El sorteo queda sellado para siempre. Nadie, ni tú, puede abrirlo.",
-    "closeQuestions": "Se borran las preguntas de este año entre cada quien y su persona.",
+    "closeMarks": "Se borran las marcas y lo que añadiste a «Regalos que voy a comprar».",
     "closeConfirm": "Cerrar {name}",
     "notYet": "Todavía no",
     "stitched": "LISTO",

@@ -478,7 +478,7 @@ type RecoveryFlow = typeof recoveryFlows[number][0];
 
 async function prepareRecovery(flow: RecoveryFlow, onError?: (error: Error) => void) {
   const screen = flow === "code"
-    ? <CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" />
+    ? <CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" names={[]} />
     : flow === "request" || flow === "report"
       ? <KeyAlreadyOpened familyId="family" value="key" typed={false} organizer="Rosa"
         entry={{personId: "person", name: "Ana", familyName: "Family", available: false, usedAt: "2030-01-01"}} />
@@ -536,7 +536,7 @@ it.each(recoveryFlows)("preserves redirects from %s recovery actions", async (fl
 it("ignores a code-preview transport failure after the entered code changes", async () => {
   const first = Promise.withResolvers<object>();
   actions.previewCode.mockReturnValueOnce(first.promise).mockResolvedValue({error: "unavailable"});
-  await render(<CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" />);
+  await render(<CodeEntry familyId="family" backHref="/sign-in" sender={null} organizer="Rosa" names={[]} />);
   await editField('input[name="code"]', "AAAAAA");
   await act(async () => { container.querySelector("form")!.requestSubmit(); });
   await editField('input[name="code"]', "BBBBBB");

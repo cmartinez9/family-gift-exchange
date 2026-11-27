@@ -1,5 +1,6 @@
 import "server-only";
-import {and, eq, inArray, isNull, ne} from "drizzle-orm";
+import {and, eq, isNull} from "drizzle-orm";
+import {organizerContacts} from "../auth/account";
 import {withFamily} from "../db/client";
 import type {FamilyTransaction} from "../db/database";
 import {participants, people} from "../db/schema";
@@ -83,13 +84,7 @@ export function requestPinReset(event: PinResetRequest, tx?: FamilyTransaction) 
       ));
     if (!requester) return;
 
-    const organizers = await transaction.select({personId: people.id, language: people.language}).from(people)
-      .where(and(
-        eq(people.familyId, event.familyId),
-        ne(people.id, event.personId),
-        inArray(people.role, ["organizer", "co_organizer"]),
-        isNull(people.removedAt),
-      ));
+    const organizers = (await organizerContacts(transaction, event.familyId)).filter(({personId}) => personId !== event.personId);
     await enqueueMessages(transaction, organizers.map((organizer): Message => ({
       ...organizer,
       familyId: event.familyId,

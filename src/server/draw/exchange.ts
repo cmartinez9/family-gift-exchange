@@ -1,5 +1,5 @@
 import {and, desc, eq, inArray, ne, sql} from "drizzle-orm";
-import {exchanges, keepApart, participants, people} from "../db/schema";
+import {claims, exchanges, keepApart, participants, people} from "../db/schema";
 import type {FamilyTransaction} from "../db/database";
 import {
   authorizeSubject, DrawError, lockOrganizer, requireOrganizer, withDrawFamily, type DrawViewer,
@@ -54,14 +54,16 @@ export async function closeExchange(viewer: DrawViewer, id: string) {
   return withDrawFamily(viewer, async (tx) => {
     await lockOrganizer(tx, viewer);
     const exchange = await loadExchange(tx, familyId, recordId(id));
+    if (exchange.status === "closed") return;
     await tx.update(exchanges).set({status: "closed"}).where(exchangeScope(familyId, exchange.id));
     // A closed exchange retains its details and seal, with no pairing history.
     await tx.delete(assignments).where(assignmentScope(familyId, exchange.id));
     await tx.delete(questions).where(and(eq(questions.familyId, familyId), eq(questions.exchangeId, exchange.id)));
+    await tx.delete(claims).where(eq(claims.familyId, familyId));
     await tx.delete(drawRuleSnapshots).where(and(
       eq(drawRuleSnapshots.familyId, familyId), eq(drawRuleSnapshots.exchangeId, exchange.id),
     ));
-  });
+  }, "update");
 }
 
 export async function listExchanges(viewer: DrawViewer) {

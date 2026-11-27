@@ -1,3 +1,4 @@
+import type {ReactNode} from "react";
 import {getTranslations} from "next-intl/server";
 import {Link} from "@/i18n/navigation";
 import {Avatar} from "@/components/ui/avatar";
@@ -9,12 +10,13 @@ import {AppLink} from "@/components/ui/navigation";
 import {BackRow, PageTitle} from "@/components/ui/page-header";
 import {Screen} from "@/components/ui/screen";
 import {getViewer} from "@/server/auth";
-import {organizerName, peopleOnDevice} from "@/server/auth/account";
+import {peopleOnDevice} from "@/server/auth/account";
 import {signInFamily} from "@/server/auth/families";
 import {currentDeviceHash, rememberedFamily} from "@/server/auth/request";
 import {uuidPattern} from "@/server/auth/session";
 import {withFamily} from "@/server/db/client";
 import {Bullet, CodeEntry, FaceIdLink, FaceIdTile, FindFamily, Greeting, SignInWithPin} from "./get-in";
+import {AskForHelp, OrganizerHelpProvider} from "./ask-for-help";
 import {RefreshSession} from "./controls";
 import {linkClass} from "./styles";
 
@@ -29,11 +31,24 @@ async function loadFamily(search: Search) {
     if (!family) return null;
     return {
       ...family,
-      organizer: await organizerName(tx, familyId) ?? "",
+      organizer: family.organizers[0]?.name ?? "",
       known: device ? await peopleOnDevice(tx, familyId, device) : [],
     };
   });
   return found && {familyId, ...found};
+}
+
+function familyHelp(family: NonNullable<Awaited<ReturnType<typeof loadFamily>>>, personId?: string) {
+  const matches = family.helpNames.filter(({id}) => personId ? id === personId : family.known.includes(id));
+  const person = matches.length === 1 ? matches[0] : null;
+  return <OrganizerHelpProvider organizers={family.organizers}><AskForHelp organizer={family.organizer} asker={person
+    ? {familyId: family.familyId, personId: person.id}
+    : {familyId: family.familyId, names: family.helpNames}} /></OrganizerHelpProvider>;
+}
+
+export async function SignInHelp({familyId, personId}: {familyId?: string; personId?: string}) {
+  const family = await loadFamily({family: familyId});
+  return family ? familyHelp(family, personId) : null;
 }
 
 /**
@@ -44,7 +59,12 @@ export async function SignInScreen({search = {}}: {search?: Search}) {
   const t = await getTranslations("getIn.back");
   const auth = await getTranslations("auth");
   const viewer = await getViewer();
-  if (viewer) return <Link href="/account" className={linkClass}>{auth("openAccount")}</Link>;
+  if (viewer) return (
+    <section className="flex flex-col items-center gap-2">
+      <Link href="/account" className={linkClass}>{auth("openAccount")}</Link>
+      <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+    </section>
+  );
   const family = await loadFamily(search);
   const pinHref = family ? `/sign-in?family=${family.familyId}` : "/sign-in";
   return (
@@ -52,6 +72,7 @@ export async function SignInScreen({search = {}}: {search?: Search}) {
       <RefreshSession />
       <FaceIdTile />
       <TextLink href={pinHref}>{t("usePin")}</TextLink>
+      {family && familyHelp(family)}
     </section>
   );
 }
@@ -62,7 +83,10 @@ export async function SignInFlow({search = {}}: {search?: Search}) {
   const auth = await getTranslations("auth");
   if (viewer) {
     return (
-      <Screen actions={<ButtonLink href="/account" transition="push">{auth("openAccount")}</ButtonLink>}>
+      <Screen actions={<>
+        <ButtonLink href="/account" transition="push">{auth("openAccount")}</ButtonLink>
+        <SignInHelp familyId={viewer.familyId} personId={viewer.personId} />
+      </>}>
         <PageTitle title={auth("signIn")} lead={auth("feedback.otherPerson")} className="pt-10" />
       </Screen>
     );
@@ -72,16 +96,22 @@ export async function SignInFlow({search = {}}: {search?: Search}) {
 
 async function UnauthenticatedSignIn({search}: {search: Search}) {
   const family = await loadFamily(search);
-  if (search.safety === "1") return <Paused familyId={family?.familyId ?? null} organizer={family?.organizer ?? ""} />;
+  if (search.safety === "1") return <Paused familyId={family?.familyId ?? null} organizer={family?.organizer ?? ""}
+    help={family ? familyHelp(family, search.person) : null} />;
   if (!family) return <FindFamily />;
+  return <OrganizerHelpProvider organizers={family.organizers}><FamilySignIn family={family} search={search} /></OrganizerHelpProvider>;
+}
 
-  const {familyId, names, organizer, known} = family;
+async function FamilySignIn({family, search}: {family: NonNullable<Awaited<ReturnType<typeof loadFamily>>>; search: Search}) {
+  const {familyId, names, helpNames, organizer, known} = family;
   const familyUrl = `/sign-in?family=${familyId}`;
-  if (search.join === "1") return <CodeEntry familyId={familyId} backHref={familyUrl} sender={null} organizer={organizer} />;
+  if (search.join === "1") return <CodeEntry familyId={familyId} backHref={familyUrl} sender={null} organizer={organizer} names={helpNames} />;
 
   const selected = names.find(({id}) => id === search.person);
   if (selected) {
-    if (selected.needsNewKey) return <NeedsKey name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
+    if (selected.needsNewKey) {
+      return <NeedsKey familyId={familyId} personId={selected.id} name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
+    }
     return <SignInWithPin familyId={familyId} personId={selected.id} name={selected.name} organizer={organizer} backHref={`${familyUrl}&all=1`} />;
   }
 
@@ -89,18 +119,21 @@ async function UnauthenticatedSignIn({search}: {search: Search}) {
   const mine = names.filter(({id}) => known.includes(id));
   if (mine.length === 1 && search.all !== "1") {
     const [me] = mine;
-    return <WelcomeBack name={me.name} pinHref={`${familyUrl}&person=${me.id}`} othersHref={`${familyUrl}&all=1`} />;
+    return <WelcomeBack name={me.name} pinHref={`${familyUrl}&person=${me.id}`} othersHref={`${familyUrl}&all=1`}
+      help={<AskForHelp organizer={organizer} asker={{familyId, personId: me.id}} />} />;
   }
-  return <WhoIsUsing names={names} familyUrl={familyUrl} />;
+  return <WhoIsUsing names={names} familyUrl={familyUrl}
+    help={<AskForHelp organizer={organizer} asker={{familyId, names: helpNames}} />} />;
 }
 
-async function WelcomeBack({name, pinHref, othersHref}: {name: string; pinHref: string; othersHref: string}) {
+async function WelcomeBack({name, pinHref, othersHref, help}: {name: string; pinHref: string; othersHref: string; help: ReactNode}) {
   const t = await getTranslations("getIn.back");
   const hello = await getTranslations("getIn.hello");
   return (
     <Screen actions={<>
       <TextLink href={pinHref} className="self-center">{t("usePin")}</TextLink>
       <TextLink href={othersHref} className="self-center">{t("notMe", {name})}</TextLink>
+      {help}
     </>}>
       <div className="pt-10"><Greeting heading top={t("hi")} bottom={hello("name", {name})} /></div>
       <FaceIdTile />
@@ -108,13 +141,14 @@ async function WelcomeBack({name, pinHref, othersHref}: {name: string; pinHref: 
   );
 }
 
-async function WhoIsUsing({names, familyUrl}: {names: Array<{id: string; name: string}>; familyUrl: string}) {
+async function WhoIsUsing({names, familyUrl, help}: {names: Array<{id: string; name: string}>; familyUrl: string; help: ReactNode}) {
   const t = await getTranslations("getIn.who");
   const auth = await getTranslations("auth");
   return (
     <Screen actions={<>
       <TextLink href={`${familyUrl}&join=1`} transition="push" className="self-center">{t("ownKey")}</TextLink>
       <FaceIdLink label={auth("signInFaceId")} />
+      {help}
     </>}>
       <PageTitle title={t("title")} lead={t("lead")} className="pt-10" />
       <div className="px-edge pt-5">
@@ -134,11 +168,13 @@ async function WhoIsUsing({names, familyUrl}: {names: Array<{id: string; name: s
   );
 }
 
-async function NeedsKey({name, organizer, backHref}: {name: string; organizer: string; backHref: string}) {
+async function NeedsKey({familyId, personId, name, organizer, backHref}: {
+  familyId: string; personId: string; name: string; organizer: string; backHref: string;
+}) {
   const t = await getTranslations("getIn.enter");
   const back = await getTranslations("getIn.back");
   return (
-    <Screen back={backHref}>
+    <Screen back={backHref} actions={<AskForHelp organizer={organizer} asker={{familyId, personId}} />}>
       <BackRow href={backHref} parent={back("notMe", {name})} />
       <PageTitle title={name} className="pt-6" />
       <div className="px-edge pt-6">
@@ -149,10 +185,13 @@ async function NeedsKey({name, organizer, backHref}: {name: string; organizer: s
 }
 
 /** The exchange is paused (11.8): after a family lockdown, what is safe and what happens next. */
-async function Paused({familyId, organizer}: {familyId: string | null; organizer: string}) {
+async function Paused({familyId, organizer, help}: {familyId: string | null; organizer: string; help: ReactNode}) {
   const t = await getTranslations("getIn.paused");
   return (
-    <Screen actions={<ButtonLink href={familyId ? `/sign-in?family=${familyId}` : "/sign-in"}>{t("ok")}</ButtonLink>}>
+    <Screen actions={<>
+      <ButtonLink href={familyId ? `/sign-in?family=${familyId}` : "/sign-in"}>{t("ok")}</ButtonLink>
+      {help}
+    </>}>
       <div aria-hidden="true" className="flex justify-center pt-9"><KnitMotif name="lock" cell={11} /></div>
       <PageTitle title={t("title")} lead={t("lead")} className="pt-6" />
       <div className="px-edge pt-5">

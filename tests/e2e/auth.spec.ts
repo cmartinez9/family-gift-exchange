@@ -37,6 +37,8 @@ async function removeFamily(familyId: string) {
 
 
 test("sets up the family, joins by key, switches devices, disputes a session and signs out everywhere", async ({page, browser, browserName}) => {
+  // Several sign-ins across three devices can exhaust the default budget on CI WebKit.
+  test.setTimeout(60_000);
   const familyName = `Frostfall ${randomUUID().slice(0, 6)}`;
   const familyId = await startFamily(page, familyName);
   const device = devices[browserName === "chromium" ? "Pixel 7" : "iPhone 13"];

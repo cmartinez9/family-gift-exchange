@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from "next-intl";
 import {and, eq, sql} from "drizzle-orm";
 import {afterAll, afterEach, beforeAll, expect, it, vi} from "vitest";
 import {connectDatabase, runForFamily} from "../../src/server/db/database";
-import {audit, families, households, keepApart, participants, people} from "../../src/server/db/schema";
+import {audit, claims, exchanges, families, households, items, keepApart, participants, people} from "../../src/server/db/schema";
 import {
   answerQuestion, askYourPerson, changeParticipation, checkSealedDraw, closeExchange, createExchange,
   DrawError, drawFeasibility, dryRunDraw, editExchange, listExchanges, listOwnQuestions, memberDrawStatus,
@@ -21,6 +21,7 @@ import {digest, findViewer, parseSession, secret} from "../../src/server/auth/se
 import {requireIssuedKey} from "../helpers/issued-key";
 import {readiness, removeMember} from "../../src/server/auth/families";
 import {addListItem, getListExchangeCard, getWishlist} from "../../src/server/lists";
+import {claimItem, getGettingList, setClaimTick} from "../../src/server/lists/claims";
 import {renderServerTree} from "../helpers/render-server";
 import enMessages from "../../messages/en.json";
 import esMessages from "../../messages/es.json";
@@ -419,12 +420,149 @@ it("creates, edits and closes an exchange manually regardless of its gift day", 
   })]);
   await revealMyPerson(viewers[1], exchangeId, 1);
   await askYourPerson(viewers[1], exchangeId, 1, "Any favorite snacks?");
+  const {seal} = (await organizerExchange(organizer, exchangeId)).exchange;
+  expect(seal).toBeTruthy();
   await closeExchange(organizer, exchangeId);
   expect(await checkSealedDraw(organizer, exchangeId)).toEqual({status: "closed"});
+  expect((await organizerExchange(organizer, exchangeId)).exchange).toMatchObject({status: "closed", seal});
   expect(await admin.db.select().from(assignments).where(eq(assignments.familyId, familyId))).toEqual([]);
   expect(await admin.db.select().from(questions).where(eq(questions.familyId, familyId))).toEqual([]);
   await expect(runDraw(organizer, exchangeId, {expectedVersion: 1})).rejects.toMatchObject({code: "closed"});
   expect(await memberDrawStatus(viewers[1], exchangeId)).toMatchObject({status: "closed"});
+});
+
+it.each(["open", "setup"] as const)("clears all family marks and checklist entries after claims during %s", async (status) => {
+  const {organizer, viewers, exchangeId, familyId} = await fixture();
+  const foreign = await fixture({count: 3, active: 3});
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const otherExchangeId = randomUUID();
+  const createItem = (title: string) => addListItem(owner, owner.actingAs, {kind: "note", title});
+  const season = await createItem("Season gift");
+  const other = await createItem("Other season gift");
+  const standalone = await createItem("Birthday gift");
+  const scoped = <T,>(action: Parameters<typeof runForFamily<T>>[2]) => runForFamily(app.db, familyId, action);
+  const claimRows = () => scoped((tx) => tx.select().from(claims).orderBy(claims.id));
+  const itemRows = () => scoped((tx) => tx.select().from(items).orderBy(items.id));
+  await scoped(async (tx) => {
+    await tx.update(exchanges).set({status}).where(eq(exchanges.id, exchangeId));
+    await tx.insert(exchanges).values({familyId, id: otherExchangeId, name: "Other season", status: "closed"});
+    await tx.insert(claims).values([
+      {familyId, itemId: other.id, exchangeId: otherExchangeId, claimerId: buyer.actingAs},
+      {familyId, itemId: standalone.id, claimerId: buyer.actingAs},
+    ]);
+  });
+  const foreignOwner = foreign.viewers[2];
+  const foreignBuyer = foreign.viewers[1];
+  const foreignItem = await addListItem(foreignOwner, foreignOwner.actingAs, {kind: "note", title: "Another family's gift"});
+  await claimItem(foreignBuyer, foreignItem.id);
+  await setClaimTick(foreignBuyer, foreignItem.id, "bought", true);
+  await setClaimTick(foreignBuyer, foreignItem.id, "wrapped", true);
+  const foreignClaims = () => runForFamily(app.db, foreign.familyId, (tx) => tx.select().from(claims));
+  const savedForeignClaims = await foreignClaims();
+  const foreignChecklist = await getGettingList(foreignBuyer);
+  const wishlist = await getWishlist(owner, owner.actingAs);
+  const savedItems = await itemRows();
+
+  await claimItem(buyer, season.id);
+  for (const item of [season, other, standalone]) {
+    await setClaimTick(buyer, item.id, "bought", true);
+    await setClaimTick(buyer, item.id, "wrapped", true);
+  }
+  expect(await claimRows()).toContainEqual(expect.objectContaining({
+    itemId: season.id, exchangeId: null,
+  }));
+  expect(await getGettingList(buyer)).toEqual(expect.arrayContaining(
+    [season, other, standalone].map(({id}) => expect.objectContaining({itemId: id, bought: true, wrapped: true})),
+  ));
+
+  await editExchange(organizer, exchangeId, details);
+  await runDraw(organizer, exchangeId, {expectedVersion: 0});
+  await closeExchange(organizer, exchangeId);
+
+  expect(await claimRows()).toEqual([]);
+  expect(await itemRows()).toEqual(savedItems);
+  expect(await getWishlist(owner, owner.actingAs)).toEqual(wishlist);
+  expect((await getWishlist(buyer, owner.actingAs)).items.every((item) => item.claim === undefined)).toBe(true);
+  expect(await getGettingList(buyer)).toEqual([]);
+  expect(await foreignClaims()).toEqual(savedForeignClaims);
+  expect(await getGettingList(foreignBuyer)).toEqual(foreignChecklist);
+});
+
+it.each(["between seasons", "during the next season"])("preserves later marks after a repeated close %s", async (phase) => {
+  const {organizer, coOrganizer, viewers, exchangeId, familyId} = await fixture();
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const item = await addListItem(owner, owner.actingAs, {kind: "note", title: "Gift for later"});
+  await claimItem(buyer, item.id);
+  await closeExchange(organizer, exchangeId);
+  expect(await getGettingList(buyer)).toEqual([]);
+  if (phase === "during the next season") await createExchange(organizer, {...details, name: "Next season"});
+  await claimItem(buyer, item.id);
+  await setClaimTick(buyer, item.id, "bought", true);
+  await setClaimTick(buyer, item.id, "wrapped", true);
+  const claimRows = () => runForFamily(app.db, familyId, (tx) => tx.select().from(claims));
+  const savedClaims = await claimRows();
+  const checklist = await getGettingList(buyer);
+  expect(checklist).toEqual([expect.objectContaining({itemId: item.id, bought: true, wrapped: true})]);
+
+  await closeExchange(coOrganizer, exchangeId);
+
+  expect(await claimRows()).toEqual(savedClaims);
+  expect(await getGettingList(buyer)).toEqual(checklist);
+  expect((await getWishlist(buyer, owner.actingAs)).items).toEqual([expect.objectContaining({id: item.id, claim: "mine"})]);
+});
+
+it.each(["open", "setup"] as const)("waits for a concurrent %s claim before clearing family marks", async (status) => {
+  const {organizer, viewers, exchangeId, familyId} = await fixture();
+  const buyer = viewers[1];
+  const owner = viewers[2];
+  const item = await addListItem(owner, owner.actingAs, {kind: "note", title: "Concurrent gift"});
+  await runForFamily(app.db, familyId, (tx) => tx.update(exchanges).set({status}).where(eq(exchanges.id, exchangeId)));
+  const locked = Promise.withResolvers<number>();
+  const release = Promise.withResolvers<void>();
+  const holding = admin.db.transaction(async (tx) => {
+    await tx.select({id: items.id}).from(items).where(and(eq(items.familyId, familyId), eq(items.id, item.id))).for("update");
+    const {rows: [row]} = await tx.execute<{pid: number}>(sql`SELECT pg_backend_pid() AS pid`);
+    locked.resolve(row.pid);
+    await release.promise;
+  });
+  void holding.catch(locked.reject);
+  let claiming: Promise<{value?: unknown; error?: unknown}> | undefined;
+  let closing: Promise<{value?: unknown; error?: unknown}> | undefined;
+  try {
+    const blocker = await locked.promise;
+    claiming = claimItem(buyer, item.id).then((value) => ({value}), (error: unknown) => ({error}));
+    let claimPid = 0;
+    await vi.waitFor(async () => {
+      const {rows} = await admin.db.execute<{pid: number}>(sql`
+        SELECT pid FROM pg_stat_activity
+        WHERE ${blocker} = ANY(pg_blocking_pids(pid)) AND usename = ${appRole}
+      `);
+      expect(rows).toHaveLength(1);
+      claimPid = rows[0].pid;
+    }, {timeout: 3000, interval: 10});
+    closing = closeExchange(organizer, exchangeId).then((value) => ({value}), (error: unknown) => ({error}));
+    await vi.waitFor(async () => {
+      const {rows: [row]} = await admin.db.execute<{blocked: boolean}>(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM pg_stat_activity
+          WHERE ${claimPid} = ANY(pg_blocking_pids(pid)) AND usename = ${drawRole}
+        ) AS blocked
+      `);
+      expect(row.blocked).toBe(true);
+    }, {timeout: 3000, interval: 10});
+  } finally {
+    release.resolve();
+    await holding;
+    await Promise.all([claiming, closing]);
+  }
+  expect(await claiming).toEqual({value: undefined});
+  expect(await closing).toEqual({value: undefined});
+  expect((await organizerExchange(organizer, exchangeId)).exchange.status).toBe("closed");
+  expect(await runForFamily(app.db, familyId, (tx) => tx.select().from(claims))).toEqual([]);
+  expect(await getGettingList(buyer)).toEqual([]);
+  expect((await getWishlist(buyer, owner.actingAs)).items).toEqual([expect.objectContaining({id: item.id})]);
 });
 
 it("rejects a stale Family lists budget form after the exchange closes", async () => {

@@ -182,6 +182,8 @@ for (const language of ["en", "es"] as const) {
 
       await buyer.goto(`/${language}/account`);
       await buyer.getByRole("button", {name: auth.helpAs.replace("{name}", "Cedar"), exact: true}).click();
+      // The shared banner can render before helping redirects to Cedar's list.
+      await expect(buyer).toHaveURL(`/${language}/lists/${dependentId}`);
       await expect(buyer.getByRole("region", {name: helping.label})).toContainText(helping.banner.replace("{name}", "Cedar"));
       await buyer.goto(`/${language}/notifications`);
       await expect(buyer.getByRole("heading", {name: notify.templates["names-drawn"].title, exact: true})).toBeVisible();

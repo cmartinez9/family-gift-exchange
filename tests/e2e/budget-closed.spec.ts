@@ -142,7 +142,7 @@ for (const locale of ["en", "es"] as const) {
   });
 }
 
-test("a budget save queued behind the real close action rechecks status under the row lock", async ({page, context}, info) => {
+test("a budget save queued behind the real close action rechecks status under the family lock", async ({page, context}, info) => {
   const f = await organizer(page);
   const holder = await database.connect();
   try {
@@ -151,11 +151,11 @@ test("a budget save queued behind the real close action rechecks status under th
     await (await budgetForm(stale)).fill("99");
     const close = await prepareClose(page, f.exchangeId, f.name);
     await holder.query("begin");
-    await holder.query("select id from exchanges where id = $1 for update", [f.exchangeId]);
+    await holder.query("select id from families where id = $1 for update", [f.familyId]);
     const {rows: [{pid}]} = await holder.query("select pg_backend_pid() as pid");
     const blockers = [pid];
     const waiting = async () => (await database.query(
-      "select pid, wait_event_type, query from pg_stat_activity where pg_blocking_pids(pid) && $1::int[] and wait_event_type = 'Lock' and query like '%\"exchanges\"%'",
+      "select pid, wait_event_type, query from pg_stat_activity where pg_blocking_pids(pid) && $1::int[] and wait_event_type = 'Lock' and query like '%\"families\"%'",
       [blockers],
     )).rows;
     await close.click();
@@ -163,7 +163,7 @@ test("a budget save queued behind the real close action rechecks status under th
     blockers.push(...(await waiting()).map(({pid}) => pid));
     await stale.getByRole("button", {name: en.lists.saveBudget}).click();
     await expect.poll(async () => (await waiting()).length).toBe(2);
-    await info.attach("both-actions-waiting-on-exchange-lock", {body: JSON.stringify(await waiting(), null, 2), contentType: "application/json"});
+    await info.attach("both-actions-waiting-on-family-lock", {body: JSON.stringify(await waiting(), null, 2), contentType: "application/json"});
     await holder.query("commit");
     await expect(page.getByRole("heading", {name: en.season.wrapTitle, exact: true})).toBeVisible();
     await expect(stale.getByRole("main").getByRole("alert")).toHaveText(en.lists.feedback.closed);

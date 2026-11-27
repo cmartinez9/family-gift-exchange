@@ -171,6 +171,7 @@
       "otherPerson": "This device is signed in. Switch person before continuing.",
       "usedKey": "This key has already been used. Sign in with your PIN or ask the organizer for a new key.",
       "resetRequested": "The organizer has been asked. Look for a private message from them with a new key.",
+      "organizerRecovery": "You're the organizer. Use Face ID or your PIN, or ask whoever runs the app for a recovery link.",
       "saved": "Saved.",
       "sent": "Marked as sent.",
       "reported": "Reported. Any other device linked to this activity was signed out.",
@@ -803,6 +804,22 @@
       "helperTitle": "Open it on {name}'s phone",
       "helperBack": "Go back"
     },
+    "preview": {
+      "title": "{name}'s own key",
+      "family": "{family} family",
+      "season": "Christmas {year}",
+      "generic": "A key for a family gift exchange. Open it on your own phone.",
+      "picture": "{name}, stitched in yarn",
+      "genericPicture": "A knitted gift between two snowflakes"
+    },
+    "help": {
+      "ask": "Ask {organizer} for help",
+      "who": "Who needs help?",
+      "chooseName": "Choose your name to ask {organizer}.",
+      "asked": "{organizer} has been asked. Watch your chat.",
+      "already": "{organizer} was already asked today. Watch your chat.",
+      "failed": "That didn't send. Try again."
+    },
     "pin": {
       "makeTitle": "Make a 4-digit PIN",
       "makeLead": "You'll use it to get back in.",
@@ -1158,7 +1175,7 @@
     "closeTitle": "Close {name}?",
     "closeLists": "Everyone's lists stay. They can keep adding for birthdays.",
     "closeSealed": "The draw stays sealed for good. Nobody, you included, can open it.",
-    "closeQuestions": "This year's questions to and from each person are cleared.",
+    "closeMarks": "Marks and \"Things I'm getting\" are cleared.",
     "closeConfirm": "Close {name}",
     "notYet": "Not yet",
     "stitched": "MERRY",

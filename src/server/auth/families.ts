@@ -7,6 +7,7 @@ import type {Viewer} from "./index";
 import {activePerson, isManager, lockFamily, signInDevice, type Device} from "./access";
 import {hashPin, keyedHash} from "./pin";
 import {equalDigests} from "./session";
+import {organizerContacts} from "./account";
 import {authEvents, passkeys, personalKeys, pinCredentials, pinResetRequests, sessions} from "./schema";
 
 export function permitCreation(configured: string | undefined, entered: string, pepper: string) {
@@ -45,10 +46,17 @@ const peopleOnly = (familyId: string) => and(eq(people.familyId, familyId), isNu
 export async function signInFamily(tx: FamilyTransaction, familyId: string) {
   const [family] = await tx.select({name: families.name}).from(families).where(eq(families.id, familyId));
   if (!family) return null;
-  const names = await tx.select({id: people.id, name: people.displayName, needsNewKey: people.needsNewKey}).from(people)
-    .innerJoin(pinCredentials, and(eq(pinCredentials.familyId, people.familyId), eq(pinCredentials.personId, people.id)))
+  const members = await tx.select({
+    id: people.id, name: people.displayName, needsNewKey: people.needsNewKey, credentialId: pinCredentials.personId,
+  }).from(people)
+    .leftJoin(pinCredentials, and(eq(pinCredentials.familyId, people.familyId), eq(pinCredentials.personId, people.id)))
     .where(and(peopleOnly(familyId), isNull(people.helperId))).orderBy(people.displayName, people.id);
-  return {name: family.name, names};
+  return {
+    name: family.name,
+    names: members.filter(({credentialId}) => credentialId !== null).map(({id, name, needsNewKey}) => ({id, name, needsNewKey})),
+    helpNames: members.map(({id, name}) => ({id, name})),
+    organizers: await organizerContacts(tx, familyId),
+  };
 }
 
 export async function readiness(tx: FamilyTransaction, viewer: Viewer, now: Date) {
